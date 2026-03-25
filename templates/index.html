@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IA Slide Standardizer</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/ia_logo.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #264CD7;
+            --primary-light: #3A5EE3;
+            --accent-green: #3DD499;
+            --dark: #1C1B1B;
+            --dark-navy: #17375E;
+            --bg-light: #F4F4F6;
+            --bg-white: #FFFFFF;
+            --text-dark: #1C1B1B;
+            --text-muted: #6B7280;
+            --border: #E5E7EB;
+            --shadow: 0 4px 24px rgba(38, 76, 215, 0.08);
+            --shadow-lg: 0 12px 48px rgba(38, 76, 215, 0.12);
+            --radius: 16px;
+            --radius-sm: 10px;
+
+            /* Product colors */
+            --plan-purple: #C4B5E3;
+            --inventory-yellow: #D4E157;
+            --price-teal: #00D1B2;
+            --monday-blue: #264CD7;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter Tight', -apple-system, sans-serif;
+            background: var(--bg-light);
+            color: var(--text-dark);
+            min-height: 100vh;
+        }
+
+        /* ── Navbar ─────────────────────────────────── */
+        .navbar {
+            background: var(--dark);
+            padding: 0 40px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+        }
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .navbar-brand img {
+            height: 32px;
+        }
+        .navbar-brand span {
+            color: white;
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: -0.5px;
+        }
+        .navbar-brand .badge {
+            background: var(--primary);
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+        .navbar-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .navbar-actions .status {
+            color: var(--accent-green);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        /* ── Main Layout ────────────────────────────── */
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+
+        .hero {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .hero h1 {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--dark);
+            margin-bottom: 8px;
+            letter-spacing: -1px;
+        }
+        .hero h1 span { color: var(--primary); }
+        .hero p {
+            color: var(--text-muted);
+            font-size: 15px;
+            max-width: 520px;
+            margin: 0 auto;
+        }
+
+        /* ── Cards Grid ─────────────────────────────── */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+        @media (max-width: 768px) {
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--bg-white);
+            border-radius: var(--radius);
+            padding: 28px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            transition: all 0.2s ease;
+        }
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+        }
+        .card-icon.blue { background: var(--primary); }
+        .card-icon.green { background: var(--accent-green); }
+        .card-icon.purple { background: #7C3AED; }
+        .card-icon.navy { background: var(--dark-navy); }
+
+        .card-title {
+            font-size: 17px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+        .card-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* ── Upload Area ────────────────────────────── */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-sm);
+            padding: 40px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: var(--bg-light);
+            position: relative;
+        }
+        .upload-zone:hover, .upload-zone.drag-over {
+            border-color: var(--primary);
+            background: rgba(38, 76, 215, 0.04);
+        }
+        .upload-zone i {
+            font-size: 36px;
+            color: var(--primary);
+            margin-bottom: 12px;
+        }
+        .upload-zone h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .upload-zone p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .file-info {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background: rgba(38, 76, 215, 0.06);
+            border-radius: var(--radius-sm);
+            margin-top: 16px;
+        }
+        .file-info.visible { display: flex; }
+        .file-info i { color: var(--primary); font-size: 20px; }
+        .file-info .name { font-weight: 600; font-size: 13px; flex: 1; }
+        .file-info .size { font-size: 11px; color: var(--text-muted); }
+        .file-info .remove {
+            background: none;
+            border: none;
+            color: #EF4444;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        /* ── Controls ───────────────────────────────── */
+        .control-group {
+            margin-bottom: 18px;
+        }
+        .control-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        select, input[type="text"] {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-family: 'Inter Tight', sans-serif;
+            font-size: 14px;
+            background: white;
+            transition: border-color 0.2s;
+        }
+        select:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(38, 76, 215, 0.1);
+        }
+
+        /* ── Template Buttons ───────────────────────── */
+        .template-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .template-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: white;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: 'Inter Tight', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .template-btn:hover {
+            border-color: var(--primary);
+            background: rgba(38, 76, 215, 0.03);
+        }
+        .template-btn.active {
+            border-color: var(--primary);
+            background: rgba(38, 76, 215, 0.06);
+            color: var(--primary);
+            font-weight: 600;
+        }
+        .template-btn .icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .template-btn .icon.i1 { background: #EEF2FF; color: var(--primary); }
+        .template-btn .icon.i2 { background: #F0FDF4; color: #16A34A; }
+        .template-btn .icon.i3 { background: #FFF7ED; color: #EA580C; }
+        .template-btn .icon.i4 { background: #FDF2F8; color: #DB2777; }
+        .template-btn .icon.i5 { background: #F5F3FF; color: #7C3AED; }
+        .template-btn .icon.i6 { background: #ECFEFF; color: #0891B2; }
+
+        /* ── Product Selector ───────────────────────── */
+        .product-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .product-pill {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 2px solid var(--border);
+            background: white;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .product-pill:hover { transform: scale(1.03); }
+        .product-pill.active { border-color: currentColor; }
+        .product-pill[data-color="purple"] { color: #7C3AED; }
+        .product-pill[data-color="yellow"] { color: #9E9D24; }
+        .product-pill[data-color="teal"] { color: #00897B; }
+        .product-pill[data-color="blue"] { color: #264CD7; }
+
+        /* ── Action Buttons ─────────────────────────── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: var(--radius-sm);
+            font-family: 'Inter Tight', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover {
+            background: var(--primary-light);
+            box-shadow: 0 4px 16px rgba(38, 76, 215, 0.3);
+        }
+        .btn-primary:disabled {
+            background: #9CA3AF;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .btn-secondary {
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+        .btn-secondary:hover {
+            background: rgba(38, 76, 215, 0.04);
+        }
+        .btn-success {
+            background: var(--accent-green);
+            color: white;
+        }
+        .btn-success:hover {
+            background: #2BC584;
+        }
+
+        /* ── Progress / Status ──────────────────────── */
+        .progress-bar {
+            display: none;
+            margin-top: 16px;
+        }
+        .progress-bar.visible { display: block; }
+        .progress-track {
+            height: 6px;
+            background: var(--bg-light);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent-green));
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.5s ease;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .progress-text {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px;
+            text-align: center;
+        }
+
+        .result-panel {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(61, 212, 153, 0.08);
+            border: 1px solid rgba(61, 212, 153, 0.3);
+            border-radius: var(--radius-sm);
+        }
+        .result-panel.visible { display: block; }
+        .result-panel h4 {
+            color: #059669;
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+        .result-panel p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .error-panel {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: var(--radius-sm);
+        }
+        .error-panel.visible { display: block; }
+        .error-panel h4 { color: #DC2626; font-size: 15px; margin-bottom: 8px; }
+        .error-panel pre {
+            font-size: 11px;
+            color: #666;
+            white-space: pre-wrap;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        /* ── Custom Builder ─────────────────────────── */
+        .builder-section {
+            background: var(--bg-white);
+            border-radius: var(--radius);
+            padding: 28px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            margin-bottom: 32px;
+        }
+        .builder-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .builder-header h2 {
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slide-entry {
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 12px;
+            background: var(--bg-light);
+            position: relative;
+        }
+        .slide-entry .slide-num {
+            position: absolute;
+            top: -10px;
+            left: 16px;
+            background: var(--primary);
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 10px;
+        }
+        .slide-entry .remove-slide {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: none;
+            border: none;
+            color: #EF4444;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+        }
+        .slide-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .slide-fields.full { grid-template-columns: 1fr; }
+
+        textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-family: 'Inter Tight', sans-serif;
+            font-size: 13px;
+            resize: vertical;
+            min-height: 60px;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        /* ── Footer ─────────────────────────────────── */
+        .footer {
+            text-align: center;
+            padding: 32px 24px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .footer a { color: var(--primary); text-decoration: none; }
+
+        /* ── Animations ─────────────────────────────── */
+        .fade-in {
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <img src="{{ url_for('static', filename='images/ia_logo.png') }}" alt="Impact Analytics">
+            <span>Slide Standardizer</span>
+            <span class="badge">BETA</span>
+        </div>
+        <div class="navbar-actions">
+            <span class="status"><i class="fas fa-circle" style="font-size:8px;margin-right:4px"></i> Ready</span>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <!-- Hero -->
+        <div class="hero fade-in">
+            <h1>Transform Any Deck Into <span>Brand-Perfect</span> Slides</h1>
+            <p>Upload a PPTX or screenshot — get a clean, on-brand Impact Analytics presentation instantly.</p>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="grid-2">
+            <!-- Left: Upload & Process -->
+            <div class="card fade-in">
+                <div class="card-header">
+                    <div class="card-icon blue"><i class="fas fa-cloud-arrow-up"></i></div>
+                    <div>
+                        <div class="card-title">Upload & Convert</div>
+                        <div class="card-subtitle">PPTX or Screenshot → Standardized Deck</div>
+                    </div>
+                </div>
+
+                <div class="upload-zone" id="uploadZone">
+                    <input type="file" id="fileInput" accept=".pptx,.png,.jpg,.jpeg,.bmp,.tiff,.webp">
+                    <i class="fas fa-file-powerpoint"></i>
+                    <h3>Drop your file here</h3>
+                    <p>.pptx, .png, .jpg — up to 100 MB</p>
+                </div>
+
+                <div class="file-info" id="fileInfo">
+                    <i class="fas fa-file-powerpoint"></i>
+                    <span class="name" id="fileName"></span>
+                    <span class="size" id="fileSize"></span>
+                    <button class="remove" onclick="clearFile()"><i class="fas fa-times"></i></button>
+                </div>
+
+                <div class="control-group" style="margin-top: 18px">
+                    <label>Slide Detection Mode</label>
+                    <select id="templateType">
+                        <option value="auto">🤖 Auto-Detect (Recommended)</option>
+                        <option value="intro">🎯 Force: Intro Slide</option>
+                        <option value="content">📝 Force: Content Slide</option>
+                        <option value="case_study">📊 Force: Case Study</option>
+                        <option value="content_image">🖼️ Force: Content + Image</option>
+                        <option value="section_divider">📌 Force: Section Divider</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Product (for accent color)</label>
+                    <div class="product-pills">
+                        <span class="product-pill active" data-color="blue" data-product="" onclick="selectProduct(this)">Auto</span>
+                        <span class="product-pill" data-color="purple" data-product="PlanSmart" onclick="selectProduct(this)">PlanSmart</span>
+                        <span class="product-pill" data-color="yellow" data-product="InventorySmart" onclick="selectProduct(this)">Inventory</span>
+                        <span class="product-pill" data-color="teal" data-product="PriceSmart" onclick="selectProduct(this)">PriceSmart</span>
+                        <span class="product-pill" data-color="blue" data-product="MondaySmart" onclick="selectProduct(this)">Monday</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="processBtn" onclick="processFile()" disabled>
+                    <i class="fas fa-wand-magic-sparkles"></i> Standardize Now
+                </button>
+
+                <div class="progress-bar" id="progressBar">
+                    <div class="progress-track">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">Processing slides...</div>
+                </div>
+
+                <div class="result-panel" id="resultPanel">
+                    <h4><i class="fas fa-check-circle"></i> Standardization Complete!</h4>
+                    <p id="resultInfo"></p>
+                    <a id="downloadLink" href="#" class="btn btn-success">
+                        <i class="fas fa-download"></i> Download PPTX
+                    </a>
+                </div>
+
+                <div class="error-panel" id="errorPanel">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Processing Error</h4>
+                    <pre id="errorText"></pre>
+                </div>
+            </div>
+
+            <!-- Right: Template Gallery -->
+            <div class="card fade-in">
+                <div class="card-header">
+                    <div class="card-icon purple"><i class="fas fa-palette"></i></div>
+                    <div>
+                        <div class="card-title">Template Gallery</div>
+                        <div class="card-subtitle">Choose slide types for your deck</div>
+                    </div>
+                </div>
+
+                <div class="template-buttons">
+                    <button class="template-btn" onclick="addSlideToBuilder('intro')">
+                        <div class="icon i1"><i class="fas fa-flag"></i></div>
+                        <div>
+                            <div style="font-weight:600">Intro Slide</div>
+                            <div style="font-size:11px;color:var(--text-muted)">Title + logo + date</div>
+                        </div>
+                    </button>
+                    <button class="template-btn" onclick="addSlideToBuilder('content')">
+                        <div class="icon i2"><i class="fas fa-align-left"></i></div>
+                        <div>
+                            <div style="font-weight:600">Content Slide</div>
+                            <div style="font-size:11px;color:var(--text-muted)">Title + bullets</div>
+                        </div>
+                    </button>
+                    <button class="template-btn" onclick="addSlideToBuilder('case_study')">
+                        <div class="icon i3"><i class="fas fa-chart-bar"></i></div>
+                        <div>
+                            <div style="font-weight:600">Case Study</div>
+                            <div style="font-size:11px;color:var(--text-muted)">3-column layout</div>
+                        </div>
+                    </button>
+                    <button class="template-btn" onclick="addSlideToBuilder('content_image')">
+                        <div class="icon i4"><i class="fas fa-image"></i></div>
+                        <div>
+                            <div style="font-weight:600">Content + Image</div>
+                            <div style="font-size:11px;color:var(--text-muted)">Text left, image right</div>
+                        </div>
+                    </button>
+                    <button class="template-btn" onclick="addSlideToBuilder('section_divider')">
+                        <div class="icon i5"><i class="fas fa-layer-group"></i></div>
+                        <div>
+                            <div style="font-weight:600">Section Divider</div>
+                            <div style="font-size:11px;color:var(--text-muted)">Full-color divider</div>
+                        </div>
+                    </button>
+                    <button class="template-btn" onclick="addSlideToBuilder('blank')">
+                        <div class="icon i6"><i class="fas fa-plus"></i></div>
+                        <div>
+                            <div style="font-weight:600">Blank Slide</div>
+                            <div style="font-size:11px;color:var(--text-muted)">Logo + footer only</div>
+                        </div>
+                    </button>
+                </div>
+
+                <div style="margin-top: 20px; padding: 16px; background: var(--bg-light); border-radius: var(--radius-sm)">
+                    <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--dark-navy)">
+                        <i class="fas fa-info-circle" style="color:var(--primary)"></i> Brand Specs Applied
+                    </h4>
+                    <ul style="font-size: 12px; color: var(--text-muted); list-style: none; line-height: 1.8">
+                        <li>✦ Font: Inter Tight (24pt headings)</li>
+                        <li>✦ Colors: #264CD7 primary, product-specific accents</li>
+                        <li>✦ Widescreen 16:9 (13.33" × 7.50")</li>
+                        <li>✦ IA logo auto-placed on every slide</li>
+                        <li>✦ Product color-coding from brand guidelines</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Builder -->
+        <div class="builder-section fade-in">
+            <div class="builder-header">
+                <h2><i class="fas fa-hammer" style="color:var(--primary)"></i> Custom Deck Builder</h2>
+                <div style="display:flex;gap:10px">
+                    <button class="btn btn-secondary" style="width:auto;padding:8px 16px;font-size:13px" onclick="clearBuilder()">
+                        <i class="fas fa-trash"></i> Clear All
+                    </button>
+                    <button class="btn btn-primary" style="width:auto;padding:8px 20px;font-size:13px" onclick="buildCustomDeck()" id="buildBtn" disabled>
+                        <i class="fas fa-download"></i> Build & Download
+                    </button>
+                </div>
+            </div>
+
+            <div id="slideEntries">
+                <div style="text-align:center;padding:40px;color:var(--text-muted);font-size:14px">
+                    <i class="fas fa-arrow-up" style="font-size:24px;display:block;margin-bottom:8px;color:var(--border)"></i>
+                    Click a template above to start building your deck
+                </div>
+            </div>
+
+            <div class="result-panel" id="buildResult">
+                <h4><i class="fas fa-check-circle"></i> Custom Deck Ready!</h4>
+                <p id="buildResultInfo"></p>
+                <a id="buildDownloadLink" href="#" class="btn btn-success">
+                    <i class="fas fa-download"></i> Download Custom PPTX
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Impact Analytics Slide Standardizer — Built for the IA Design Team</p>
+        <p style="margin-top:4px">Brand font: Inter Tight · Primary: #264CD7 · Template: Case Studies Library format</p>
+    </footer>
+
+    <script>
+        let selectedProduct = '';
+        let slideEntries = [];
+
+        // ── File Upload ────────────────────────
+        const fileInput = document.getElementById('fileInput');
+        const uploadZone = document.getElementById('uploadZone');
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('drag-over');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+
+        function handleFile(file) {
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+            document.getElementById('fileInfo').classList.add('visible');
+            document.getElementById('processBtn').disabled = false;
+        }
+
+        function clearFile() {
+            fileInput.value = '';
+            document.getElementById('fileInfo').classList.remove('visible');
+            document.getElementById('processBtn').disabled = true;
+            document.getElementById('resultPanel').classList.remove('visible');
+            document.getElementById('errorPanel').classList.remove('visible');
+        }
+
+        function selectProduct(el) {
+            document.querySelectorAll('.product-pill').forEach(p => p.classList.remove('active'));
+            el.classList.add('active');
+            selectedProduct = el.dataset.product;
+        }
+
+        // ── Process Upload ─────────────────────
+        async function processFile() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('template_type', document.getElementById('templateType').value);
+            formData.append('product_name', selectedProduct);
+
+            const btn = document.getElementById('processBtn');
+            const progress = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            progress.classList.add('visible');
+            document.getElementById('resultPanel').classList.remove('visible');
+            document.getElementById('errorPanel').classList.remove('visible');
+
+            // Animate progress
+            let pct = 0;
+            const interval = setInterval(() => {
+                pct = Math.min(pct + Math.random() * 15, 90);
+                progressFill.style.width = pct + '%';
+                const msgs = ['Extracting content...', 'Applying template...', 'Standardizing fonts...', 'Placing logo...', 'Finalizing deck...'];
+                progressText.textContent = msgs[Math.floor(pct / 20)] || msgs[0];
+            }, 400);
+
+            try {
+                const res = await fetch('/process', { method: 'POST', body: formData });
+                const data = await res.json();
+                clearInterval(interval);
+
+                if (data.success) {
+                    progressFill.style.width = '100%';
+                    progressText.textContent = 'Done!';
+                    setTimeout(() => {
+                        progress.classList.remove('visible');
+                        const result = document.getElementById('resultPanel');
+                        result.classList.add('visible');
+                        document.getElementById('resultInfo').textContent =
+                            `Generated ${data.slide_count} slides · ${data.filename}`;
+                        document.getElementById('downloadLink').href = data.download_url;
+                    }, 500);
+                } else {
+                    throw new Error(data.error || 'Unknown error');
+                }
+            } catch (err) {
+                clearInterval(interval);
+                progress.classList.remove('visible');
+                document.getElementById('errorPanel').classList.add('visible');
+                document.getElementById('errorText').textContent = err.message;
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Standardize Now';
+        }
+
+        // ── Custom Builder ─────────────────────
+        function addSlideToBuilder(type) {
+            slideEntries.push({ type, title: '', subtitle: '', points: '', challenge: '', solution: '',
+                               impact_stat: '', impact_label: '', body: '', number: '', tag: '', date: '' });
+            renderSlides();
+        }
+
+        function removeSlide(idx) {
+            slideEntries.splice(idx, 1);
+            renderSlides();
+        }
+
+        function clearBuilder() {
+            slideEntries = [];
+            renderSlides();
+            document.getElementById('buildResult').classList.remove('visible');
+        }
+
+        function renderSlides() {
+            const container = document.getElementById('slideEntries');
+            document.getElementById('buildBtn').disabled = slideEntries.length === 0;
+
+            if (slideEntries.length === 0) {
+                container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:14px">
+                    <i class="fas fa-arrow-up" style="font-size:24px;display:block;margin-bottom:8px;color:var(--border)"></i>
+                    Click a template above to start building your deck</div>`;
+                return;
+            }
+
+            const labels = { intro: '🎯 Intro', content: '📝 Content', case_study: '📊 Case Study',
+                           content_image: '🖼️ Content+Image', section_divider: '📌 Divider', blank: '⬜ Blank' };
+
+            container.innerHTML = slideEntries.map((s, i) => {
+                let fields = '';
+                switch(s.type) {
+                    case 'intro':
+                        fields = `
+                            <div class="slide-fields">
+                                <div><label>Title</label><input type="text" placeholder="Presentation title" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
+                                <div><label>Subtitle</label><input type="text" placeholder="Subtitle" onchange="slideEntries[${i}].subtitle=this.value" value="${esc(s.subtitle)}"></div>
+                                <div><label>Date</label><input type="text" placeholder="March 2026" onchange="slideEntries[${i}].date=this.value" value="${esc(s.date)}"></div>
+                            </div>`;
+                        break;
+                    case 'section_divider':
+                        fields = `
+                            <div class="slide-fields">
+                                <div><label>Section Title</label><input type="text" placeholder="Section name" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
+                                <div><label>Number</label><input type="text" placeholder="01" onchange="slideEntries[${i}].number=this.value" value="${esc(s.number)}"></div>
+                            </div>`;
+                        break;
+                    case 'content':
+                        fields = `
+                            <div class="slide-fields full">
+                                <div><label>Title</label><input type="text" placeholder="Slide title" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
+                                <div><label>Bullet Points (one per line)</label><textarea placeholder="Point 1\nPoint 2\nPoint 3" onchange="slideEntries[${i}].points=this.value">${esc(s.points)}</textarea></div>
+                            </div>`;
+                        break;
+                    case 'case_study':
+                        fields = `
+                            <div class="slide-fields full">
+                                <div><label>Title</label><input type="text" placeholder="Case study headline" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
+                            </div>
+                            <div class="slide-fields">
+                                <div><label>Challenge</label><textarea placeholder="Challenge details" onchange="slideEntries[${i}].challenge=this.value">${esc(s.challenge)}</textarea></div>
+                                <div><label>Solution</label><textarea placeholder="Solution details" onchange="slideEntries[${i}].solution=this.value">${esc(s.solution)}</textarea></div>
+                            </div>
+                            <div class="slide-fields">
+                                <div><label>Impact Stat</label><input type="text" placeholder="~5%" onchange="slideEntries[${i}].impact_stat=this.value" value="${esc(s.impact_stat)}"></div>
+                                <div><label>Impact Label</label><input type="text" placeholder="Margin Improvement" onchange="slideEntries[${i}].impact_label=this.value" value="${esc(s.impact_label)}"></div>
+                            </div>
+                            <div class="slide-fields full">
+                                <div><label>Tag</label><input type="text" placeholder="SKU Rationalization" onchange="slideEntries[${i}].tag=this.value" value="${esc(s.tag)}"></div>
+                            </div>`;
+                        break;
+                    case 'content_image':
+                        fields = `
+                            <div class="slide-fields full">
+                                <div><label>Title</label><input type="text" placeholder="Slide title" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
+                                <div><label>Body Text</label><textarea placeholder="Text content (left side)" onchange="slideEntries[${i}].body=this.value">${esc(s.body)}</textarea></div>
+                            </div>`;
+                        break;
+                }
+                return `<div class="slide-entry fade-in">
+                    <span class="slide-num">Slide ${i+1} · ${labels[s.type] || s.type}</span>
+                    <button class="remove-slide" onclick="removeSlide(${i})"><i class="fas fa-times"></i></button>
+                    ${fields}
+                </div>`;
+            }).join('');
+        }
+
+        function esc(str) { return (str||'').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+        async function buildCustomDeck() {
+            const btn = document.getElementById('buildBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
+
+            const slides = slideEntries.map(s => {
+                const obj = { type: s.type, title: s.title };
+                if (s.type === 'intro') { obj.subtitle = s.subtitle; obj.date = s.date; }
+                if (s.type === 'section_divider') { obj.number = s.number; }
+                if (s.type === 'content') { obj.points = (s.points||'').split('\n').filter(l => l.trim()); }
+                if (s.type === 'case_study') {
+                    obj.challenge = s.challenge; obj.solution = s.solution;
+                    obj.impact_stat = s.impact_stat; obj.impact_label = s.impact_label;
+                    obj.tag = s.tag; obj.extra_impacts = [];
+                }
+                if (s.type === 'content_image') { obj.body = s.body; }
+                return obj;
+            });
+
+            try {
+                const res = await fetch('/build-custom', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ slides, product_name: selectedProduct })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const result = document.getElementById('buildResult');
+                    result.classList.add('visible');
+                    document.getElementById('buildResultInfo').textContent =
+                        `Generated ${data.slide_count} slides · ${data.filename}`;
+                    document.getElementById('buildDownloadLink').href = data.download_url;
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-download"></i> Build & Download';
+        }
+    </script>
+</body>
+</html>
