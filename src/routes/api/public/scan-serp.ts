@@ -1,31 +1,39 @@
 /**
- * scan-serp.ts — the dedicated search source. Runs one ICP-tuned query per
- * search-derived signal through the configured search backend (SerpAPI /
- * Google CSE) to fetch grounded, current results, then classifies them.
+ * scan-serp.ts — the dedicated search source.
  *
- * Classification is two-tier for accuracy:
- *   - If ANTHROPIC_API_KEY is set, Claude judges the real fetched results per
- *     signal — domain-guarded and ICP-strict, citing only the provided URLs.
- *     This is what fixes similarly-named-company misfires (fila.com → F.I.L.A.)
- *     and generic, non-ICP matches.
- *   - Otherwise it falls back to the deterministic keyword classifier.
+ * Runs a small set of BROAD ICP-tuned queries (plus a Reddit query and a direct
+ * Reddit JSON fetch for operational-pain complaints) through the search backend,
+ * pools + de-dupes the real results, then classifies the whole pool:
+ *   - ANTHROPIC_API_KEY present → Claude judges every search signal from the pool,
+ *     domain-guarded and ICP-strict, citing only real fetched URLs (accurate).
+ *   - otherwise → deterministic keyword gate per signal over the same pool.
  *
- * Accepts POST { company, domain }; the domain is threaded through both tiers.
- * Never throws.
+ * Quota-efficient (~6 searches/scan for 17 signals) and accurate. Never throws.
  */
 
-import type { CatalogId, FunctionResult, Signal } from "../../../lib/scan-contract";
-import { fillQuery, NEWS_SEARCH } from "../../../lib/icp";
+import type { FunctionResult, Signal } from "../../../lib/scan-contract";
+import { BROAD_QUERIES, REDDIT_QUERY, SEARCH_SIGNAL_IDS, fillQuery } from "../../../lib/icp";
 import { getSearchProvider, type Hit } from "./providers/search-provider";
 import { classifySignal } from "./providers/classify";
-import { classifyWithLLM, llmClassifyAvailable, type SignalCandidates } from "./providers/llm-classify";
+import { classifyWithLLM, llmClassifyAvailable } from "./providers/llm-classify";
+import { redditOperationalPain } from "./providers/reddit-provider";
 
 interface ScanInput {
   company: string;
   domain: string;
 }
 
-const SEARCH_SIGNALS = Object.keys(NEWS_SEARCH) as CatalogId[];
+function dedupeHits(hits: Hit[], cap = 40): Hit[] {
+  const seen = new Set<string>();
+  const out: Hit[] = [];
+  for (const h of hits) {
+    if (!h.url || seen.has(h.url)) continue;
+    seen.add(h.url);
+    out.push(h);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
 
 export async function scanSerp(input: ScanInput): Promise<FunctionResult> {
   const { company, domain } = input;
@@ -33,41 +41,38 @@ export async function scanSerp(input: ScanInput): Promise<FunctionResult> {
     if (!company) return { ok: false, signals: [], error: "company is required" };
     const provider = getSearchProvider();
     if (!provider.available) {
+      return { ok: false, signals: [], error: "No search provider configured (set SERPAPI_KEY or GOOGLE_CSE_KEY + GOOGLE_CSE_CX)." };
+    }
+
+    // 1. Fetch broad queries + reddit query + direct reddit, in parallel.
+    const queries = [...BROAD_QUERIES, REDDIT_QUERY].map((q) => fillQuery(q, company, domain));
+    const [searchArrays, reddit] = await Promise.all([
+      Promise.all(queries.map((q) => provider.search(q, 8))),
+      redditOperationalPain(company),
+    ]);
+    const pool = dedupeHits([...searchArrays.flat(), ...reddit]);
+
+    if (pool.length === 0) {
+      // No results — return all search signals as found:false.
       return {
-        ok: false,
-        signals: [],
-        error: "No search provider configured (set SERPAPI_KEY or GOOGLE_CSE_KEY + GOOGLE_CSE_CX).",
+        ok: true,
+        signals: SEARCH_SIGNAL_IDS.map((id) => classifySignal(id, [], company, domain)),
+        meta: { source: provider.name, classifier: "none", hits: 0 },
       };
     }
 
-    // 1. Fetch grounded results per signal (one query each, concurrency-capped).
-    const groups: SignalCandidates[] = [];
-    const CONCURRENCY = 3;
-    for (let i = 0; i < SEARCH_SIGNALS.length; i += CONCURRENCY) {
-      const batch = SEARCH_SIGNALS.slice(i, i + CONCURRENCY);
-      const fetched = await Promise.all(
-        batch.map(async (id): Promise<SignalCandidates> => {
-          const cfg = NEWS_SEARCH[id]!;
-          const hits: Hit[] = await provider.search(fillQuery(cfg.query, company, domain));
-          return { id, hits };
-        }),
-      );
-      groups.push(...fetched);
-    }
-
-    // 2. Classify. Prefer the accurate LLM pass over the real results; fall back
-    //    to the deterministic keyword classifier when no Anthropic key.
+    // 2. Classify the pool.
     let signals: Signal[] | null = null;
     let classifier = "deterministic";
     if (llmClassifyAvailable()) {
-      signals = await classifyWithLLM(company, domain, groups);
+      signals = await classifyWithLLM(company, domain, pool, SEARCH_SIGNAL_IDS);
       if (signals) classifier = "llm-grounded";
     }
     if (!signals) {
-      signals = groups.map((g) => classifySignal(g.id, g.hits, company, domain));
+      signals = SEARCH_SIGNAL_IDS.map((id) => classifySignal(id, pool, company, domain));
     }
 
-    return { ok: true, signals, meta: { source: provider.name, classifier } };
+    return { ok: true, signals, meta: { source: provider.name, classifier, hits: pool.length } };
   } catch (err) {
     return { ok: false, signals: [], error: (err as Error).message };
   }

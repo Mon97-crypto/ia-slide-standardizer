@@ -105,6 +105,47 @@ a {
   color: var(--ia-blue);
 }
 
+/* ── Dashboard surfaces (sleek card grid, on-brand gradients) ───────────────── */
+.card {
+  background: var(--ia-white);
+  border: 1px solid var(--ia-gray-1);
+  border-radius: 20px;
+  box-shadow: 0 2px 10px rgba(20, 20, 30, 0.05);
+}
+.metric-card {
+  border-radius: 20px;
+  border: 1px solid var(--ia-gray-1);
+  background: linear-gradient(160deg, var(--ia-blue-soft) 0%, var(--ia-white) 60%);
+  box-shadow: 0 2px 10px rgba(20, 20, 30, 0.05);
+}
+.risk-card {
+  background: linear-gradient(160deg, #fff1e8 0%, var(--ia-white) 60%);
+}
+.tab {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ia-gray-3);
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 180ms cubic-bezier(.22,.61,.36,1);
+}
+.tab[data-active="true"] {
+  background: var(--ia-blue);
+  color: var(--ia-white);
+}
+.tab:not([data-active="true"]):hover {
+  background: var(--ia-blue-soft);
+  color: var(--ia-blue-dark);
+}
+.section-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
 /* ── Motion: state change only. Respect prefers-reduced-motion. ─────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,

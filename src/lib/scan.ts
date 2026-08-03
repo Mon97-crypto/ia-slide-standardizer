@@ -18,8 +18,10 @@ import {
   type Signal,
 } from "./scan-contract";
 
+import { SEARCH_SIGNAL_IDS } from "./icp";
+
 // Re-export the types the UI consumes so components import from one module.
-export type { ScoredSignal, IntentLevel, Signal, CatalogId } from "./scan-contract";
+export type { ScoredSignal, IntentLevel, Signal, CatalogId, SignalGroup } from "./scan-contract";
 
 export type StepKey = "edgar" | "techstack" | "news";
 export type StepStatus = "pending" | "done" | "failed";
@@ -37,24 +39,11 @@ const STEP_LABELS: Record<StepKey, string> = {
   news: "News and hiring",
 };
 
-/** Which catalog ids each function is responsible for — used to skip functions
- *  when the caller has deselected all of a function's signals. */
+/** Which catalog ids each function is responsible for. */
 export const FUNCTION_SIGNALS: Record<StepKey, CatalogId[]> = {
-  edgar: ["bankruptcy", "reorganization", "ma_activity", "ipo_preparation"],
+  edgar: ["bankruptcy", "ma_activity"],
   techstack: ["tech_stack_change"],
-  news: [
-    "leadership_change",
-    "erp_crm_migration",
-    "operational_pain",
-    "geographic_expansion",
-    "hiring_activity",
-    "layoffs",
-    "budget_cuts",
-    "facility_closures",
-    "rfp_rfq_rfi",
-    "internal_promotion",
-    "no_job_openings",
-  ],
+  news: [...SEARCH_SIGNAL_IDS, "hiring_activity"],
 };
 
 const ENDPOINT: Record<StepKey, string> = {

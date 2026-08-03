@@ -23,6 +23,7 @@ import { scanSerp } from "../src/routes/api/public/scan-serp";
 import { scanJobs } from "../src/routes/api/public/providers/jobs-provider";
 import { scanFunding } from "../src/routes/api/public/providers/funding-provider";
 import { apolloContacts } from "../src/routes/api/public/apollo-contacts";
+import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -84,6 +85,11 @@ app.post("/api/public/apollo-contacts", async (c) => {
   return c.json(await apolloContacts({ company, domain }));
 });
 
+app.post("/api/public/ask", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { question?: string; company?: string; domain?: string };
+  return c.json(await ask({ question: body.question ?? "", company: body.company, domain: body.domain }));
+});
+
 // 24h cache read/write.
 app.get("/api/public/scan-cache", (c) => {
   const domain = c.req.query("domain") || "";
@@ -106,10 +112,10 @@ app.post("/api/public/scan-cache", async (c) => {
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
-// Serve the built SPA (production). SPA fallback to index.html for client routes.
+// Serve the built SPA (production). Static files (assets, logo, favicon) are
+// served from dist first; anything else falls back to index.html for client routes.
 if (existsSync(DIST)) {
-  app.use("/assets/*", serveStatic({ root: "./dist" }));
-  app.get("/favicon.ico", serveStatic({ path: "./dist/favicon.ico" }));
+  app.get("*", serveStatic({ root: "./dist" }));
   app.get("*", serveStatic({ path: "./dist/index.html" }));
 }
 

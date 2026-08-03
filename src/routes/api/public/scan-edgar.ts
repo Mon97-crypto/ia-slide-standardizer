@@ -120,9 +120,7 @@ export async function scanEdgar(input: ScanInput): Promise<FunctionResult> {
         ok: true,
         signals: [
           emptySignal("bankruptcy", "negative", detail),
-          emptySignal("reorganization", "neutral", detail),
           emptySignal("ma_activity", "positive", detail),
-          emptySignal("ipo_preparation", "positive", detail),
         ],
         meta: { cik: null, private: true },
       };
@@ -140,29 +138,19 @@ export async function scanEdgar(input: ScanInput): Promise<FunctionResult> {
     const bankruptcyHits = filings.filter(
       (f) => f.form === "8-K" && f.items.includes("1.03"),
     );
-    const reorgHits = filings.filter(
-      (f) => f.form === "8-K" && f.items.includes("2.05"),
-    );
     const maHits = filings.filter(
       (f) =>
         (f.form === "8-K" && f.items.includes("2.01")) ||
         ["DEFM14A", "SC 13D", "S-4"].includes(f.form),
     );
-    const ipoHits = filings.filter((f) => f.form.startsWith("S-1"));
 
     const signals: Signal[] = [
       buildSignal("bankruptcy", "negative", bankruptcyHits, cik,
         "Chapter 11 or bankruptcy item 1.03 filed in the last year.",
         "No bankruptcy filings in the last year."),
-      buildSignal("reorganization", "neutral", reorgHits, cik,
-        "Restructuring item 2.05 filed in the last year.",
-        "No restructuring filings in the last year."),
       buildSignal("ma_activity", "positive", maHits, cik,
         "Acquisition or merger filing in the last year.",
         "No acquisition or merger filings in the last year."),
-      buildSignal("ipo_preparation", "positive", ipoHits, cik,
-        "S-1 registration filed in the last year.",
-        "No S-1 registration in the last year."),
     ];
 
     return { ok: true, signals, meta: { cik } };

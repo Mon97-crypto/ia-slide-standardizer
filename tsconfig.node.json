@@ -17,5 +17,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["server", "src/routes", "src/lib", "vite.config.ts", "tailwind.config.ts"]
+  "include": ["server", "src/routes", "src/lib", "vite.config.ts", "tailwind.config.ts"],
+  "exclude": ["src/lib/csv.ts"]
 }

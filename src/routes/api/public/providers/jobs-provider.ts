@@ -145,21 +145,7 @@ export async function scanJobs(company: string, _domain: string): Promise<JobsRe
       soWhat: relevant.length > 0 ? hiringCriteria.soWhatHint.slice(0, 140) : "",
     };
 
-    // no_job_openings is a real negative only when we searched and found nothing.
-    const noJobs: Signal = {
-      name: "no_job_openings",
-      type: "negative",
-      found: postings.length >= 0 && relevant.length === 0,
-      detail:
-        relevant.length === 0
-          ? "Searched jobs feed and found no relevant planning roles."
-          : "No confirmed signals found",
-      evidence: [],
-      iaProducts: [],
-      soWhat: relevant.length === 0 ? ICP_CRITERIA.no_job_openings.soWhatHint.slice(0, 140) : "",
-    };
-
-    return { available: true, signals: [hiring, noJobs] };
+    return { available: true, signals: [hiring] };
   } catch (err) {
     return { available: false, signals: [], error: (err as Error).message };
   }

@@ -1,15 +1,19 @@
 /**
  * scan-contract.ts — the canonical wire contract shared by client and server.
  *
- * The CATALOG below is the single source of truth for signal ids, types and
- * weights. Edge functions NEVER compute scores; they return raw Signal objects
- * and the frontend adds score_contribution + weight by looking these up.
+ * The CATALOG below is the single source of truth for signal ids, types,
+ * weights, display labels, and their GROUP ("key" | "supporting"). These 19
+ * signals are the only ones the product considers or displays.
  *
- * NOTE: these ids are canonical. icp.ts layers relevance *criteria* and
- * vocabulary on top of them but never renames them.
+ * Edge functions never compute scores; they return raw Signal objects and the
+ * frontend adds score_contribution + weight from this catalog.
+ *
+ * icp.ts layers relevance CRITERIA and search vocabulary onto these ids; it
+ * never renames them.
  */
 
 export type SignalType = "positive" | "negative" | "neutral";
+export type SignalGroup = "key" | "supporting";
 
 export interface Evidence {
   title: string;
@@ -17,29 +21,25 @@ export interface Evidence {
   date: string;
 }
 
-/** The exact shape every edge function returns (an array of these, nothing else). */
 export interface Signal {
-  name: CatalogId | string; // an id from the catalog
+  name: CatalogId | string;
   type: SignalType;
   found: boolean;
-  detail: string; // one short human sentence
-  evidence: Evidence[]; // max 5
-  /** ICP enrichment, populated by the classifier where relevant. */
+  detail: string;
+  evidence: Evidence[];
   iaProducts?: string[];
   soWhat?: string;
 }
 
-/** A Signal after the frontend has scored and enriched it from the catalog. */
 export interface ScoredSignal extends Signal {
   type: SignalType;
   weight: number;
   score_contribution: number;
-  /** Human-facing group + display label pulled from the catalog. */
   label: string;
   glyph: string;
+  group: SignalGroup;
 }
 
-/** The uniform envelope every function returns. Never throws. */
 export interface FunctionResult {
   ok: boolean;
   signals: Signal[];
@@ -50,50 +50,55 @@ export interface FunctionResult {
 interface CatalogEntry {
   type: SignalType;
   weight: number;
-  /** Salesperson-facing name, sentence case. */
   label: string;
-  /** Non-color cue so rows read in grayscale and for colorblind users. */
   glyph: string;
+  group: SignalGroup;
 }
 
-// ── CATALOG — canonical ids, types and weights. Never invent new ids. ──────────
+// ── CATALOG — 19 signals, in display order within each group. ───────────────────
+// KEY signals come first (higher-value buying triggers), then SUPPORTING.
 export const CATALOG = {
-  // positive
-  rfp_rfq_rfi: { type: "positive", weight: 25, label: "RFP, RFQ or RFI", glyph: "◆" },
-  erp_crm_migration: { type: "positive", weight: 20, label: "ERP, CRM or platform migration", glyph: "▲" },
-  leadership_change: { type: "positive", weight: 15, label: "Leadership change", glyph: "◆" },
-  ma_activity: { type: "positive", weight: 12, label: "Mergers and acquisitions", glyph: "▲" },
-  operational_pain: { type: "positive", weight: 10, label: "Operational pain", glyph: "◆" },
-  hiring_activity: { type: "positive", weight: 8, label: "Relevant hiring", glyph: "▲" },
-  geographic_expansion: { type: "positive", weight: 5, label: "Geographic expansion", glyph: "▲" },
-  tech_stack_change: { type: "positive", weight: 3, label: "Modern tech stack", glyph: "▲" },
-  ipo_preparation: { type: "positive", weight: 2, label: "IPO preparation", glyph: "▲" },
-  // negative
-  bankruptcy: { type: "negative", weight: 45, label: "Bankruptcy", glyph: "▼" },
-  layoffs: { type: "negative", weight: 25, label: "Layoffs or hiring freeze", glyph: "▽" },
-  budget_cuts: { type: "negative", weight: 15, label: "Budget cuts", glyph: "▽" },
-  facility_closures: { type: "negative", weight: 10, label: "Facility or store closures", glyph: "▽" },
-  no_job_openings: { type: "negative", weight: 5, label: "No relevant job openings", glyph: "▽" },
-  // neutral (display only, never scored)
-  reorganization: { type: "neutral", weight: 55, label: "Reorganization", glyph: "○" },
-  internal_promotion: { type: "neutral", weight: 45, label: "Internal promotion", glyph: "○" },
+  // ── KEY SIGNALS ──────────────────────────────────────────────────────────────
+  tech_stack_change: { type: "positive", weight: 5, label: "Current tech stack", glyph: "▲", group: "key" },
+  rfp_rfq_rfi: { type: "positive", weight: 25, label: "RFP, RFQ or RFI", glyph: "◆", group: "key" },
+  ma_activity: { type: "positive", weight: 15, label: "M&A activity", glyph: "▲", group: "key" },
+  geographic_expansion: { type: "positive", weight: 10, label: "Geographic expansion", glyph: "▲", group: "key" },
+  operational_pain: { type: "positive", weight: 25, label: "Operational pain", glyph: "◆", group: "key" },
+  leadership_change: { type: "positive", weight: 15, label: "Leadership changes", glyph: "◆", group: "key" },
+  erp_crm_migration: { type: "positive", weight: 20, label: "ERP, CRM or cloud migration", glyph: "▲", group: "key" },
+  bankruptcy: { type: "negative", weight: 45, label: "Bankruptcy", glyph: "▼", group: "key" },
+  store_expansion: { type: "positive", weight: 10, label: "Stores / facility expansion", glyph: "▲", group: "key" },
+  vendor_sentiment: { type: "positive", weight: 22, label: "Current vendor sentiment", glyph: "◆", group: "key" },
+
+  // ── SUPPORTING SIGNALS ───────────────────────────────────────────────────────
+  new_product_line: { type: "positive", weight: 6, label: "New product line", glyph: "▲", group: "supporting" },
+  hiring_activity: { type: "positive", weight: 8, label: "Relevant hiring", glyph: "▲", group: "supporting" },
+  layoffs: { type: "negative", weight: 15, label: "Layoffs / hiring freeze", glyph: "▽", group: "supporting" },
+  budget_cuts: { type: "negative", weight: 12, label: "Budget cuts", glyph: "▽", group: "supporting" },
+  facility_closures: { type: "negative", weight: 10, label: "Facility / store closures", glyph: "▽", group: "supporting" },
+  procurement_freeze: { type: "negative", weight: 5, label: "Procurement freeze", glyph: "▽", group: "supporting" },
+  debt_restructuring: { type: "positive", weight: 6, label: "Debt restructuring", glyph: "▲", group: "supporting" },
+  banner_selloff: { type: "positive", weight: 6, label: "Brand / banner sell-off", glyph: "▲", group: "supporting" },
+  rival_tool_purchase: { type: "positive", weight: 12, label: "Recent rival tool purchase", glyph: "◆", group: "supporting" },
 } as const satisfies Record<string, CatalogEntry>;
 
 export type CatalogId = keyof typeof CATALOG;
 
 export const CATALOG_IDS = Object.keys(CATALOG) as CatalogId[];
+export const KEY_SIGNALS = CATALOG_IDS.filter((id) => CATALOG[id].group === "key");
+export const SUPPORTING_SIGNALS = CATALOG_IDS.filter((id) => CATALOG[id].group === "supporting");
 
 export function isCatalogId(name: string): name is CatalogId {
   return Object.prototype.hasOwnProperty.call(CATALOG, name);
 }
 
-// ── SCORING (frontend only) ────────────────────────────────────────────────────
+// ── SCORING (frontend only) ─────────────────────────────────────────────────────
 export function contributionFor(signal: Signal): number {
   if (!signal.found || !isCatalogId(signal.name)) return 0;
   const entry = CATALOG[signal.name];
   if (entry.type === "positive") return entry.weight;
   if (entry.type === "negative") return -entry.weight;
-  return 0; // neutral is display only
+  return 0;
 }
 
 export type IntentLevel =
@@ -111,7 +116,6 @@ export function intentFor(total: number, bankruptcyFound: boolean): IntentLevel 
   return "Neutral";
 }
 
-/** Enrich a raw Signal with catalog-derived type, weight, contribution and labels. */
 export function scoreSignal(signal: Signal): ScoredSignal {
   const entry = isCatalogId(signal.name) ? CATALOG[signal.name] : undefined;
   return {
@@ -121,5 +125,6 @@ export function scoreSignal(signal: Signal): ScoredSignal {
     score_contribution: contributionFor(signal),
     label: entry?.label ?? signal.name,
     glyph: entry?.glyph ?? "○",
+    group: entry?.group ?? "supporting",
   };
 }

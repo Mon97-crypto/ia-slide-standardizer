@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.SCAN_CACHE_DIR || join(__dirname, "..", ".data");
 const CACHE_FILE = join(DATA_DIR, "scans.json");
-const TTL_MS = 24 * 60 * 60 * 1000;
+const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30-day cache
 
 interface CacheRow {
   domain: string;

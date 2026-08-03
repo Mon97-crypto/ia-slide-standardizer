@@ -19,6 +19,7 @@ import {
   ICP_CRITERIA,
   productConstraint,
   sanitizeProducts,
+  SEARCH_SIGNAL_IDS,
 } from "../../../../lib/icp";
 
 interface ScanInput {
@@ -26,20 +27,8 @@ interface ScanInput {
   domain: string;
 }
 
-// The 11 signals the news function is responsible for.
-const NEWS_SIGNALS: CatalogId[] = [
-  "leadership_change",
-  "erp_crm_migration",
-  "operational_pain",
-  "geographic_expansion",
-  "hiring_activity",
-  "layoffs",
-  "budget_cuts",
-  "facility_closures",
-  "rfp_rfq_rfi",
-  "internal_promotion",
-  "no_job_openings",
-];
+// The signals the AI fallback covers: every search-derived signal + hiring.
+const NEWS_SIGNALS: CatalogId[] = [...SEARCH_SIGNAL_IDS, "hiring_activity"];
 
 const MODEL = process.env.SCAN_NEWS_MODEL || "claude-sonnet-4-6";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";

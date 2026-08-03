@@ -20,9 +20,9 @@ const FUNDING_SEARCH: Partial<Record<CatalogId, { query: string; must: string[] 
       '"{company}" (acquires OR "to acquire" OR merger OR "acquisition of" OR "majority stake" OR "acquired by") (retail OR brand OR banner OR chain OR grocery OR apparel)',
     must: ["acquir", "merger", "majority stake", "buyout", "takeover"],
   },
-  ipo_preparation: {
-    query: '"{company}" (IPO OR "initial public offering" OR "S-1" OR "files to go public" OR "public listing")',
-    must: ["ipo", "initial public offering", "go public", "s-1", "public listing"],
+  debt_restructuring: {
+    query: '"{company}" ("debt restructuring" OR refinancing OR covenant OR distressed OR creditors OR "chapter 11")',
+    must: ["debt restructuring", "refinanc", "covenant", "distressed", "creditors"],
   },
 };
 
