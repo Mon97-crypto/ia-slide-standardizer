@@ -12,3 +12,6 @@ dist/
 .data/
 .env
 *.local
+
+# Local preview screenshots (dev artifact)
+scripts/shots/
