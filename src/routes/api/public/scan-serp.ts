@@ -24,7 +24,7 @@ interface ScanInput {
   domain: string;
 }
 
-function dedupeHits(hits: Hit[], cap = 40): Hit[] {
+function dedupeHits(hits: Hit[], cap = 60): Hit[] {
   const seen = new Set<string>();
   const out: Hit[] = [];
   for (const h of hits) {
@@ -71,8 +71,8 @@ export async function scanSerp(input: ScanInput): Promise<FunctionResult> {
     const queries = BROAD_QUERIES.map((q) => fillQuery(q, name, domain));
     const redditQ = fillQuery(REDDIT_QUERY, company, domain);
     const [searchArrays, redditSearch, reddit] = await Promise.all([
-      Promise.all(queries.map((q) => provider.search(q, 8, true))),
-      provider.search(redditQ, 8, true),
+      Promise.all(queries.map((q) => provider.search(q, 10, true))),
+      provider.search(redditQ, 10, true),
       redditOperationalPain(company),
     ]);
     const pool = dropStale(dedupeHits([...searchArrays.flat(), ...redditSearch, ...reddit]));

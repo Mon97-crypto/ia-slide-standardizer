@@ -41,7 +41,7 @@ const STEP_LABELS: Record<StepKey, string> = {
 
 /** Which catalog ids each function is responsible for. */
 export const FUNCTION_SIGNALS: Record<StepKey, CatalogId[]> = {
-  edgar: ["bankruptcy", "ma_activity"],
+  edgar: ["bankruptcy", "ma_activity", "leadership_change", "budget_cuts", "debt_restructuring"],
   techstack: ["tech_stack_change"],
   news: [...SEARCH_SIGNAL_IDS, "hiring_activity"],
 };

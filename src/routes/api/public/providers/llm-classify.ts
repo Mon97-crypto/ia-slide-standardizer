@@ -53,7 +53,10 @@ function buildSystem(
     `found:true ONLY when one of the PROVIDED results ALL of these hold:`,
     `  1. It is genuinely about ${company}, the company operating ${domain}${industry ? ` in ${industry}` : ""} —`,
     `     NOT a different company that merely shares the name, and NOT an article where`,
-    `     "${company}" appears only as a common word or unrelated phrase.`,
+    `     "${company}" appears only as a common word or unrelated phrase. A result whose`,
+    `     subject is a DIFFERENT legal entity, a differently-punctuated name, or a company`,
+    `     in a different industry or country is NOT about the target, even if the words`,
+    `     look similar. If the result does not clearly concern ${domain}, reject it.`,
     `  2. It is recent: dated within the last 365 days (on or after ${cutoffDate(today)}).`,
     `     If a result has no date or is clearly older than 365 days, do NOT use it.`,
     `  3. It satisfies the signal's criteria below.`,
@@ -83,7 +86,7 @@ function cutoffDate(todayIso: string): string {
 
 function buildUser(hits: Hit[]): string {
   const lines = ["Candidate results (numbered):\n"];
-  hits.slice(0, 40).forEach((h, i) => {
+  hits.slice(0, 60).forEach((h, i) => {
     lines.push(`[${i + 1}] ${h.title} — ${h.url}${h.date ? ` — ${h.date}` : ""}\n    ${h.snippet.slice(0, 220)}`);
   });
   lines.push("\nReturn the JSON array now.");

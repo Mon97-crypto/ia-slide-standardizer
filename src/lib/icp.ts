@@ -199,11 +199,22 @@ export const ICP_CRITERIA: Record<CatalogId, IcpCriteria> = {
 // then judges every search-derived signal from that pool (quota-efficient AND
 // more accurate than one narrow query per signal). {company}/{domain} interpolated.
 export const BROAD_QUERIES: string[] = [
+  // 1. General recent retail news about the exact company.
   '"{company}" (retail OR retailer OR merchandising OR stores OR inventory OR ecommerce) news',
+  // 2. Leadership moves in ICP functions.
   '"{company}" (appoints OR names OR hires OR "steps down" OR promoted) (CEO OR "Chief Merchandising" OR "Chief Merchant" OR CIO OR CTO OR "Chief Supply Chain" OR "Chief Digital" OR "Chief Data" OR "VP Planning" OR GMM OR DMM)',
+  // 3. Operational pain — inventory and price failures.
   '"{company}" (inventory OR markdown OR stockout OR overstock OR "sell-through" OR "margin" OR "forecast accuracy" OR shrink OR "excess inventory" OR write-down)',
+  // 4. Growth / structural change.
   '"{company}" (acquires OR merger OR "new stores" OR "distribution center" OR "expands into" OR "private label" OR "new category" OR RFP OR divestiture OR "sells" OR "spin-off")',
+  // 5. Incumbent vendors, tech migrations and distress.
   '"{company}" (RELEX OR "o9" OR "Blue Yonder" OR "Oracle Retail" OR SAP OR "Manhattan Associates" OR Snowflake OR Databricks OR Aptos OR Logility OR layoffs OR "cost cutting" OR restructuring OR bankruptcy OR "procurement freeze" OR debt)',
+  // 6. Authoritative PR wires — real, dated corporate announcements.
+  '"{company}" (announces OR appoints OR acquires OR expands OR launches OR selects OR opens) (site:businesswire.com OR site:prnewswire.com OR site:globenewswire.com)',
+  // 7. Retail trade press — high-signal industry coverage.
+  '"{company}" (site:retaildive.com OR site:wwd.com OR site:chainstoreage.com OR site:sourcingjournal.com OR site:modernretail.co OR site:footwearnews.com)',
+  // 8. The company's own newsroom / investor relations.
+  'site:{domain} (press OR news OR announces OR investor OR "news release" OR earnings)',
 ];
 
 // Reddit-specific query for operational-pain complaints (via the search backend,
