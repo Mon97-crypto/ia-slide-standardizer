@@ -35,12 +35,13 @@ async function fetchJson(url: string, timeoutMs = 12_000): Promise<unknown | nul
 }
 
 function serpApi(key: string): SearchProvider {
+  const base = process.env.SERPAPI_BASE_URL || "https://serpapi.com";
   return {
     name: "serpapi",
     available: true,
     async search(query, num = 8) {
       const url =
-        `https://serpapi.com/search.json?engine=google&num=${num}` +
+        `${base}/search.json?engine=google&num=${num}` +
         `&q=${encodeURIComponent(query)}&api_key=${encodeURIComponent(key)}`;
       const data = (await fetchJson(url)) as { organic_results?: Array<Record<string, unknown>> } | null;
       const rows = data?.organic_results ?? [];

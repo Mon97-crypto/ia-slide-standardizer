@@ -54,11 +54,12 @@ async function fetchJson(url: string, timeoutMs = 12_000): Promise<unknown | nul
 }
 
 function serpJobs(key: string): JobsBackend {
+  const base = process.env.SERPAPI_BASE_URL || "https://serpapi.com";
   return {
     name: "serpapi_jobs",
     async search(company, query) {
       const url =
-        `https://serpapi.com/search.json?engine=google_jobs` +
+        `${base}/search.json?engine=google_jobs` +
         `&q=${encodeURIComponent(`${company} ${query}`)}&api_key=${encodeURIComponent(key)}`;
       const data = (await fetchJson(url)) as { jobs_results?: Array<Record<string, unknown>> } | null;
       return (data?.jobs_results ?? []).map((j) => ({
