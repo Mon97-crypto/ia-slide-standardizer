@@ -5,10 +5,12 @@
  * banner naming what was skipped.
  */
 import type { ScanResult, ScoredSignal, StepKey } from "../lib/scan";
+import type { AccountInfo } from "../lib/account";
 import { KEY_SIGNALS, SUPPORTING_SIGNALS } from "../lib/scan-contract";
 import { SignalRow } from "./SignalRow";
 import { SignalSpectrum } from "./SignalSpectrum";
 import { ScoreGauge } from "./ScoreGauge";
+import { AccountCard } from "./AccountCard";
 
 const STEP_NAMES: Record<StepKey, string> = {
   edgar: "SEC filings",
@@ -16,7 +18,17 @@ const STEP_NAMES: Record<StepKey, string> = {
   news: "News, hiring and Reddit",
 };
 
-export function ResultsView({ result, onRefresh }: { result: ScanResult; onRefresh: () => void }) {
+export function ResultsView({
+  result,
+  onRefresh,
+  account,
+  accountLoading = false,
+}: {
+  result: ScanResult;
+  onRefresh: () => void;
+  account?: AccountInfo | null;
+  accountLoading?: boolean;
+}) {
   if (!result.verified) {
     return (
       <div className="card" style={{ padding: 20 }}>
@@ -53,6 +65,8 @@ export function ResultsView({ result, onRefresh }: { result: ScanResult; onRefre
           <span className="serif" style={{ fontSize: 16 }}>{result.intent}</span>
         </div>
       </div>
+
+      {(account || accountLoading) && <AccountCard account={account ?? null} loading={accountLoading} />}
 
       {result.cached && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

@@ -6,6 +6,7 @@ import { ScanForm, type ScanRequest } from "../components/ScanForm";
 import { ProgressCard, type StepState } from "../components/ProgressCard";
 import { ResultsView } from "../components/ResultsView";
 import { runScan, type ScanResult, type StepKey } from "../lib/scan";
+import { fetchAccount, type AccountInfo } from "../lib/account";
 
 const INITIAL_STEPS: StepState[] = [
   { key: "edgar", label: "SEC filings", status: "pending" },
@@ -17,13 +18,22 @@ export function ScanView({ onScanning }: { onScanning: (b: boolean) => void }) {
   const [scanning, setScanning] = useState(false);
   const [steps, setSteps] = useState<StepState[] | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [accountLoading, setAccountLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastReq = useRef<ScanRequest | null>(null);
 
   const doScan = useCallback(async (req: ScanRequest, refresh = false) => {
     lastReq.current = req;
-    setError(null); setResult(null); setScanning(true); onScanning(true);
+    setError(null); setResult(null); setAccount(null); setScanning(true); onScanning(true);
     setSteps(INITIAL_STEPS.map((s) => ({ ...s, status: "pending" })));
+
+    // Account information fetches in parallel with the signal scan.
+    setAccountLoading(true);
+    void fetchAccount(req.company, req.domain)
+      .then(setAccount)
+      .finally(() => setAccountLoading(false));
+
     try {
       const r = await runScan({
         company: req.company, domain: req.domain, refresh,
@@ -66,7 +76,12 @@ export function ScanView({ onScanning }: { onScanning: (b: boolean) => void }) {
       {scanning && steps && <div style={{ marginBottom: 24 }}><ProgressCard steps={steps} /></div>}
 
       {!scanning && result && (
-        <ResultsView result={result} onRefresh={() => lastReq.current && doScan(lastReq.current, true)} />
+        <ResultsView
+          result={result}
+          account={account}
+          accountLoading={accountLoading}
+          onRefresh={() => lastReq.current && doScan(lastReq.current, true)}
+        />
       )}
 
       {!scanning && !result && !error && (

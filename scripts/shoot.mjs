@@ -97,17 +97,32 @@ const browser = await chromium.launch({
   args: ["--no-sandbox"],
 });
 
+// A rich account so the Account Information section renders fully. logoUrl points
+// at a locally-served asset so the tile shows an image without external egress.
+const account = {
+  name: "Marlowe & Finch",
+  domain: DOMAIN,
+  industry: "Retail Apparel & Fashion",
+  revenue: "$1.2B",
+  hq: "New York, New York, United States",
+  website: `https://${DOMAIN}`,
+  logoUrl: "/ia_logo.png",
+  employees: "4,200",
+  description: "Marlowe & Finch is a specialty apparel and footwear retailer operating 320 stores across North America.",
+};
+
 async function shoot(name, viewport, fn) {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   await page.goto(BASE, { waitUntil: "networkidle" });
-  // Seed the cache so a scan of the demo domain returns instantly.
-  await page.evaluate(async (r) => {
+  // Seed the cache + account so a scan of the demo domain returns instantly.
+  await page.evaluate(async ({ r, a }) => {
     await fetch("/api/public/scan-cache", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ domain: r.domain, company: r.company, result: r }),
     });
-  }, result);
+    localStorage.setItem(`ia-account:${a.domain}`, JSON.stringify({ at: Date.now(), account: a }));
+  }, { r: result, a: account });
   await fn(page);
   await page.screenshot({ path: `scripts/shots/${name}.png`, fullPage: true });
   await ctx.close();

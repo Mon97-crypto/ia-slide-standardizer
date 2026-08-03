@@ -23,6 +23,7 @@ import { scanSerp } from "../src/routes/api/public/scan-serp";
 import { scanJobs } from "../src/routes/api/public/providers/jobs-provider";
 import { scanFunding } from "../src/routes/api/public/providers/funding-provider";
 import { apolloContacts } from "../src/routes/api/public/apollo-contacts";
+import { accountInfo } from "../src/routes/api/public/account-info";
 import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
 
@@ -83,6 +84,11 @@ app.post("/api/public/scan-funding", async (c) => {
 app.post("/api/public/apollo-contacts", async (c) => {
   const { company = "", domain = "" } = await readBody(c);
   return c.json(await apolloContacts({ company, domain }));
+});
+
+app.post("/api/public/account-info", async (c) => {
+  const { company = "", domain = "" } = await readBody(c);
+  return c.json(await accountInfo({ company, domain }));
 });
 
 app.post("/api/public/ask", async (c) => {
