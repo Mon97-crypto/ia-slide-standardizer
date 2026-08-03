@@ -361,6 +361,76 @@ export function fillQuery(template: string, company: string, domain: string): st
   return template.replaceAll("{company}", company).replaceAll("{domain}", domain);
 }
 
+// ── DEDICATED-SOURCE SEARCH CONFIG ──────────────────────────────────────────────
+// Drives the search provider (SerpAPI / Google CSE). For each search-derived
+// signal: the query to run, plus a deterministic keyword gate applied to each
+// result's title+snippet so a bare keyword-in-URL match doesn't fire the signal.
+// This is the auditable classifier — tune `must` / `reject` here, not in code.
+
+export interface NewsSearchConfig {
+  /** One query template (kept to one per signal to stay inside search quota). */
+  query: string;
+  /** At least one `must` term must appear in a result's title+snippet to qualify. */
+  must: string[];
+  /** Any `reject` term disqualifies the result. */
+  reject?: string[];
+}
+
+export const NEWS_SEARCH: Partial<Record<CatalogId, NewsSearchConfig>> = {
+  leadership_change: {
+    query:
+      '"{company}" (appoints OR names OR hires OR "joins as") ("Chief Merchandising Officer" OR "Chief Merchant" OR "Chief Supply Chain Officer" OR CIO OR CTO OR "Chief Digital Officer" OR "Chief Data" OR "VP Planning" OR "VP Merchandising" OR GMM OR DMM)',
+    must: ["appoint", "names", "hire", "joins", "new chief", "new vp", "promoted to chief"],
+    reject: ["former", "ex-", "alumni", "departs", "steps down", "chro", "chief people", "general counsel", "communications", "sustainability"],
+  },
+  erp_crm_migration: {
+    query:
+      '"{company}" (implementing OR migrating OR deploying OR "rolling out" OR selects OR "goes live") ("S/4HANA" OR "Oracle Retail" OR "Blue Yonder" OR Manhattan OR Snowflake OR Databricks OR BigQuery OR NetSuite OR "Microsoft Dynamics")',
+    must: ["implement", "migrat", "deploy", "rolling out", "selects", "goes live", "standing up"],
+    reject: ["partnership", "integration announcement", "certified integration"],
+  },
+  operational_pain: {
+    query:
+      '"{company}" (stockout OR overstock OR "excess inventory" OR "inventory write-down" OR markdown OR "margin erosion" OR "sell-through" OR "forecast accuracy" OR "allocation error")',
+    must: ["stockout", "overstock", "excess inventory", "write-down", "markdown", "margin", "sell-through", "forecast accuracy", "allocation", "aged inventory"],
+    reject: ["data breach", "lawsuit", "recall", "food safety", "esg"],
+  },
+  geographic_expansion: {
+    query:
+      '"{company}" ("new stores" OR "distribution center" OR "fulfillment center" OR "expands into" OR "enters the" OR "new market" OR "new region")',
+    must: ["new store", "distribution center", "fulfillment center", "expands into", "enters the", "new market", "new region", "opens in"],
+    reject: ["pop-up", "temporary", "seasonal"],
+  },
+  budget_cuts: {
+    query:
+      '"{company}" ("cost reduction" OR "cost cutting" OR "capex reduction" OR "margin pressure" OR "cutting costs" OR "expense reduction")',
+    must: ["cost reduction", "cost cutting", "cutting costs", "capex", "margin pressure", "expense reduction", "austerity"],
+  },
+  facility_closures: {
+    query:
+      '"{company}" ("store closures" OR "closing stores" OR "shutting" OR "distribution center closure" OR "fleet rationalization")',
+    must: ["clos", "shut", "rationaliz", "consolidat"],
+    reject: ["opening", "new store"],
+  },
+  rfp_rfq_rfi: {
+    query:
+      '"{company}" (RFP OR RFI OR RFQ) (planning OR merchandising OR forecasting OR assortment OR pricing OR markdown OR allocation OR "space planning" OR "retail analytics")',
+    must: ["rfp", "rfi", "rfq", "request for proposal", "request for information"],
+    reject: ["construction", "facilities", "legal panel", "staffing", "media buying", "carrier"],
+  },
+  layoffs: {
+    query:
+      '"{company}" (layoffs OR "job cuts" OR "hiring freeze" OR "workforce reduction" OR "lays off")',
+    must: ["layoff", "job cut", "hiring freeze", "workforce reduction", "lays off", "let go"],
+  },
+  internal_promotion: {
+    query:
+      '"{company}" ("promoted to" OR "promotion of") ("Chief Merch" OR "VP Planning" OR "VP Merchandising" OR "Chief Supply Chain" OR "Chief Digital")',
+    must: ["promoted to", "promotion of", "elevated to"],
+    reject: ["former", "departs"],
+  },
+};
+
 // ── CLASSIFIER GUIDANCE ─────────────────────────────────────────────────────────
 // A reusable prompt fragment. Threads the domain through so we reject
 // similarly-named companies (the fila.com / F.I.L.A. stationery bug).

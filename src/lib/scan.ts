@@ -182,11 +182,16 @@ export async function runScan(args: RunScanArgs): Promise<ScanResult> {
     merged.push(...result.signals);
   }
 
+  // 2b. De-duplicate by signal id. Multiple providers may return the same id
+  // (e.g. EDGAR and the funding source both cover ma_activity). Keep the found
+  // one, and merge evidence when more than one provider found it.
+  const deduped = dedupeByName(merged);
+
   // 3. Fill gaps: any catalog id not returned by any function is found:false.
-  const present = new Set(merged.map((s) => s.name));
+  const present = new Set(deduped.map((s) => s.name));
   for (const id of CATALOG_IDS) {
     if (!present.has(id)) {
-      merged.push({
+      deduped.push({
         name: id,
         type: CATALOG[id].type,
         found: false,
@@ -196,7 +201,7 @@ export async function runScan(args: RunScanArgs): Promise<ScanResult> {
     }
   }
 
-  const scored = merged.map(scoreSignal);
+  const scored = deduped.map(scoreSignal);
   const total = scored.reduce((sum, s) => sum + s.score_contribution, 0);
   const bankruptcyFound = scored.some((s) => s.name === "bankruptcy" && s.found);
   const intent = intentFor(total, bankruptcyFound);
@@ -224,6 +229,39 @@ export async function runScan(args: RunScanArgs): Promise<ScanResult> {
   }
 
   return result;
+}
+
+/**
+ * Collapse duplicate signal ids to one. A found signal beats a not-found one;
+ * when two providers both found the same id, keep the first and union evidence
+ * (capped at 5) so grounded links from every source survive.
+ */
+function dedupeByName(signals: Signal[]): Signal[] {
+  const byName = new Map<string, Signal>();
+  for (const s of signals) {
+    const existing = byName.get(s.name);
+    if (!existing) {
+      byName.set(s.name, { ...s, evidence: [...s.evidence] });
+      continue;
+    }
+    if (s.found && !existing.found) {
+      byName.set(s.name, { ...s, evidence: [...s.evidence] });
+    } else if (s.found && existing.found) {
+      const seen = new Set(existing.evidence.map((e) => e.url));
+      for (const e of s.evidence) {
+        if (existing.evidence.length >= 5) break;
+        if (!seen.has(e.url)) {
+          existing.evidence.push(e);
+          seen.add(e.url);
+        }
+      }
+      if (!existing.soWhat && s.soWhat) existing.soWhat = s.soWhat;
+      if ((!existing.iaProducts || existing.iaProducts.length === 0) && s.iaProducts) {
+        existing.iaProducts = s.iaProducts;
+      }
+    }
+  }
+  return [...byName.values()];
 }
 
 /** Found signals first, then by absolute contribution, then neutral, then unchecked. */

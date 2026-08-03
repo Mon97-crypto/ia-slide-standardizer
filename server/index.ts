@@ -19,6 +19,9 @@ import { fileURLToPath } from "node:url";
 import { scanEdgar } from "../src/routes/api/public/scan-edgar";
 import { scanTechstack } from "../src/routes/api/public/scan-techstack";
 import { scanNews } from "../src/routes/api/public/scan-news";
+import { scanSerp } from "../src/routes/api/public/scan-serp";
+import { scanJobs } from "../src/routes/api/public/providers/jobs-provider";
+import { scanFunding } from "../src/routes/api/public/providers/funding-provider";
 import { apolloContacts } from "../src/routes/api/public/apollo-contacts";
 import { readCache, writeCache } from "./cache";
 
@@ -58,6 +61,22 @@ app.post("/api/public/scan-techstack", async (c) => {
 app.post("/api/public/scan-news", async (c) => {
   const { company = "", domain = "" } = await readBody(c);
   return c.json(await scanNews({ company, domain }));
+});
+
+// Individual dedicated sources, exposed for auditability / testing.
+app.post("/api/public/scan-serp", async (c) => {
+  const { company = "", domain = "" } = await readBody(c);
+  return c.json(await scanSerp({ company, domain }));
+});
+
+app.post("/api/public/scan-jobs", async (c) => {
+  const { company = "", domain = "" } = await readBody(c);
+  return c.json(await scanJobs(company, domain));
+});
+
+app.post("/api/public/scan-funding", async (c) => {
+  const { company = "", domain = "" } = await readBody(c);
+  return c.json(await scanFunding({ company, domain }));
 });
 
 app.post("/api/public/apollo-contacts", async (c) => {
