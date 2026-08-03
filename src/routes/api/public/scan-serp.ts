@@ -1,15 +1,24 @@
 /**
  * scan-serp.ts — the dedicated search source. Runs one ICP-tuned query per
  * search-derived signal through the configured search backend (SerpAPI /
- * Google CSE) and classifies the grounded results deterministically. Accepts
- * POST { company, domain }; the domain is threaded through so results about a
- * similarly-named company with a different website are rejected. Never throws.
+ * Google CSE) to fetch grounded, current results, then classifies them.
+ *
+ * Classification is two-tier for accuracy:
+ *   - If ANTHROPIC_API_KEY is set, Claude judges the real fetched results per
+ *     signal — domain-guarded and ICP-strict, citing only the provided URLs.
+ *     This is what fixes similarly-named-company misfires (fila.com → F.I.L.A.)
+ *     and generic, non-ICP matches.
+ *   - Otherwise it falls back to the deterministic keyword classifier.
+ *
+ * Accepts POST { company, domain }; the domain is threaded through both tiers.
+ * Never throws.
  */
 
 import type { CatalogId, FunctionResult, Signal } from "../../../lib/scan-contract";
 import { fillQuery, NEWS_SEARCH } from "../../../lib/icp";
-import { getSearchProvider } from "./providers/search-provider";
+import { getSearchProvider, type Hit } from "./providers/search-provider";
 import { classifySignal } from "./providers/classify";
+import { classifyWithLLM, llmClassifyAvailable, type SignalCandidates } from "./providers/llm-classify";
 
 interface ScanInput {
   company: string;
@@ -31,22 +40,34 @@ export async function scanSerp(input: ScanInput): Promise<FunctionResult> {
       };
     }
 
-    // One query per signal. Run with a small concurrency cap to respect quota.
-    const signals: Signal[] = [];
+    // 1. Fetch grounded results per signal (one query each, concurrency-capped).
+    const groups: SignalCandidates[] = [];
     const CONCURRENCY = 3;
     for (let i = 0; i < SEARCH_SIGNALS.length; i += CONCURRENCY) {
       const batch = SEARCH_SIGNALS.slice(i, i + CONCURRENCY);
-      const results = await Promise.all(
-        batch.map(async (id) => {
+      const fetched = await Promise.all(
+        batch.map(async (id): Promise<SignalCandidates> => {
           const cfg = NEWS_SEARCH[id]!;
-          const hits = await provider.search(fillQuery(cfg.query, company, domain));
-          return classifySignal(id, hits, company, domain);
+          const hits: Hit[] = await provider.search(fillQuery(cfg.query, company, domain));
+          return { id, hits };
         }),
       );
-      signals.push(...results);
+      groups.push(...fetched);
     }
 
-    return { ok: true, signals, meta: { source: provider.name } };
+    // 2. Classify. Prefer the accurate LLM pass over the real results; fall back
+    //    to the deterministic keyword classifier when no Anthropic key.
+    let signals: Signal[] | null = null;
+    let classifier = "deterministic";
+    if (llmClassifyAvailable()) {
+      signals = await classifyWithLLM(company, domain, groups);
+      if (signals) classifier = "llm-grounded";
+    }
+    if (!signals) {
+      signals = groups.map((g) => classifySignal(g.id, g.hits, company, domain));
+    }
+
+    return { ok: true, signals, meta: { source: provider.name, classifier } };
   } catch (err) {
     return { ok: false, signals: [], error: (err as Error).message };
   }

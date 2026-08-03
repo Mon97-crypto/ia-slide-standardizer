@@ -90,17 +90,27 @@ export function SignalRow({ signal, index }: { signal: ScoredSignal; index: numb
           {signal.found ? signed : "—"}
         </span>
 
-        <span
-          className="secondary"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {signal.detail}
+        <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 1, paddingBlock: 6 }}>
+          <span
+            className="secondary"
+            style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+          >
+            {signal.detail}
+          </span>
+          {signal.found && signal.soWhat && (
+            <span
+              className="label"
+              style={{
+                color: "var(--ia-blue-dark)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                opacity: 0.85,
+              }}
+            >
+              {signal.soWhat}
+            </span>
+          )}
         </span>
 
         {expandable && (
