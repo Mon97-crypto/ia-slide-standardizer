@@ -97,15 +97,18 @@ export async function apolloContacts(
     }
     if (!input.domain) return { ok: false, contacts: [], error: "domain is required" };
 
-    // Push title filtering server-side: Apollo accepts person_titles[].
-    const res = await fetch("https://api.apollo.io/v1/mixed_people/search", {
+    // People Search API (the `mixed_people/search` endpoint is deprecated for API
+    // callers; `api_search` is its replacement). Title filtering is pushed
+    // server-side via person_titles[], org filtering via q_organization_domains_list[].
+    const res = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        accept: "application/json",
         "x-api-key": apiKey,
       },
       body: JSON.stringify({
-        q_organization_domains: input.domain,
+        q_organization_domains_list: [input.domain],
         person_titles: [...TIER1_TITLES, ...TIER2_TITLES, ...TIER3_TITLES],
         page: 1,
         per_page: 50,
@@ -117,8 +120,8 @@ export async function apolloContacts(
       return { ok: false, contacts: [], error: `Apollo HTTP ${res.status}: ${body.slice(0, 200)}` };
     }
 
-    const data = (await res.json()) as { people?: ApolloPerson[] };
-    const people = data.people ?? [];
+    const data = (await res.json()) as { people?: ApolloPerson[]; contacts?: ApolloPerson[] };
+    const people = data.people ?? data.contacts ?? [];
 
     const contacts: Contact[] = [];
     for (const p of people) {
