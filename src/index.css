@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Brand tokens — the only colors allowed. Never hardcode a hex in a component. ── */
+:root {
+  --ia-blue: #264cd7; /* primary */
+  --ia-blue-dark: #1c3aa8; /* hover / pressed */
+  --ia-blue-light: #5c7bf0; /* gradient / ring */
+  --ia-blue-soft: #eef2ff; /* tinted surfaces / selected rows */
+  --ia-offwhite: #f4f4f6; /* page background (not pure white) */
+  --ia-white: #ffffff;
+  --ia-black: #1c1b1b; /* primary text */
+  --ia-gray-1: #e4e4e4; /* borders / dividers */
+  --ia-gray-2: #d7d6d2; /* secondary borders / stale */
+  /* Gray 3 spec is #B3B2AD, which fails WCAG AA on off-white. Darkened to meet
+     AA (~4.6:1 on #F4F4F6) while staying a muted gray. */
+  --ia-gray-3: #6f6e69;
+  --ia-orange: #ff6f1c; /* risk / warning ONLY */
+
+  --ring: 0 0 0 2px var(--ia-offwhite), 0 0 0 4px var(--ia-blue);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--ia-offwhite);
+  color: var(--ia-black);
+  font-family: "Inter Tight", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular numerals everywhere numbers appear so widths don't shift as they update. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Type scale ─────────────────────────────────────────────────────────────── */
+.h1 {
+  font-family: "Spectral", Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(30px, 4.5vw, 46px);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+}
+.h1 .accent {
+  font-style: italic;
+  color: var(--ia-blue);
+}
+.h2 {
+  font-family: "Spectral", Georgia, serif;
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 1.15;
+}
+.card-title {
+  font-family: "Inter Tight", sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+}
+.secondary {
+  font-size: 14px;
+  color: var(--ia-gray-3);
+}
+.label {
+  font-size: 12px;
+  font-weight: 500;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ia-gray-3);
+}
+.serif {
+  font-family: "Spectral", Georgia, serif;
+  font-weight: 400;
+}
+
+/* ── Focus ring: 2px Impact Blue, 2px offset. Visible on every interactive el. ── */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: 8px;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+a {
+  color: var(--ia-blue);
+}
+
+/* ── Motion: state change only. Respect prefers-reduced-motion. ─────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

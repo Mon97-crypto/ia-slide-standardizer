@@ -1,9 +1,13 @@
 services:
   - type: web
-    name: ia-slide-standardizer
+    name: ia-account-scanner
     runtime: docker
     plan: free
-    healthCheckPath: /
+    healthCheckPath: /api/health
     envVars:
       - key: PORT
         value: 10000
+      # Set these in the Render dashboard (server-side secrets only):
+      # - key: ANTHROPIC_API_KEY   (enables the scan-news AI function)
+      # - key: APOLLO_API_KEY      (enables apollo-contacts)
+      # - key: SEC_USER_AGENT      (optional; descriptive UA for SEC requests)
