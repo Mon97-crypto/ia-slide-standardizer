@@ -13,11 +13,16 @@ const DATA_DIR = process.env.SCAN_CACHE_DIR || join(__dirname, "..", ".data");
 const CACHE_FILE = join(DATA_DIR, "scans.json");
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30-day cache
 
+// Bump whenever the scan pipeline's accuracy logic changes, so a deploy ignores
+// every previously-cached (stale) scan instead of serving it for up to 30 days.
+const CACHE_VERSION = 2;
+
 interface CacheRow {
   domain: string;
   company: string;
   result: unknown;
   created_at: number;
+  v?: number;
 }
 
 type CacheShape = Record<string, CacheRow>;
@@ -49,6 +54,7 @@ export interface CacheHit {
 export function readCache(domain: string, now: number): CacheHit {
   const row = load()[domain.toLowerCase()];
   if (!row) return { hit: false };
+  if (row.v !== CACHE_VERSION) return { hit: false }; // stale pre-upgrade result
   const ageMs = now - row.created_at;
   if (ageMs > TTL_MS) return { hit: false };
   return { hit: true, result: injectAge(row.result, ageMs), ageMs };
@@ -73,6 +79,7 @@ export function writeCache(
     company,
     result,
     created_at: now,
+    v: CACHE_VERSION,
   };
   save(data);
 }
