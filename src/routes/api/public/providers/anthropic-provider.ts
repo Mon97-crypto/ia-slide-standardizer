@@ -21,6 +21,7 @@ import {
   sanitizeProducts,
   SEARCH_SIGNAL_IDS,
 } from "../../../../lib/icp";
+import { resolveEntity } from "../account-info";
 
 interface ScanInput {
   company: string;
@@ -33,14 +34,15 @@ const NEWS_SIGNALS: CatalogId[] = [...SEARCH_SIGNAL_IDS, "hiring_activity"];
 const MODEL = process.env.SCAN_NEWS_MODEL || "claude-sonnet-4-6";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
-function buildSystemPrompt(company: string, domain: string): string {
+function buildSystemPrompt(company: string, domain: string, industry: string | null): string {
+  const today = new Date().toISOString().slice(0, 10);
   return [
     `You research B2B sales signals for Impact Analytics, an AI-native retail`,
-    `decisioning platform. Assess ${company} (${domain}) over the LAST 12 MONTHS`,
-    `for exactly these ${NEWS_SIGNALS.length} signals, judged against Impact`,
-    `Analytics' ideal-customer criteria.`,
+    `decisioning platform. Today is ${today}. Assess ${company} (${domain})${industry ? `, a ${industry} company,` : ""}`,
+    `over the LAST 12 MONTHS ONLY for exactly these ${NEWS_SIGNALS.length} signals, judged`,
+    `against Impact Analytics' ideal-customer criteria.`,
     ``,
-    domainGuard(company, domain),
+    domainGuard(company, domain, industry),
     ``,
     `Qualifying criteria per signal (only fire a signal when its criteria are met):`,
     criteriaBlock(NEWS_SIGNALS),
@@ -152,6 +154,10 @@ export async function scanNewsAnthropic(input: ScanInput): Promise<FunctionResul
     }
     if (!company) return { ok: false, signals: [], error: "company is required" };
 
+    // Resolve the exact company for this domain (official name + industry).
+    const entity = await resolveEntity(company, domain);
+    const name = entity.name;
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 85_000);
     let res: Response;
@@ -167,12 +173,12 @@ export async function scanNewsAnthropic(input: ScanInput): Promise<FunctionResul
         body: JSON.stringify({
           model: MODEL,
           max_tokens: 4000,
-          system: buildSystemPrompt(company, domain),
+          system: buildSystemPrompt(name, domain, entity.industry),
           tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 8 }],
           messages: [
             {
               role: "user",
-              content: `Research ${company} (${domain}) and return the JSON array now.`,
+              content: `Research ${name} (${domain}) and return the JSON array now.`,
             },
           ],
         }),

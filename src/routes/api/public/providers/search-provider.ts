@@ -17,7 +17,8 @@ export interface Hit {
 export interface SearchProvider {
   name: string;
   available: boolean;
-  search: (query: string, num?: number) => Promise<Hit[]>;
+  /** recentOnly restricts results to roughly the last 12 months. */
+  search: (query: string, num?: number, recentOnly?: boolean) => Promise<Hit[]>;
 }
 
 async function fetchJson(url: string, timeoutMs = 12_000): Promise<unknown | null> {
@@ -39,9 +40,10 @@ function serpApi(key: string): SearchProvider {
   return {
     name: "serpapi",
     available: true,
-    async search(query, num = 8) {
+    async search(query, num = 8, recentOnly = false) {
+      const recency = recentOnly ? "&tbs=qdr:y" : ""; // Google "past year" filter
       const url =
-        `${base}/search.json?engine=google&num=${num}` +
+        `${base}/search.json?engine=google&num=${num}${recency}` +
         `&q=${encodeURIComponent(query)}&api_key=${encodeURIComponent(key)}`;
       const data = (await fetchJson(url)) as { organic_results?: Array<Record<string, unknown>> } | null;
       const rows = data?.organic_results ?? [];
@@ -61,10 +63,11 @@ function googleCse(key: string, cx: string): SearchProvider {
   return {
     name: "google_cse",
     available: true,
-    async search(query, num = 8) {
+    async search(query, num = 8, recentOnly = false) {
+      const recency = recentOnly ? "&dateRestrict=m12" : ""; // last 12 months
       const url =
         `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(key)}` +
-        `&cx=${encodeURIComponent(cx)}&num=${Math.min(num, 10)}&q=${encodeURIComponent(query)}`;
+        `&cx=${encodeURIComponent(cx)}&num=${Math.min(num, 10)}${recency}&q=${encodeURIComponent(query)}`;
       const data = (await fetchJson(url)) as { items?: Array<Record<string, unknown>> } | null;
       const rows = data?.items ?? [];
       return rows

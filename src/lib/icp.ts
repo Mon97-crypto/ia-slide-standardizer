@@ -199,7 +199,7 @@ export const ICP_CRITERIA: Record<CatalogId, IcpCriteria> = {
 // then judges every search-derived signal from that pool (quota-efficient AND
 // more accurate than one narrow query per signal). {company}/{domain} interpolated.
 export const BROAD_QUERIES: string[] = [
-  '"{company}" ({domain}) retail news',
+  '"{company}" (retail OR retailer OR merchandising OR stores OR inventory OR ecommerce) news',
   '"{company}" (appoints OR names OR hires OR "steps down" OR promoted) (CEO OR "Chief Merchandising" OR "Chief Merchant" OR CIO OR CTO OR "Chief Supply Chain" OR "Chief Digital" OR "Chief Data" OR "VP Planning" OR GMM OR DMM)',
   '"{company}" (inventory OR markdown OR stockout OR overstock OR "sell-through" OR "margin" OR "forecast accuracy" OR shrink OR "excess inventory" OR write-down)',
   '"{company}" (acquires OR merger OR "new stores" OR "distribution center" OR "expands into" OR "private label" OR "new category" OR RFP OR divestiture OR "sells" OR "spin-off")',
@@ -245,12 +245,17 @@ export const NEWS_SEARCH: Partial<Record<CatalogId, NewsSearchConfig>> = {
 export const SEARCH_SIGNAL_IDS = Object.keys(NEWS_SEARCH) as CatalogId[];
 
 // ── CLASSIFIER GUIDANCE ─────────────────────────────────────────────────────────
-export function domainGuard(company: string, domain: string): string {
-  return (
-    `The target company's website is ${domain}. Only report evidence about the company at that ` +
-    `website. Reject results about similarly-named companies with a different website (for example, ` +
-    `a company that merely shares part of the name "${company}").`
-  );
+export function domainGuard(company: string, domain: string, industry?: string | null): string {
+  return [
+    `IDENTITY GUARD — be strict about company identity:`,
+    `- The ONE target is ${company}, the company operating the website ${domain}${industry ? ` in the ${industry} industry` : ""}.`,
+    `- Reject any result about a DIFFERENT company that merely shares the name or part of the`,
+    `  name "${company}" but operates a different website or a different industry (namesakes,`,
+    `  unrelated brands, holding companies with a similar name).`,
+    `- Reject any result where "${company}" appears only as a common word, a generic phrase,`,
+    `  or an unrelated context rather than a reference to this specific company.`,
+    `- If you cannot confirm a result is about THIS exact company, treat it as not about them.`,
+  ].join("\n");
 }
 
 export function criteriaBlock(ids: CatalogId[]): string {

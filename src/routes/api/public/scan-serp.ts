@@ -17,6 +17,7 @@ import { getSearchProvider, type Hit } from "./providers/search-provider";
 import { classifySignal } from "./providers/classify";
 import { classifyWithLLM, llmClassifyAvailable } from "./providers/llm-classify";
 import { redditOperationalPain } from "./providers/reddit-provider";
+import { resolveEntity } from "./account-info";
 
 interface ScanInput {
   company: string;
@@ -35,6 +36,21 @@ function dedupeHits(hits: Hit[], cap = 40): Hit[] {
   return out;
 }
 
+/**
+ * Drop hits whose date is clearly older than ~13 months. Undated hits are kept
+ * (SerpAPI often omits the date); the query-level recency filter + the classifier
+ * handle those. Reddit permalinks (no parseable date) are always kept.
+ */
+function dropStale(hits: Hit[]): Hit[] {
+  const cutoff = Date.now() - 400 * 24 * 60 * 60 * 1000; // ~13 months of slack
+  return hits.filter((h) => {
+    if (!h.date) return true;
+    const t = Date.parse(h.date);
+    if (Number.isNaN(t)) return true; // relative/opaque date — keep, let the LLM judge
+    return t >= cutoff;
+  });
+}
+
 export async function scanSerp(input: ScanInput): Promise<FunctionResult> {
   const { company, domain } = input;
   try {
@@ -44,35 +60,44 @@ export async function scanSerp(input: ScanInput): Promise<FunctionResult> {
       return { ok: false, signals: [], error: "No search provider configured (set SERPAPI_KEY or GOOGLE_CSE_KEY + GOOGLE_CSE_CX)." };
     }
 
-    // 1. Fetch broad queries + reddit query + direct reddit, in parallel.
-    const queries = [...BROAD_QUERIES, REDDIT_QUERY].map((q) => fillQuery(q, company, domain));
-    const [searchArrays, reddit] = await Promise.all([
-      Promise.all(queries.map((q) => provider.search(q, 8))),
+    // 0. Resolve the EXACT company for this domain (official name + industry) so
+    // searches use "Gap Inc." not the word "gap", and the sportswear brand at
+    // fila.com not F.I.L.A. Group. Falls back to the caller's guess.
+    const entity = await resolveEntity(company, domain);
+    const name = entity.name;
+
+    // 1. Fetch broad queries (recent-only) + reddit, in parallel. The Reddit brand
+    // query and direct fetch use the informal brand name (the caller's guess).
+    const queries = BROAD_QUERIES.map((q) => fillQuery(q, name, domain));
+    const redditQ = fillQuery(REDDIT_QUERY, company, domain);
+    const [searchArrays, redditSearch, reddit] = await Promise.all([
+      Promise.all(queries.map((q) => provider.search(q, 8, true))),
+      provider.search(redditQ, 8, true),
       redditOperationalPain(company),
     ]);
-    const pool = dedupeHits([...searchArrays.flat(), ...reddit]);
+    const pool = dropStale(dedupeHits([...searchArrays.flat(), ...redditSearch, ...reddit]));
 
     if (pool.length === 0) {
       // No results — return all search signals as found:false.
       return {
         ok: true,
-        signals: SEARCH_SIGNAL_IDS.map((id) => classifySignal(id, [], company, domain)),
-        meta: { source: provider.name, classifier: "none", hits: 0 },
+        signals: SEARCH_SIGNAL_IDS.map((id) => classifySignal(id, [], name, domain)),
+        meta: { source: provider.name, classifier: "none", hits: 0, resolvedName: name },
       };
     }
 
-    // 2. Classify the pool.
+    // 2. Classify the pool, keyed to the resolved entity + industry.
     let signals: Signal[] | null = null;
     let classifier = "deterministic";
     if (llmClassifyAvailable()) {
-      signals = await classifyWithLLM(company, domain, pool, SEARCH_SIGNAL_IDS);
+      signals = await classifyWithLLM(name, domain, pool, SEARCH_SIGNAL_IDS, { industry: entity.industry });
       if (signals) classifier = "llm-grounded";
     }
     if (!signals) {
-      signals = SEARCH_SIGNAL_IDS.map((id) => classifySignal(id, pool, company, domain));
+      signals = SEARCH_SIGNAL_IDS.map((id) => classifySignal(id, pool, name, domain));
     }
 
-    return { ok: true, signals, meta: { source: provider.name, classifier, hits: pool.length } };
+    return { ok: true, signals, meta: { source: provider.name, classifier, hits: pool.length, resolvedName: name } };
   } catch (err) {
     return { ok: false, signals: [], error: (err as Error).message };
   }

@@ -35,18 +35,29 @@ interface RawSignal {
   soWhat?: unknown;
 }
 
-function buildSystem(company: string, domain: string, ids: CatalogId[]): string {
+function buildSystem(
+  company: string,
+  domain: string,
+  ids: CatalogId[],
+  industry: string | null,
+  today: string,
+): string {
   return [
     `You classify retail B2B buying signals for Impact Analytics, an AI-native`,
-    `retail decisioning platform. The target company is ${company}; its website is ${domain}.`,
+    `retail decisioning platform. The target company is ${company}; its website is ${domain}${industry ? `; its industry is ${industry}` : ""}.`,
+    `Today's date is ${today}.`,
     ``,
-    domainGuard(company, domain),
+    domainGuard(company, domain, industry),
     ``,
     `You are given real web-search and Reddit results. For each signal id below, set`,
-    `found:true ONLY when one of the PROVIDED results genuinely indicates that signal`,
-    `for THIS company (at ${domain}) AND satisfies the signal's criteria. Judge`,
-    `strictly: a result about a similarly-named but different company, or one that does`,
-    `not meet the criteria, is found:false.`,
+    `found:true ONLY when one of the PROVIDED results ALL of these hold:`,
+    `  1. It is genuinely about ${company}, the company operating ${domain}${industry ? ` in ${industry}` : ""} —`,
+    `     NOT a different company that merely shares the name, and NOT an article where`,
+    `     "${company}" appears only as a common word or unrelated phrase.`,
+    `  2. It is recent: dated within the last 365 days (on or after ${cutoffDate(today)}).`,
+    `     If a result has no date or is clearly older than 365 days, do NOT use it.`,
+    `  3. It satisfies the signal's criteria below.`,
+    `If any of the three fails, that signal is found:false. When unsure, choose found:false.`,
     ``,
     `Signal criteria:`,
     criteriaBlock(ids),
@@ -54,6 +65,7 @@ function buildSystem(company: string, domain: string, ids: CatalogId[]): string 
     `Rules:`,
     `- Use ONLY the provided results as evidence, cited by their EXACT url. NEVER invent`,
     `  a url or cite one not in the provided list.`,
+    `- Every evidence item MUST include its date from the provided result. Prefer the most recent.`,
     `- detail: one sentence, max 100 characters, specific to the evidence.`,
     `- iaProducts: array of Impact Analytics products this opening fits (empty when found:false). ${productConstraint()}`,
     `- soWhat: one sentence, max 140 characters, why a rep cares and what to lead with (empty when found:false).`,
@@ -61,6 +73,12 @@ function buildSystem(company: string, domain: string, ids: CatalogId[]): string 
     `  below, all ${ids.length} present:`,
     `  { "name","found","detail","evidence":[{"title","url","date"}],"iaProducts":[],"soWhat" }`,
   ].join("\n");
+}
+
+function cutoffDate(todayIso: string): string {
+  const t = Date.parse(todayIso);
+  const base = Number.isNaN(t) ? Date.now() : t;
+  return new Date(base - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function buildUser(hits: Hit[]): string {
@@ -86,10 +104,12 @@ export async function classifyWithLLM(
   domain: string,
   hits: Hit[],
   ids: CatalogId[],
+  opts: { industry?: string | null } = {},
 ): Promise<Signal[] | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
   const allowedUrls = new Set(hits.map((h) => h.url));
+  const today = new Date().toISOString().slice(0, 10);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 80_000);
@@ -101,7 +121,7 @@ export async function classifyWithLLM(
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 4000,
-        system: buildSystem(company, domain, ids),
+        system: buildSystem(company, domain, ids, opts.industry ?? null, today),
         messages: [{ role: "user", content: buildUser(hits) }],
       }),
     });
@@ -127,6 +147,14 @@ export async function classifyWithLLM(
   }
 }
 
+/** Reject evidence whose parseable date is older than 365 days. Undated kept. */
+function isRecent(dateStr: string): boolean {
+  if (!dateStr) return true;
+  const t = Date.parse(dateStr);
+  if (Number.isNaN(t)) return true;
+  return t >= Date.now() - 365 * 24 * 60 * 60 * 1000;
+}
+
 function coerce(raw: RawSignal[], allowedUrls: Set<string>): Signal[] {
   const out: Signal[] = [];
   for (const item of raw) {
@@ -137,6 +165,7 @@ function coerce(raw: RawSignal[], allowedUrls: Set<string>): Signal[] {
       ? item.evidence
           .filter((e): e is { title?: string; url?: string; date?: string } => !!e && typeof e === "object")
           .filter((e) => typeof e.url === "string" && allowedUrls.has(e.url))
+          .filter((e) => isRecent(String(e.date ?? "")))
           .slice(0, 5)
           .map((e) => ({ title: String(e.title ?? "").slice(0, 200), url: String(e.url), date: String(e.date ?? "") }))
       : [];

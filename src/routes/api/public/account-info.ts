@@ -74,11 +74,33 @@ function formatEmployees(org: ApolloOrg): string | null {
   return n.toLocaleString("en-US");
 }
 
+// In-memory memo so the account endpoint and the news classifier don't both
+// spend an Apollo credit enriching the same domain within a server lifetime.
+const memo = new Map<string, { at: number; value: { ok: boolean; account: AccountInfo | null; error?: string } }>();
+const MEMO_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * resolveEntity — the EXACT company for a domain: its official name and industry,
+ * used to disambiguate search (e.g. "Gap Inc." not the word "gap", the sportswear
+ * brand at fila.com not F.I.L.A. Group). Falls back to the caller's guess.
+ */
+export async function resolveEntity(
+  company: string,
+  domain: string,
+): Promise<{ name: string; industry: string | null }> {
+  const r = await accountInfo({ company, domain });
+  const name = r.account?.name && r.account.name !== domain ? r.account.name : company;
+  return { name, industry: r.account?.industry ?? null };
+}
+
 export async function accountInfo(
   input: AccountInput,
 ): Promise<{ ok: boolean; account: AccountInfo | null; error?: string }> {
   const { domain } = input;
   if (!domain) return { ok: false, account: null, error: "domain is required" };
+
+  const cached = memo.get(domain);
+  if (cached && Date.now() - cached.at < MEMO_TTL_MS) return cached.value;
 
   // Baseline the card can always render, even if enrichment is unavailable.
   const baseline: AccountInfo = {
@@ -110,7 +132,11 @@ export async function accountInfo(
     }
     const data = (await res.json()) as { organization?: ApolloOrg };
     const org = data.organization;
-    if (!org) return { ok: true, account: baseline };
+    if (!org) {
+      const value = { ok: true, account: baseline };
+      memo.set(domain, { at: Date.now(), value });
+      return value;
+    }
 
     const account: AccountInfo = {
       name: org.name || baseline.name,
@@ -125,7 +151,9 @@ export async function accountInfo(
       employees: formatEmployees(org),
       description: org.short_description?.trim() || null,
     };
-    return { ok: true, account };
+    const value = { ok: true, account };
+    memo.set(domain, { at: Date.now(), value });
+    return value;
   } catch (err) {
     return { ok: false, account: baseline, error: (err as Error).message };
   }
