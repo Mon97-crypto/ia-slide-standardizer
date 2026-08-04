@@ -77,10 +77,9 @@ interface ApolloPerson {
 }
 
 export interface Contact {
-  name: string;
+  firstName: string;
+  lastName: string;
   title: string;
-  email: string | null;
-  linkedinUrl: string | null;
   tier: 1 | 2 | 3;
   function: string;
 }
@@ -123,14 +122,12 @@ export async function apolloContacts(
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score || seniorityTier(a.title) - seniorityTier(b.title));
 
-    const contacts: Contact[] = scored.slice(0, limit).map(({ p, title }) => ({
-      name: p.name || `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
-      title,
-      email: p.email ?? null,
-      linkedinUrl: p.linkedin_url ?? null,
-      tier: seniorityTier(title),
-      function: functionFor(title),
-    }));
+    const contacts: Contact[] = scored.slice(0, limit).map(({ p, title }) => {
+      const parts = (p.name ?? "").trim().split(/\s+/);
+      const firstName = (p.first_name ?? parts[0] ?? "").trim();
+      const lastName = (p.last_name ?? parts.slice(1).join(" ") ?? "").trim();
+      return { firstName, lastName, title, tier: seniorityTier(title), function: functionFor(title) };
+    });
 
     // Final display order: tier first, then ICP score already applied within.
     contacts.sort((a, b) => a.tier - b.tier);

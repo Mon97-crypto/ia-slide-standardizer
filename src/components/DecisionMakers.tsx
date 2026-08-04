@@ -2,25 +2,21 @@
  * DecisionMakers — the retail-planning buyers for the scanned account, shown as a
  * section at the bottom of a scan. Collapsed by default: Apollo is only called when
  * the user clicks "Find decision makers on Apollo" (saves credits). Then it lists
- * the contacts by tier with a CSV export. Resets when the scanned account changes.
+ * first name, last name, designation and tier, with a CSV export. Resets when the
+ * scanned account changes.
  */
 import { useEffect, useRef, useState } from "react";
 import { downloadCsv, toCsv } from "../lib/csv";
 
 interface Contact {
-  name: string;
+  firstName: string;
+  lastName: string;
   title: string;
-  email: string | null;
-  linkedinUrl: string | null;
   tier: 1 | 2 | 3;
   function: string;
 }
 
-const TIER_LABEL: Record<number, string> = {
-  1: "Tier 1 · economic buyers",
-  2: "Tier 2 · functional owners",
-  3: "Tier 3 · directors",
-};
+const TIER_LABEL: Record<number, string> = { 1: "Tier 1", 2: "Tier 2", 3: "Tier 3" };
 
 type State = "idle" | "loading" | "loaded" | "error";
 
@@ -31,7 +27,6 @@ export function DecisionMakers({ company, domain }: { company: string; domain: s
   const key = `${company}|${domain}`;
   const prevKey = useRef(key);
 
-  // A new scan (different account) collapses this back to the button.
   useEffect(() => {
     if (prevKey.current !== key) {
       prevKey.current = key;
@@ -68,13 +63,13 @@ export function DecisionMakers({ company, domain }: { company: string; domain: s
   function exportCsv() {
     if (!contacts?.length) return;
     const csv = toCsv(
-      ["Name", "Title", "Function", "Tier", "LinkedIn"],
-      contacts.map((c) => [c.name, c.title, c.function, c.tier, c.linkedinUrl]),
+      ["First name", "Last name", "Designation", "Tier"],
+      contacts.map((c) => [c.firstName, c.lastName, c.title, c.tier]),
     );
-    downloadCsv(`${company || "contacts"}-contacts.csv`, csv);
+    downloadCsv(`${company || "contacts"}-decision-makers.csv`, csv);
   }
 
-  const tiers = [1, 2, 3] as const;
+  const sorted = contacts ? [...contacts].sort((a, b) => a.tier - b.tier) : [];
 
   return (
     <div className="card" style={{ padding: "16px 16px 18px" }}>
@@ -83,14 +78,10 @@ export function DecisionMakers({ company, domain }: { company: string; domain: s
           <span className="h2" style={{ fontSize: 20 }}>Decision makers</span>
           <div className="secondary" style={{ fontSize: 13, marginTop: 2 }}>Retail-planning buyers at {company}, via Apollo.</div>
         </div>
-        {state === "idle" && (
-          <button onClick={find} style={btnPrimary}>Find decision makers on Apollo</button>
-        )}
+        {state === "idle" && <button onClick={find} style={btnPrimary}>Find decision makers on Apollo</button>}
         {state === "loading" && <span className="secondary">Finding buyers…</span>}
         {state === "error" && <button onClick={find} style={btnGhost}>Try again</button>}
-        {state === "loaded" && contacts && contacts.length > 0 && (
-          <button onClick={exportCsv} style={btnGhost}>Download CSV</button>
-        )}
+        {state === "loaded" && sorted.length > 0 && <button onClick={exportCsv} style={btnGhost}>Download CSV</button>}
       </div>
 
       {state === "error" && error && (
@@ -100,39 +91,26 @@ export function DecisionMakers({ company, domain }: { company: string; domain: s
         </p>
       )}
 
-      {state === "loaded" && contacts && contacts.length === 0 && (
+      {state === "loaded" && sorted.length === 0 && (
         <p className="secondary" style={{ margin: "12px 0 0" }}>No retail-planning decision-makers found for this account.</p>
       )}
 
-      {state === "loaded" && contacts && contacts.length > 0 && (
-        <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
-          {tiers.map((t) => {
-            const rows = contacts.filter((c) => c.tier === t);
-            if (!rows.length) return null;
-            return (
-              <div key={t}>
-                <div className="eyebrow" style={{ marginBottom: 8 }}>{TIER_LABEL[t]}</div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {rows.map((c, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 13, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500 }}>{c.name || "—"}</div>
-                        <div className="secondary" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
-                      </div>
-                      <span className="label" style={{ padding: "2px 8px", borderRadius: 999, background: "var(--ia-blue-soft)", color: "var(--ia-blue-dark)", flexShrink: 0 }}>{c.function}</span>
-                      {c.linkedinUrl ? (
-                        <a href={c.linkedinUrl} target="_blank" rel="noreferrer" className="label" style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 999, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", color: "var(--ia-blue)", fontWeight: 600, textDecoration: "none" }}>
-                          LinkedIn ↗
-                        </a>
-                      ) : (
-                        <span className="secondary" style={{ flexShrink: 0, fontSize: 12 }}>No LinkedIn</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      {state === "loaded" && sorted.length > 0 && (
+        <div style={{ marginTop: 14, border: "1px solid var(--ia-gray-1)", borderRadius: 13, overflow: "hidden" }}>
+          <div style={{ display: "flex", padding: "10px 14px", background: "var(--ia-offwhite)", borderBottom: "1px solid var(--ia-gray-1)" }}>
+            <span className="eyebrow" style={{ width: 140, flexShrink: 0 }}>First name</span>
+            <span className="eyebrow" style={{ width: 140, flexShrink: 0 }}>Last name</span>
+            <span className="eyebrow" style={{ flex: 1, minWidth: 0 }}>Designation</span>
+            <span className="eyebrow" style={{ width: 70, flexShrink: 0, textAlign: "right" }}>Tier</span>
+          </div>
+          {sorted.map((c, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", padding: "10px 14px", borderTop: i === 0 ? "none" : "1px solid var(--ia-gray-1)" }}>
+              <span style={{ width: 140, flexShrink: 0, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.firstName || "—"}</span>
+              <span style={{ width: 140, flexShrink: 0, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastName || "—"}</span>
+              <span className="secondary" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</span>
+              <span className="label" style={{ width: 70, flexShrink: 0, textAlign: "right", color: "var(--ia-blue-dark)" }}>{TIER_LABEL[c.tier]}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
