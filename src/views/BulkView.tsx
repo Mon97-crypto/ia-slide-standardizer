@@ -32,7 +32,7 @@ export function BulkView() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  function buildRows(pairs: { company: string; site: string }[]) {
+  function pairsToRows(pairs: { company: string; site: string }[]): Row[] {
     const next: Row[] = [];
     for (const { company, site } of pairs) {
       const domain = normalizeDomain(site || company);
@@ -41,14 +41,11 @@ export function BulkView() {
       next.push({ company: company || companyFromDomain(domain), domain, status: "queued" });
       if (next.length >= MAX) break;
     }
-    setRows(next);
-    setExpanded(null);
+    return next;
   }
 
-  // The textarea parses live — no separate "load" step.
-  function onText(value: string) {
-    setText(value);
-    const pairs = value
+  function pairsFromText(value: string) {
+    return value
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
@@ -56,7 +53,17 @@ export function BulkView() {
         const [a, b] = line.split(",").map((s) => s.trim());
         return b ? { company: a, site: b } : { company: "", site: a };
       });
-    buildRows(pairs);
+  }
+
+  function buildRows(pairs: { company: string; site: string }[]) {
+    setRows(pairsToRows(pairs));
+    setExpanded(null);
+  }
+
+  // The textarea parses live — no separate "load" step.
+  function onText(value: string) {
+    setText(value);
+    buildRows(pairsFromText(value));
   }
 
   function onFile(file: File) {
@@ -74,22 +81,26 @@ export function BulkView() {
   }
 
   async function runAll() {
+    // Run whatever's in the textarea, even if the parse hasn't landed in state yet.
+    const list = rows.length ? rows : pairsToRows(pairsFromText(text));
+    if (!list.length) return;
+    if (list !== rows) { setRows(list); setExpanded(null); }
     setRunning(true);
-    const queue = rows.map((_, i) => i);
+    const queue = list.map((_, i) => i);
     const worker = async () => {
       for (;;) {
         const i = queue.shift();
         if (i === undefined) return;
         setRows((rs) => rs.map((r, j) => (j === i ? { ...r, status: "running" } : r)));
         try {
-          const result = await runScan({ company: rows[i].company, domain: rows[i].domain });
+          const result = await runScan({ company: list[i].company, domain: list[i].domain });
           setRows((rs) => rs.map((r, j) => (j === i ? { ...r, status: "done", result } : r)));
         } catch (e) {
           setRows((rs) => rs.map((r, j) => (j === i ? { ...r, status: "failed", error: (e as Error).message } : r)));
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, list.length) }, worker));
     setRunning(false);
   }
 
@@ -135,13 +146,18 @@ export function BulkView() {
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
           <button onClick={() => fileRef.current?.click()} style={btnGhost}>Upload CSV</button>
           <div style={{ flex: 1 }} />
-          <button onClick={runAll} disabled={running || rows.length === 0} style={btnStyle(running || rows.length === 0)}>
+          <button onClick={runAll} disabled={running || (rows.length === 0 && !text.trim())} style={btnStyle(running || (rows.length === 0 && !text.trim()))}>
             {running ? `Analysing ${doneCount}/${rows.length}…` : `Run analysis${rows.length ? ` (${rows.length})` : ""}`}
           </button>
-          {rows.some((r) => r.result) && <button onClick={exportCsv} style={btnGhost}>Download CSV</button>}
         </div>
         <span className="secondary" style={{ fontSize: 13 }}>One website per line (or <code>Company, Website</code>). CSV: two columns — Company, Website. Max {MAX}.</span>
       </section>
+
+      {rows.some((r) => r.result) && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <button onClick={exportCsv} style={btnGhost}>Download CSV</button>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="card" style={{ padding: 0 }}>

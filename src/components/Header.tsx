@@ -7,8 +7,8 @@ export type TabKey = "scan" | "ask" | "bulk";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "scan", label: "Scan" },
-  { key: "ask", label: "Ask IAsense" },
   { key: "bulk", label: "Bulk upload" },
+  { key: "ask", label: "Ask IAsense" },
 ];
 
 export function Header({
