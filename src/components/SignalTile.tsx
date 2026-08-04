@@ -41,6 +41,23 @@ function sourceName(url: string): string {
   }
 }
 
+/** Drop the trailing "lead with …" clause — the products are shown separately. */
+function cleanSoWhat(text: string): string {
+  let t = text.replace(/\s*[;.]\s*lead with[^.]*\.?\s*$/i, "").trim();
+  if (t && !/[.!?]$/.test(t)) t += ".";
+  return t;
+}
+
+/** The most relevant products: those named in the "lead with" guidance, else the
+ * signal's top curated products. Capped so the tile names only what matters. */
+function relevantProducts(soWhat: string, iaProducts: string[]): string[] {
+  if (!iaProducts.length) return [];
+  const named = iaProducts.filter((p) =>
+    new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(soWhat || ""),
+  );
+  return (named.length ? named : iaProducts).slice(0, 3);
+}
+
 export function SignalTile({ signal, index }: { signal: ScoredSignal; index: number }) {
   const tone = toneFor(signal);
   const bg = toneBg(tone);
@@ -74,12 +91,21 @@ export function SignalTile({ signal, index }: { signal: ScoredSignal; index: num
 
       <p style={{ margin: "8px 0 0", fontSize: 15, fontWeight: 500, lineHeight: 1.45, color: "var(--ia-black)" }}>{signal.detail}</p>
 
-      {signal.soWhat && (
-        <p className="secondary" style={{ margin: "5px 0 0", fontSize: 13, lineHeight: 1.5 }}>
-          {signal.soWhat}
-          {signal.iaProducts && signal.iaProducts.length > 0 ? ` · ${signal.iaProducts.join(", ")}` : ""}
-        </p>
-      )}
+      {signal.soWhat && (() => {
+        const clean = cleanSoWhat(signal.soWhat);
+        const products = relevantProducts(signal.soWhat, signal.iaProducts ?? []);
+        return (
+          <p className="secondary" style={{ margin: "5px 0 0", fontSize: 13, lineHeight: 1.5 }}>
+            {clean}
+            {products.length > 0 && (
+              <>
+                {clean ? " · " : ""}
+                <span style={{ color: "var(--ia-black)", fontWeight: 600 }}>{products.join(", ")}</span>
+              </>
+            )}
+          </p>
+        );
+      })()}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
         <span className="label" style={{ borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 600, background: bg, color: tone }}>Detected</span>
