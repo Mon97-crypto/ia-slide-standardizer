@@ -6,6 +6,7 @@ import { ScanForm, type ScanRequest } from "../components/ScanForm";
 import { type StepState } from "../components/ProgressCard";
 import { SignalProgress } from "../components/SignalProgress";
 import { ResultsView } from "../components/ResultsView";
+import { DecisionMakers } from "../components/DecisionMakers";
 import { runScan, type ScanResult, type StepKey } from "../lib/scan";
 import { fetchAccount, type AccountInfo } from "../lib/account";
 
@@ -77,12 +78,15 @@ export function ScanView({ onScanning }: { onScanning: (b: boolean) => void }) {
       {scanning && steps && <div style={{ marginBottom: 24 }}><SignalProgress steps={steps} /></div>}
 
       {!scanning && result && (
-        <ResultsView
-          result={result}
-          account={account}
-          accountLoading={accountLoading}
-          onRefresh={() => lastReq.current && doScan(lastReq.current, true)}
-        />
+        <div style={{ display: "grid", gap: 16 }}>
+          <ResultsView
+            result={result}
+            account={account}
+            accountLoading={accountLoading}
+            onRefresh={() => lastReq.current && doScan(lastReq.current, true)}
+          />
+          <DecisionMakers company={result.company} domain={result.domain} />
+        </div>
       )}
 
       {!scanning && !result && !error && (

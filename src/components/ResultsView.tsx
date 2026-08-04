@@ -49,6 +49,7 @@ export function ResultsView({
   const totalFound = keyFound + supFound;
   const positiveCount = result.signals.filter((s) => s.found && s.type === "positive").length;
   const negativeCount = result.signals.filter((s) => s.found && s.type === "negative").length;
+  const mixedCount = result.signals.filter((s) => s.found && s.type === "neutral").length;
   const topOpp = result.signals
     .filter((s) => s.found && s.score_contribution > 0)
     .sort((a, b) => b.score_contribution - a.score_contribution)[0];
@@ -61,11 +62,11 @@ export function ResultsView({
           <span className="card-title" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.company}</span>
           <span className="secondary">{result.domain}</span>
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexShrink: 0 }}>
           <span className="tnum" style={{ fontSize: 20, fontWeight: 600, color: "var(--ia-blue)" }}>
             {totalFound}/{totalCatalog}
           </span>
-          <span className="serif" style={{ fontSize: 16 }}>{result.intent}</span>
+          <span className="secondary">signals</span>
         </div>
       </div>
 
@@ -110,19 +111,19 @@ export function ResultsView({
         <div className="metric-card" style={{ padding: 20, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
           <span className="eyebrow" style={{ alignSelf: "flex-start" }}>Signals found</span>
           <SignalsFoundRing found={totalFound} total={totalCatalog} />
-          <span className="serif" style={{ fontSize: 17 }}>{result.intent}</span>
         </div>
         <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
           <Metric label="Key signals" value={`${keyFound}/${keyRows.length}`} />
           <Metric label="Supporting" value={`${supFound}/${supRows.length}`} />
-          <Metric label="Top opportunity" value={topOpp ? topOpp.label : "—"} small />
+          <Metric label="Top signal" value={topOpp ? topOpp.label : "—"} small />
           <div className="card" style={{ padding: 16, gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 10 }}>
             <span className="eyebrow">Signals detected</span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               <Chip label={`${keyFound} key`} tone="blue" />
               <Chip label={`${supFound} supporting`} tone="muted" />
-              <Chip label={`${positiveCount} opportunity`} tone="blue" />
-              <Chip label={`${negativeCount} risk`} tone="risk" />
+              <Chip label={`${positiveCount} positive`} tone="blue" />
+              <Chip label={`${negativeCount} negative`} tone="risk" />
+              <Chip label={`${mixedCount} mixed`} tone="muted" />
             </div>
           </div>
         </div>

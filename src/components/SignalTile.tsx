@@ -20,9 +20,9 @@ function toneBg(tone: string): string {
 }
 
 function categoryLabel(type: ScoredSignal["type"]): string {
-  if (type === "positive") return "Opportunity";
-  if (type === "negative") return "Risk";
-  return "Context";
+  if (type === "positive") return "Positive";
+  if (type === "negative") return "Negative";
+  return "Mixed";
 }
 
 function confidenceFor(s: ScoredSignal): "High" | "Medium" | "Low" {

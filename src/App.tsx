@@ -4,7 +4,6 @@
 import { useState } from "react";
 import { Header, type TabKey } from "./components/Header";
 import { ScanView } from "./views/ScanView";
-import { ContactsView } from "./views/ContactsView";
 import { AskView } from "./views/AskView";
 import { BulkView } from "./views/BulkView";
 
@@ -16,7 +15,6 @@ export function App() {
     <div style={{ maxWidth: 1120, margin: "0 auto", padding: "28px 24px 96px" }}>
       <Header tab={tab} onTab={setTab} status={scanning ? "scanning" : "ready"} />
       {tab === "scan" && <ScanView onScanning={setScanning} />}
-      {tab === "contacts" && <ContactsView />}
       {tab === "ask" && <AskView />}
       {tab === "bulk" && <BulkView />}
     </div>

@@ -66,22 +66,24 @@ export function BulkView() {
     setRunning(false);
   }
 
+  const foundOf = (res: ScanResult) => res.signals.filter((s) => s.found).length;
+
   function exportCsv() {
     const done = rows.filter((r) => r.result);
     const csv = toCsv(
-      ["Company", "Website", "Score", "Intent", "Key signals found", "Top opportunity"],
+      ["Company", "Website", "Signals found", "Total signals", "Key signals found", "Top signal"],
       done.map((r) => {
         const res = r.result!;
         const key = res.signals.filter((s) => s.group === "key" && s.found).length;
         const top = res.signals.filter((s) => s.found && s.score_contribution > 0).sort((a, b) => b.score_contribution - a.score_contribution)[0];
-        return [r.company, r.domain, res.total, res.intent, key, top?.label ?? ""];
+        return [r.company, r.domain, foundOf(res), res.signals.length, key, top?.label ?? ""];
       }),
     );
     downloadCsv("bulk-scan.csv", csv);
   }
 
   const doneCount = rows.filter((r) => r.status === "done" || r.status === "failed").length;
-  const ranked = rows.map((r, i) => ({ r, i })).sort((a, b) => (b.r.result?.total ?? -999) - (a.r.result?.total ?? -999));
+  const ranked = rows.map((r, i) => ({ r, i })).sort((a, b) => (b.r.result ? foundOf(b.r.result) : -1) - (a.r.result ? foundOf(a.r.result) : -1));
 
   return (
     <div>
@@ -109,9 +111,8 @@ export function BulkView() {
         <div className="card" style={{ padding: 0 }}>
           <div style={{ display: "flex", padding: "12px 16px", borderBottom: "1px solid var(--ia-gray-1)" }}>
             <span className="eyebrow" style={{ flex: 1 }}>Company</span>
-            <span className="eyebrow" style={{ width: 70, textAlign: "right" }}>Score</span>
-            <span className="eyebrow" style={{ width: 130, textAlign: "right" }}>Intent</span>
-            <span className="eyebrow" style={{ width: 220, textAlign: "right" }}>Top opportunity</span>
+            <span className="eyebrow" style={{ width: 90, textAlign: "right" }}>Signals</span>
+            <span className="eyebrow" style={{ width: 240, textAlign: "right" }}>Top signal</span>
           </div>
           {ranked.map(({ r, i }) => {
             const res = r.result;
@@ -124,11 +125,10 @@ export function BulkView() {
                     <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.company}</div>
                     <div className="secondary">{r.domain}</div>
                   </div>
-                  <span className="tnum" style={{ width: 70, textAlign: "right", fontWeight: 600, color: (res?.total ?? 0) < 0 ? "var(--ia-orange)" : "var(--ia-blue)" }}>
-                    {res ? `${res.total > 0 ? "+" : ""}${res.total}` : statusDot(r.status)}
+                  <span className="tnum" style={{ width: 90, textAlign: "right", fontWeight: 600, color: "var(--ia-blue)" }}>
+                    {res ? `${foundOf(res)}/${res.signals.length}` : statusDot(r.status)}
                   </span>
-                  <span className="secondary serif" style={{ width: 130, textAlign: "right" }}>{res?.intent ?? ""}</span>
-                  <span className="secondary" style={{ width: 220, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{top?.label ?? (r.error ? "failed" : "")}</span>
+                  <span className="secondary" style={{ width: 240, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{top?.label ?? (r.error ? "failed" : "")}</span>
                 </div>
                 {open && res && <div style={{ padding: "0 16px 16px" }}><ResultsView result={res} onRefresh={() => {}} /></div>}
               </div>

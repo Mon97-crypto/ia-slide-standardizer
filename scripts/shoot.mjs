@@ -138,7 +138,7 @@ await shoot("1-empty", desktop, async () => {});
 await shoot("2-results", desktop, async (page) => {
   await page.fill('input[placeholder="acme.com"]', DOMAIN);
   await page.click('button[type="submit"]');
-  await page.waitForSelector("text=Strong buyer", { timeout: 8000 });
+  await page.waitForSelector("text=Signals found", { timeout: 8000 });
   await page.waitForTimeout(900);
 });
 
@@ -146,7 +146,7 @@ await shoot("2-results", desktop, async (page) => {
 await shoot("3-expanded", desktop, async (page) => {
   await page.fill('input[placeholder="acme.com"]', DOMAIN);
   await page.click('button[type="submit"]');
-  await page.waitForSelector("text=Strong buyer", { timeout: 8000 });
+  await page.waitForSelector("text=Signals found", { timeout: 8000 });
   await page.click("text=Operational pain");
   await page.waitForTimeout(500);
 });
@@ -155,7 +155,7 @@ await shoot("3-expanded", desktop, async (page) => {
 await shoot("4-mobile", mobile, async (page) => {
   await page.fill('input[placeholder="acme.com"]', DOMAIN);
   await page.click('button[type="submit"]');
-  await page.waitForSelector("text=Strong buyer", { timeout: 8000 });
+  await page.waitForSelector("text=Signals found", { timeout: 8000 });
   await page.waitForTimeout(900);
 });
 
