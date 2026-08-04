@@ -22,11 +22,14 @@ export function ResultsView({
   onRefresh,
   account,
   accountLoading = false,
+  compact = false,
 }: {
   result: ScanResult;
   onRefresh: () => void;
   account?: AccountInfo | null;
   accountLoading?: boolean;
+  /** Hide the sticky company sub-header (e.g. inside a bulk row that already shows it). */
+  compact?: boolean;
 }) {
   if (!result.verified) {
     return (
@@ -56,19 +59,21 @@ export function ResultsView({
 
   return (
     <div className="anim-fade-up" style={{ display: "grid", gap: 16 }}>
-      {/* Sticky context sub-header */}
-      <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--ia-offwhite)", paddingBlock: 8, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, borderBottom: "1px solid var(--ia-gray-1)" }}>
-        <div style={{ minWidth: 0 }}>
-          <span className="card-title" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.company}</span>
-          <span className="secondary">{result.domain}</span>
+      {/* Sticky context sub-header (hidden in compact/bulk mode) */}
+      {!compact && (
+        <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--ia-offwhite)", paddingBlock: 8, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, borderBottom: "1px solid var(--ia-gray-1)" }}>
+          <div style={{ minWidth: 0 }}>
+            <span className="card-title" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.company}</span>
+            <span className="secondary">{result.domain}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexShrink: 0 }}>
+            <span className="tnum" style={{ fontSize: 20, fontWeight: 600, color: "var(--ia-blue)" }}>
+              {totalFound}/{totalCatalog}
+            </span>
+            <span className="secondary">signals</span>
+          </div>
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexShrink: 0 }}>
-          <span className="tnum" style={{ fontSize: 20, fontWeight: 600, color: "var(--ia-blue)" }}>
-            {totalFound}/{totalCatalog}
-          </span>
-          <span className="secondary">signals</span>
-        </div>
-      </div>
+      )}
 
       {(account || accountLoading) && <AccountCard account={account ?? null} loading={accountLoading} />}
 
