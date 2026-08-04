@@ -9,9 +9,9 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     branch: claude/edgar-techstack-news-scanner-3cb5jm
-    # "starter" = always-on ($7/mo). Change to "free" for a zero-cost instance that
-    # sleeps after ~15 min idle and cold-starts on the next request (slower first scan).
-    plan: starter
+    # "free" = $0/month, no card required. Sleeps after ~15 min idle and cold-starts
+    # (~30-60s) on the next request. Change to "starter" ($7/mo) for always-on.
+    plan: free
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
