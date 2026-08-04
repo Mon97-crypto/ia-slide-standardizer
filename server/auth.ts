@@ -173,8 +173,16 @@ export function registerAuth(app: Hono): void {
       const verified = claims.email_verified === true || claims.email_verified === "true";
       const name = String(claims.name ?? email);
       if (!email || !verified || !isAllowed(email)) {
+        // Server-side log (visible in Render logs) to diagnose denials. No PII leaves the server.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[auth] DENIED sign-in: email="${email || "(none)"}" verified=${verified} ` +
+            `allowedDomain="${ALLOWED_DOMAIN || "(unset)"}" allowlistSize=${ALLOWED_EMAILS.size}`,
+        );
         return c.redirect("/?auth=denied");
       }
+      // eslint-disable-next-line no-console
+      console.log(`[auth] allowed sign-in: ${email}`);
 
       const session = createSession(email, name, process.env.SESSION_SECRET as string);
       setCookie(c, SESSION_COOKIE, session, { httpOnly: true, secure: true, sameSite: "Lax", path: "/", maxAge: SESSION_TTL });
