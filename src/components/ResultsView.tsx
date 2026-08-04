@@ -7,7 +7,7 @@
 import type { ScanResult, ScoredSignal, StepKey } from "../lib/scan";
 import type { AccountInfo } from "../lib/account";
 import { KEY_SIGNALS, SUPPORTING_SIGNALS } from "../lib/scan-contract";
-import { SignalRow } from "./SignalRow";
+import { SignalTile } from "./SignalTile";
 import { SignalsFoundRing } from "./SignalsFoundRing";
 import { AccountCard } from "./AccountCard";
 
@@ -128,8 +128,31 @@ export function ResultsView({
         </div>
       </div>
 
-      <Section title="Key signals" caption={`${keyFound} of ${keyRows.length} detected`} rows={keyRows} />
-      <Section title="Supporting signals" caption={`${supFound} of ${supRows.length} detected`} rows={supRows} />
+      <Section title="Key signals" caption={`${keyFound} of ${keyRows.length} detected`} rows={keyRows.filter((r) => r.found)} emptyText="No key signals detected in this window." />
+      <Section title="Supporting signals" caption={`${supFound} of ${supRows.length} detected`} rows={supRows.filter((r) => r.found)} emptyText="No supporting signals detected in this window." />
+      <Undetected rows={[...keyRows, ...supRows].filter((r) => !r.found)} />
+    </div>
+  );
+}
+
+function Undetected({ rows }: { rows: ScoredSignal[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="card" style={{ padding: "16px 16px 18px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <span className="eyebrow" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span aria-hidden style={{ color: "var(--ia-gray-2)" }}>○</span>
+          No detected signals · {rows.length}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {rows.map((r) => (
+          <span key={r.name} className="label" style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 999, border: "1px solid var(--ia-gray-1)", background: "var(--ia-offwhite)", padding: "5px 11px", fontSize: 13, color: "var(--ia-gray-3)" }}>
+            <span aria-hidden style={{ color: "var(--ia-gray-2)" }}>{r.glyph}</span>
+            {r.label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -155,18 +178,22 @@ function Metric({ label, value, small }: { label: string; value: string; small?:
   );
 }
 
-function Section({ title, caption, rows }: { title: string; caption: string; rows: ScoredSignal[] }) {
+function Section({ title, caption, rows, emptyText }: { title: string; caption: string; rows: ScoredSignal[]; emptyText: string }) {
   return (
-    <div className="card" style={{ padding: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 14px 12px" }}>
+    <div className="card" style={{ padding: "16px 16px 18px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <span className="h2" style={{ fontSize: 20 }}>{title}</span>
         <span className="secondary tnum">{caption}</span>
       </div>
-      <div>
-        {rows.map((s, i) => (
-          <SignalRow key={s.name} signal={s} index={i} />
-        ))}
-      </div>
+      {rows.length > 0 ? (
+        <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))" }}>
+          {rows.map((s, i) => (
+            <SignalTile key={s.name} signal={s} index={i} />
+          ))}
+        </div>
+      ) : (
+        <p className="secondary" style={{ margin: 0 }}>{emptyText}</p>
+      )}
     </div>
   );
 }
