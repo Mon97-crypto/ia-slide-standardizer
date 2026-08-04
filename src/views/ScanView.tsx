@@ -3,7 +3,8 @@
  */
 import { useCallback, useRef, useState } from "react";
 import { ScanForm, type ScanRequest } from "../components/ScanForm";
-import { ProgressCard, type StepState } from "../components/ProgressCard";
+import { type StepState } from "../components/ProgressCard";
+import { SignalProgress } from "../components/SignalProgress";
 import { ResultsView } from "../components/ResultsView";
 import { runScan, type ScanResult, type StepKey } from "../lib/scan";
 import { fetchAccount, type AccountInfo } from "../lib/account";
@@ -73,7 +74,7 @@ export function ScanView({ onScanning }: { onScanning: (b: boolean) => void }) {
         </div>
       )}
 
-      {scanning && steps && <div style={{ marginBottom: 24 }}><ProgressCard steps={steps} /></div>}
+      {scanning && steps && <div style={{ marginBottom: 24 }}><SignalProgress steps={steps} /></div>}
 
       {!scanning && result && (
         <ResultsView

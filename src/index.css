@@ -146,6 +146,12 @@ a {
   margin: 4px 0 10px;
 }
 
+/* Pulsing dot for in-flight scan rows. */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
 /* ── Motion: state change only. Respect prefers-reduced-motion. ─────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,
