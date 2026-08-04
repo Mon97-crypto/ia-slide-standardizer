@@ -9,6 +9,8 @@
  * exact domain. Guarded by APOLLO_API_KEY (server-side only). Never throws.
  */
 
+import { companyVerifyAvailable, verifyCompany } from "./providers/company-verify";
+
 interface AccountInput {
   company: string;
   domain: string;
@@ -24,6 +26,11 @@ export interface AccountInfo {
   logoUrl: string | null;
   employees: string | null;
   description: string | null;
+  founded: string | null;
+  ownership: string | null;
+  /** true when the description/HQ were web-verified via Claude, not just Apollo. */
+  verified: boolean;
+  sources: string[];
 }
 
 interface ApolloOrg {
@@ -93,6 +100,35 @@ export async function resolveEntity(
   return { name, industry: r.account?.industry ?? null, description: r.account?.description ?? null };
 }
 
+/**
+ * accountInfoForCard — the user-facing Account card. Starts from Apollo's
+ * structured firmographics, then (when ANTHROPIC_API_KEY is set) overlays a
+ * web-VERIFIED description + headquarters + founding + ownership so crucial facts
+ * are current and correct rather than Apollo's sometimes-stale free text.
+ */
+export async function accountInfoForCard(
+  input: AccountInput,
+): Promise<{ ok: boolean; account: AccountInfo | null; error?: string }> {
+  const base = await accountInfo(input);
+  if (!base.account || !companyVerifyAvailable()) return base;
+  try {
+    const v = await verifyCompany(base.account.name, base.account.domain);
+    if (!v) return base;
+    const account: AccountInfo = {
+      ...base.account,
+      description: v.description || base.account.description,
+      hq: v.headquarters || base.account.hq,
+      founded: v.founded || base.account.founded,
+      ownership: v.ownership || base.account.ownership,
+      verified: Boolean(v.description || v.headquarters),
+      sources: v.sources,
+    };
+    return { ...base, account };
+  } catch {
+    return base;
+  }
+}
+
 export async function accountInfo(
   input: AccountInput,
 ): Promise<{ ok: boolean; account: AccountInfo | null; error?: string }> {
@@ -113,6 +149,10 @@ export async function accountInfo(
     logoUrl: fallbackLogo(domain),
     employees: null,
     description: null,
+    founded: null,
+    ownership: null,
+    verified: false,
+    sources: [],
   };
 
   const apiKey = process.env.APOLLO_API_KEY;
@@ -150,6 +190,10 @@ export async function accountInfo(
       logoUrl: org.logo_url || fallbackLogo(domain),
       employees: formatEmployees(org),
       description: org.short_description?.trim() || null,
+      founded: null,
+      ownership: null,
+      verified: false,
+      sources: [],
     };
     const value = { ok: true, account };
     memo.set(domain, { at: Date.now(), value });

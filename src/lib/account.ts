@@ -14,6 +14,10 @@ export interface AccountInfo {
   logoUrl: string | null;
   employees: string | null;
   description: string | null;
+  founded: string | null;
+  ownership: string | null;
+  verified: boolean;
+  sources: string[];
 }
 
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days

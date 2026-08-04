@@ -29,7 +29,14 @@ export function AccountCard({ account, loading }: { account: AccountInfo | null;
       <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "22px 24px", background: "linear-gradient(160deg, var(--ia-blue-soft) 0%, var(--ia-white) 72%)" }}>
         <CompanyLogo domain={account.domain} name={account.name} logoUrl={account.logoUrl} />
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Account information</div>
+          <div className="section-eyebrow" style={{ marginBottom: 4 }}>
+            <span className="eyebrow">Account information</span>
+            {account.verified && (
+              <span className="label" style={{ padding: "1px 8px", borderRadius: 999, background: "var(--ia-blue)", color: "var(--ia-white)", fontSize: 10 }}>
+                ✓ web-verified
+              </span>
+            )}
+          </div>
           <h2 className="h2" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account.name}</h2>
           <a href={account.website || `https://${account.domain}`} target="_blank" rel="noreferrer" className="label" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 4 }}>
             <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--ia-blue)" }} />
@@ -47,9 +54,11 @@ export function AccountCard({ account, loading }: { account: AccountInfo | null;
       {/* Firmographic grid — crisp 1px dividers via a gray gap. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 1, background: "var(--ia-gray-1)", borderTop: "1px solid var(--ia-gray-1)" }}>
         <Field label="Industry" value={account.industry} />
-        <Field label="Revenue" value={account.revenue} accent />
+        <Field label="Revenue" value={account.revenue ? `${account.revenue}${account.verified ? "" : " (est.)"}` : null} accent />
         <Field label="HQ" value={account.hq} />
         <Field label="Website" value={websiteHost} href={account.website || `https://${account.domain}`} />
+        {account.founded && <Field label="Founded" value={account.founded} />}
+        {account.ownership && <Field label="Ownership" value={account.ownership} />}
       </div>
     </section>
   );
