@@ -68,8 +68,8 @@ export function DecisionMakers({ company, domain }: { company: string; domain: s
   function exportCsv() {
     if (!contacts?.length) return;
     const csv = toCsv(
-      ["Name", "Title", "Function", "Tier", "Email", "LinkedIn"],
-      contacts.map((c) => [c.name, c.title, c.function, c.tier, c.email, c.linkedinUrl]),
+      ["Name", "Title", "Function", "Tier", "LinkedIn"],
+      contacts.map((c) => [c.name, c.title, c.function, c.tier, c.linkedinUrl]),
     );
     downloadCsv(`${company || "contacts"}-contacts.csv`, csv);
   }
@@ -120,8 +120,13 @@ export function DecisionMakers({ company, domain }: { company: string; domain: s
                         <div className="secondary" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
                       </div>
                       <span className="label" style={{ padding: "2px 8px", borderRadius: 999, background: "var(--ia-blue-soft)", color: "var(--ia-blue-dark)", flexShrink: 0 }}>{c.function}</span>
-                      <span className="secondary" style={{ width: 200, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email || "—"}</span>
-                      {c.linkedinUrl ? <a href={c.linkedinUrl} target="_blank" rel="noreferrer" className="label" style={{ flexShrink: 0 }}>LinkedIn</a> : <span style={{ width: 54, flexShrink: 0 }} />}
+                      {c.linkedinUrl ? (
+                        <a href={c.linkedinUrl} target="_blank" rel="noreferrer" className="label" style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 999, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", color: "var(--ia-blue)", fontWeight: 600, textDecoration: "none" }}>
+                          LinkedIn ↗
+                        </a>
+                      ) : (
+                        <span className="secondary" style={{ flexShrink: 0, fontSize: 12 }}>No LinkedIn</span>
+                      )}
                     </div>
                   ))}
                 </div>
