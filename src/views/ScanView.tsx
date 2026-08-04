@@ -54,7 +54,7 @@ export function ScanView({ onScanning }: { onScanning: (b: boolean) => void }) {
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
-        <div className="eyebrow" style={{ marginBottom: 10 }}>Sales and BD · account scanner</div>
+        <div className="eyebrow" style={{ marginBottom: 10 }}>Sales and BD · account intelligence</div>
         <h1 className="h1" style={{ margin: 0, maxWidth: 640 }}>Find accounts <span className="accent">worth</span> a call.</h1>
         <p className="secondary" style={{ marginTop: 12, maxWidth: 620 }}>
           Scan any retailer for buying signals mapped to what Impact Analytics sells. SEC filings, tech stack,

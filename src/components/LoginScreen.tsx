@@ -23,7 +23,7 @@ export function LoginScreen() {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div className="card anim-fade-up" style={{ width: "100%", maxWidth: 420, padding: 36, textAlign: "center" }}>
         <img src="/ia_logo.png" alt="Impact Analytics" style={{ height: 36, width: "auto", margin: "0 auto 22px", display: "block" }} />
-        <div className="eyebrow" style={{ marginBottom: 8 }}>Sales and BD · account scanner</div>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>Sales and BD · account intelligence</div>
         <h1 className="h2" style={{ fontSize: 26, margin: "0 0 8px" }}>Sign in to continue</h1>
         <p className="secondary" style={{ margin: "0 auto 24px", maxWidth: 320 }}>
           This tool is for authorized Impact Analytics users. Sign in with your approved Google account to continue.
