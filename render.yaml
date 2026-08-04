@@ -30,7 +30,11 @@ services:
         sync: false
       - key: SESSION_SECRET         # Render auto-generates a strong random value
         generateValue: true
-      # Optional: override the allowed domain (defaults to impactanalytics.co)
-      # - key: ALLOWED_EMAIL_DOMAIN
+      # Who may sign in. Set ALLOWED_EMAILS to a comma-separated allowlist (any
+      # domain, e.g. your personal Gmail) and/or ALLOWED_EMAIL_DOMAIN for a whole
+      # domain. Access is granted if the email matches either.
+      - key: ALLOWED_EMAILS         # e.g. you@gmail.com,teammate@gmail.com
+        sync: false
+      # - key: ALLOWED_EMAIL_DOMAIN  # defaults to impactanalytics.co; set "" to disable
       #   value: impactanalytics.co
       # The Dockerfile sets PORT=10000 and a writable SCAN_CACHE_DIR; no need to set them here.

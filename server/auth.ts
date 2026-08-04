@@ -18,7 +18,25 @@ import type { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 
-const ALLOWED_DOMAIN = (process.env.ALLOWED_EMAIL_DOMAIN || "impactanalytics.co").toLowerCase();
+// Who may sign in. Access is granted if the verified email is in ALLOWED_EMAILS
+// (an explicit comma-separated allowlist, any domain) OR ends in ALLOWED_EMAIL_DOMAIN.
+// Set ALLOWED_EMAIL_DOMAIN="" to disable the domain rule and use the allowlist only.
+const ALLOWED_DOMAIN = (process.env.ALLOWED_EMAIL_DOMAIN ?? "impactanalytics.co").toLowerCase().trim();
+const ALLOWED_EMAILS = new Set(
+  (process.env.ALLOWED_EMAILS ?? "")
+    .toLowerCase()
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
+function isAllowed(email: string): boolean {
+  if (!email) return false;
+  if (ALLOWED_EMAILS.has(email)) return true;
+  if (ALLOWED_DOMAIN && email.endsWith(`@${ALLOWED_DOMAIN}`)) return true;
+  return false;
+}
+
 const SESSION_TTL = 60 * 60 * 12; // 12 hours
 const SESSION_COOKIE = "ia_session";
 const STATE_COOKIE = "ia_oauth_state";
@@ -114,7 +132,11 @@ export function registerAuth(app: Hono): void {
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", "openid email profile");
     url.searchParams.set("state", state);
-    url.searchParams.set("hd", ALLOWED_DOMAIN); // hint Google to the org domain
+    // Only hint Google to a specific hosted domain in pure-domain mode. With an
+    // explicit allowlist (e.g. personal Gmail), let the user pick any account.
+    if (ALLOWED_DOMAIN && ALLOWED_EMAILS.size === 0 && ALLOWED_DOMAIN !== "gmail.com") {
+      url.searchParams.set("hd", ALLOWED_DOMAIN);
+    }
     url.searchParams.set("prompt", "select_account");
     return c.redirect(url.toString());
   });
@@ -150,7 +172,7 @@ export function registerAuth(app: Hono): void {
       const email = String(claims.email ?? "").toLowerCase();
       const verified = claims.email_verified === true || claims.email_verified === "true";
       const name = String(claims.name ?? email);
-      if (!email || !verified || !email.endsWith(`@${ALLOWED_DOMAIN}`)) {
+      if (!email || !verified || !isAllowed(email)) {
         return c.redirect("/?auth=denied");
       }
 

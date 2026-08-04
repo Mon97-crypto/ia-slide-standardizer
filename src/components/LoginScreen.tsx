@@ -26,12 +26,12 @@ export function LoginScreen() {
         <div className="eyebrow" style={{ marginBottom: 8 }}>Sales and BD · account scanner</div>
         <h1 className="h2" style={{ fontSize: 26, margin: "0 0 8px" }}>Sign in to continue</h1>
         <p className="secondary" style={{ margin: "0 auto 24px", maxWidth: 320 }}>
-          Access is restricted to Impact Analytics accounts. Use your <strong style={{ color: "var(--ia-black)" }}>@impactanalytics.co</strong> Google account.
+          This tool is for authorized Impact Analytics users. Sign in with your approved Google account to continue.
         </p>
 
         {denied && (
           <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 13, border: "1px solid var(--ia-orange)", background: "#fff1e8", fontSize: 14, textAlign: "left" }}>
-            <strong style={{ color: "var(--ia-orange)" }}>Access denied.</strong> That account is not an @impactanalytics.co address. Please sign in with your company Google account.
+            <strong style={{ color: "var(--ia-orange)" }}>Access denied.</strong> That Google account is not authorized for this tool. Please sign in with an approved account, or contact your admin to be added.
           </div>
         )}
         {error && (
