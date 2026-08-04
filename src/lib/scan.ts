@@ -84,7 +84,7 @@ async function callFunction(
   key: StepKey,
   args: RunScanArgs,
 ): Promise<FunctionResult> {
-  const timeout = key === "news" ? 90_000 : 20_000;
+  const timeout = key === "news" ? 170_000 : 25_000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const onAbort = () => controller.abort();

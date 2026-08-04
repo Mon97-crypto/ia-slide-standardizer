@@ -134,7 +134,7 @@ async function callOnce(
   allowedUrls: Set<string>,
 ): Promise<Signal[] | null> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 80_000);
+  const timer = setTimeout(() => controller.abort(), 60_000);
   try {
     const res = await fetch(ANTHROPIC_URL, {
       method: "POST",
