@@ -15,7 +15,7 @@ const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30-day cache
 
 // Bump whenever the scan pipeline's accuracy logic changes, so a deploy ignores
 // every previously-cached (stale) scan instead of serving it for up to 30 days.
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 interface CacheRow {
   domain: string;

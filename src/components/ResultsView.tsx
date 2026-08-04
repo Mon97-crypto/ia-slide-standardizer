@@ -68,6 +68,25 @@ export function ResultsView({
 
       {(account || accountLoading) && <AccountCard account={account ?? null} loading={accountLoading} />}
 
+      {(result.newsClassifier || result.resolvedEntity) && (
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 12 }}>
+          {result.resolvedEntity && (
+            <span className="label" style={{ padding: "3px 9px", borderRadius: 999, background: "var(--ia-blue-soft)", color: "var(--ia-blue-dark)" }}>
+              News matched to: {result.resolvedEntity}
+            </span>
+          )}
+          {result.newsClassifier && (
+            <span className="label" style={{ padding: "3px 9px", borderRadius: 999,
+              background: result.newsClassifier === "llm-grounded" ? "var(--ia-blue-soft)" : "#fff1e8",
+              color: result.newsClassifier === "llm-grounded" ? "var(--ia-blue-dark)" : "var(--ia-orange)" }}>
+              {result.newsClassifier === "llm-grounded"
+                ? "AI-verified news (entity + recency checked)"
+                : `news classifier: ${result.newsClassifier} — set ANTHROPIC_API_KEY for entity filtering`}
+            </span>
+          )}
+        </div>
+      )}
+
       {result.cached && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className="label" style={{ padding: "3px 9px", borderRadius: 999, background: "var(--ia-white)", border: "1px solid var(--ia-gray-2)", color: "var(--ia-gray-3)" }}>

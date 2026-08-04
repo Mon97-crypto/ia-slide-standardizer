@@ -90,7 +90,7 @@ export async function scanSerp(input: ScanInput): Promise<FunctionResult> {
     let signals: Signal[] | null = null;
     let classifier = "deterministic";
     if (llmClassifyAvailable()) {
-      signals = await classifyWithLLM(name, domain, pool, SEARCH_SIGNAL_IDS, { industry: entity.industry });
+      signals = await classifyWithLLM(name, domain, pool, SEARCH_SIGNAL_IDS, { industry: entity.industry, description: entity.description });
       if (signals) classifier = "llm-grounded";
     }
     if (!signals) {

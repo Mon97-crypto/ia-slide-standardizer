@@ -47,6 +47,8 @@ export async function scanNews(input: ScanInput): Promise<FunctionResult> {
     const signals: Signal[] = [];
     const sources: string[] = [];
     const failed: string[] = [];
+    let classifier: string | undefined;
+    let resolvedName: string | undefined;
 
     for (const s of settled) {
       if (s.status !== "fulfilled") {
@@ -57,6 +59,8 @@ export async function scanNews(input: ScanInput): Promise<FunctionResult> {
       if (r.ok) {
         signals.push(...r.signals);
         if (r.meta?.source) sources.push(String(r.meta.source));
+        if (r.meta?.classifier) classifier = String(r.meta.classifier);
+        if (r.meta?.resolvedName) resolvedName = String(r.meta.resolvedName);
       } else if (r.error) {
         failed.push(r.error);
       }
@@ -66,7 +70,7 @@ export async function scanNews(input: ScanInput): Promise<FunctionResult> {
     return {
       ok: signals.length > 0 || sources.length > 0,
       signals,
-      meta: { sources, failed },
+      meta: { sources, failed, classifier, resolvedName },
     };
   } catch (err) {
     return { ok: false, signals: [], error: (err as Error).message };

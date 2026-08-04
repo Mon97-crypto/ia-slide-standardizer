@@ -40,11 +40,13 @@ function buildSystem(
   domain: string,
   ids: CatalogId[],
   industry: string | null,
+  description: string | null,
   today: string,
 ): string {
   return [
     `You classify retail B2B buying signals for Impact Analytics, an AI-native`,
     `retail decisioning platform. The target company is ${company}; its website is ${domain}${industry ? `; its industry is ${industry}` : ""}.`,
+    description ? `About the target company: ${description}` : ``,
     `Today's date is ${today}.`,
     ``,
     domainGuard(company, domain, industry),
@@ -107,13 +109,30 @@ export async function classifyWithLLM(
   domain: string,
   hits: Hit[],
   ids: CatalogId[],
-  opts: { industry?: string | null } = {},
+  opts: { industry?: string | null; description?: string | null } = {},
 ): Promise<Signal[] | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
   const allowedUrls = new Set(hits.map((h) => h.url));
   const today = new Date().toISOString().slice(0, 10);
+  const system = buildSystem(company, domain, ids, opts.industry ?? null, opts.description ?? null, today);
+  const user = buildUser(hits);
 
+  // Retry once on any failure so a transient error does NOT drop us to the
+  // keyword fallback, which cannot tell a namesake apart from the target.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await callOnce(apiKey, system, user, allowedUrls);
+    if (result) return result;
+  }
+  return null;
+}
+
+async function callOnce(
+  apiKey: string,
+  system: string,
+  user: string,
+  allowedUrls: Set<string>,
+): Promise<Signal[] | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 80_000);
   try {
@@ -124,8 +143,8 @@ export async function classifyWithLLM(
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 4000,
-        system: buildSystem(company, domain, ids, opts.industry ?? null, today),
-        messages: [{ role: "user", content: buildUser(hits) }],
+        system,
+        messages: [{ role: "user", content: user }],
       }),
     });
     if (!res.ok) return null;
@@ -134,15 +153,13 @@ export async function classifyWithLLM(
       .filter((b) => b.type === "text" && typeof b.text === "string")
       .map((b) => b.text as string)
       .join("\n");
-    let raw: RawSignal[];
     try {
       const arr = JSON.parse(extractJsonArray(text));
       if (!Array.isArray(arr)) return null;
-      raw = arr as RawSignal[];
+      return coerce(arr as RawSignal[], allowedUrls);
     } catch {
       return null;
     }
-    return coerce(raw, allowedUrls);
   } catch {
     return null;
   } finally {

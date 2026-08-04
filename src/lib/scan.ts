@@ -75,6 +75,9 @@ export interface ScanResult {
   failedSteps: StepKey[];
   cached: boolean;
   cachedAt?: string;
+  /** Diagnostics: which news classifier ran and the resolved entity name. */
+  newsClassifier?: string;
+  resolvedEntity?: string;
 }
 
 async function callFunction(
@@ -157,6 +160,8 @@ export async function runScan(args: RunScanArgs): Promise<ScanResult> {
   const failedSteps: StepKey[] = [];
   let verified = true;
   let resolvedName: string | undefined;
+  let newsClassifier: string | undefined;
+  let resolvedEntity: string | undefined;
 
   for (const outcome of settled) {
     if (outcome.status !== "fulfilled") continue;
@@ -167,6 +172,10 @@ export async function runScan(args: RunScanArgs): Promise<ScanResult> {
       if (typeof result.meta.resolvedName === "string") {
         resolvedName = result.meta.resolvedName;
       }
+    }
+    if (key === "news" && result.meta) {
+      if (typeof result.meta.classifier === "string") newsClassifier = result.meta.classifier;
+      if (typeof result.meta.resolvedName === "string") resolvedEntity = result.meta.resolvedName;
     }
     merged.push(...result.signals);
   }
@@ -206,6 +215,8 @@ export async function runScan(args: RunScanArgs): Promise<ScanResult> {
     failedSteps,
     cached: false,
     cachedAt: undefined,
+    newsClassifier,
+    resolvedEntity,
   };
 
   // Persist to the 24h cache (best-effort, fire and forget).

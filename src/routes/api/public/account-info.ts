@@ -87,10 +87,10 @@ const MEMO_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export async function resolveEntity(
   company: string,
   domain: string,
-): Promise<{ name: string; industry: string | null }> {
+): Promise<{ name: string; industry: string | null; description: string | null }> {
   const r = await accountInfo({ company, domain });
   const name = r.account?.name && r.account.name !== domain ? r.account.name : company;
-  return { name, industry: r.account?.industry ?? null };
+  return { name, industry: r.account?.industry ?? null, description: r.account?.description ?? null };
 }
 
 export async function accountInfo(
