@@ -8,8 +8,7 @@ import type { ScanResult, ScoredSignal, StepKey } from "../lib/scan";
 import type { AccountInfo } from "../lib/account";
 import { KEY_SIGNALS, SUPPORTING_SIGNALS } from "../lib/scan-contract";
 import { SignalRow } from "./SignalRow";
-import { SignalSpectrum } from "./SignalSpectrum";
-import { ScoreGauge } from "./ScoreGauge";
+import { SignalsFoundRing } from "./SignalsFoundRing";
 import { AccountCard } from "./AccountCard";
 
 const STEP_NAMES: Record<StepKey, string> = {
@@ -46,12 +45,16 @@ export function ResultsView({
   const supRows = SUPPORTING_SIGNALS.map((id) => byName.get(id)).filter(Boolean) as ScoredSignal[];
   const keyFound = keyRows.filter((s) => s.found).length;
   const supFound = supRows.filter((s) => s.found).length;
+  const totalCatalog = keyRows.length + supRows.length;
+  const totalFound = keyFound + supFound;
+  const positiveCount = result.signals.filter((s) => s.found && s.type === "positive").length;
+  const negativeCount = result.signals.filter((s) => s.found && s.type === "negative").length;
   const topOpp = result.signals
     .filter((s) => s.found && s.score_contribution > 0)
     .sort((a, b) => b.score_contribution - a.score_contribution)[0];
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="anim-fade-up" style={{ display: "grid", gap: 16 }}>
       {/* Sticky context sub-header */}
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--ia-offwhite)", paddingBlock: 8, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, borderBottom: "1px solid var(--ia-gray-1)" }}>
         <div style={{ minWidth: 0 }}>
@@ -59,8 +62,8 @@ export function ResultsView({
           <span className="secondary">{result.domain}</span>
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexShrink: 0 }}>
-          <span className="tnum" style={{ fontSize: 20, fontWeight: 600, color: result.total < 0 ? "var(--ia-orange)" : "var(--ia-blue)" }}>
-            {result.total > 0 ? "+" : ""}{result.total}
+          <span className="tnum" style={{ fontSize: 20, fontWeight: 600, color: "var(--ia-blue)" }}>
+            {totalFound}/{totalCatalog}
           </span>
           <span className="serif" style={{ fontSize: 16 }}>{result.intent}</span>
         </div>
@@ -102,19 +105,25 @@ export function ResultsView({
         </div>
       )}
 
-      {/* Dashboard: gauge + metric cards */}
+      {/* Dashboard: signals-found ring + metric cards */}
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(220px, 260px) 1fr" }}>
-        <div className="metric-card" style={{ padding: 20, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <span className="eyebrow" style={{ marginBottom: 8 }}>Fit score</span>
-          <ScoreGauge total={result.total} intent={result.intent} />
+        <div className="metric-card" style={{ padding: 20, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+          <span className="eyebrow" style={{ alignSelf: "flex-start" }}>Signals found</span>
+          <SignalsFoundRing found={totalFound} total={totalCatalog} />
+          <span className="serif" style={{ fontSize: 17 }}>{result.intent}</span>
         </div>
         <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
           <Metric label="Key signals" value={`${keyFound}/${keyRows.length}`} />
           <Metric label="Supporting" value={`${supFound}/${supRows.length}`} />
           <Metric label="Top opportunity" value={topOpp ? topOpp.label : "—"} small />
-          <div className="card" style={{ padding: 16, gridColumn: "1 / -1" }}>
-            <span className="eyebrow" style={{ display: "block", marginBottom: 10 }}>Signal spectrum</span>
-            <SignalSpectrum signals={result.signals} total={result.total} intent={result.intent} />
+          <div className="card" style={{ padding: 16, gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 10 }}>
+            <span className="eyebrow">Signals detected</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <Chip label={`${keyFound} key`} tone="blue" />
+              <Chip label={`${supFound} supporting`} tone="muted" />
+              <Chip label={`${positiveCount} opportunity`} tone="blue" />
+              <Chip label={`${negativeCount} risk`} tone="risk" />
+            </div>
           </div>
         </div>
       </div>
@@ -122,6 +131,16 @@ export function ResultsView({
       <Section title="Key signals" caption={`${keyFound} of ${keyRows.length} detected`} rows={keyRows} />
       <Section title="Supporting signals" caption={`${supFound} of ${supRows.length} detected`} rows={supRows} />
     </div>
+  );
+}
+
+function Chip({ label, tone }: { label: string; tone: "blue" | "risk" | "muted" }) {
+  const color = tone === "risk" ? "var(--ia-orange)" : tone === "muted" ? "var(--ia-gray-3)" : "var(--ia-blue)";
+  const bg = tone === "risk" ? "#fff1e8" : tone === "muted" ? "var(--ia-offwhite)" : "var(--ia-blue-soft)";
+  return (
+    <span className="label" style={{ padding: "5px 12px", borderRadius: 999, background: bg, color, fontSize: 13, fontWeight: 500 }}>
+      {label}
+    </span>
   );
 }
 
