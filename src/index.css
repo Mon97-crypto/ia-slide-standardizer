@@ -170,6 +170,11 @@ a {
   from { stroke-dashoffset: var(--dial-circumference); }
   to { stroke-dashoffset: var(--dial-offset); }
 }
+/* Sweeping shimmer across an in-progress bar. */
+@keyframes bar-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
 .anim-fade-up {
   animation: fade-up 520ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
