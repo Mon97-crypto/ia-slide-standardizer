@@ -19,6 +19,7 @@ import {
 } from "./scan-contract";
 
 import { SEARCH_SIGNAL_IDS } from "./icp";
+import { readScanCache, writeScanCache } from "./scan-cache";
 
 // Re-export the types the UI consumes so components import from one module.
 export type { ScoredSignal, IntentLevel, Signal, CatalogId, SignalGroup } from "./scan-contract";
@@ -75,6 +76,8 @@ export interface ScanResult {
   failedSteps: StepKey[];
   cached: boolean;
   cachedAt?: string;
+  /** Age of the cached result in ms, when served from cache. */
+  cachedAgeMs?: number;
   /** Diagnostics: which news classifier ran and the resolved entity name. */
   newsClassifier?: string;
   resolvedEntity?: string;
@@ -116,17 +119,23 @@ function shouldRun(key: StepKey, filter?: CatalogId[]): boolean {
 export async function runScan(args: RunScanArgs): Promise<ScanResult> {
   const { company, domain, signals: filter, onStep } = args;
 
-  // 1. 24h cache read, unless refresh was requested.
+  // 1. 30-day cache read, unless refresh was requested. Check the browser cache
+  // first (survives server restarts / ephemeral filesystems), then the server cache.
   if (!args.refresh) {
+    const local = readScanCache(domain);
+    if (local) {
+      return { ...local.result, cached: true, cachedAgeMs: local.ageMs };
+    }
     try {
       const res = await fetch(
         `/api/public/scan-cache?domain=${encodeURIComponent(domain)}`,
         { signal: args.signal },
       );
       if (res.ok) {
-        const cached = (await res.json()) as { hit: boolean; result?: ScanResult };
+        const cached = (await res.json()) as { hit: boolean; result?: ScanResult; ageMs?: number };
         if (cached.hit && cached.result) {
-          return { ...cached.result, cached: true };
+          writeScanCache(domain, cached.result); // seed the browser cache too
+          return { ...cached.result, cached: true, cachedAgeMs: cached.ageMs };
         }
       }
     } catch {
@@ -219,8 +228,9 @@ export async function runScan(args: RunScanArgs): Promise<ScanResult> {
     resolvedEntity,
   };
 
-  // Persist to the 24h cache (best-effort, fire and forget).
+  // Persist to the 30-day cache (browser first, then server, best-effort).
   if (verified) {
+    writeScanCache(domain, result);
     void fetch("/api/public/scan-cache", {
       method: "POST",
       headers: { "content-type": "application/json" },
