@@ -21,7 +21,9 @@ export interface AccountInfo {
 }
 
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const KEY = (domain: string) => `ia-account:${domain}`;
+// v2: only web-verified accounts are cached, so a stale unverified entry can never
+// pin the wrong facts. Bumping the prefix also discards all pre-upgrade entries.
+const KEY = (domain: string) => `ia-account:v2:${domain}`;
 
 function readCache(domain: string): AccountInfo | null {
   try {
@@ -59,9 +61,10 @@ export async function fetchAccount(
       signal,
     });
     const data = (await res.json()) as { ok: boolean; account: AccountInfo | null };
-    // Even a partial (baseline) account is worth showing and caching.
     if (data.account) {
-      if (data.ok) writeCache(domain, data.account);
+      // Only cache web-VERIFIED accounts. An unverified one (e.g. the Anthropic key
+      // was missing) must be re-fetched next time so it can be corrected, not pinned.
+      if (data.ok && data.account.verified) writeCache(domain, data.account);
       return data.account;
     }
     return null;
