@@ -3,6 +3,7 @@
  * by Claude with live web search. Keeps a simple running thread.
  */
 import { useRef, useState } from "react";
+import { Markdown } from "../components/Markdown";
 
 interface Turn {
   q: string;
@@ -68,14 +69,7 @@ export function AskView() {
             <div style={{ fontWeight: 600, marginBottom: 10 }}>{t.q}</div>
             {t.loading && <span className="secondary">Researching the web…</span>}
             {t.error && <span style={{ color: "var(--ia-orange)" }}>{t.error}{t.error.includes("ANTHROPIC_API_KEY") ? " — set it on the server." : ""}</span>}
-            {t.a && <div className="body" style={{ whiteSpace: "pre-wrap" }}>{t.a}</div>}
-            {t.sources && t.sources.length > 0 && (
-              <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {t.sources.map((s, j) => (
-                  <a key={j} href={s.url} target="_blank" rel="noreferrer" className="label" style={{ padding: "3px 9px", borderRadius: 999, background: "var(--ia-blue-soft)", color: "var(--ia-blue-dark)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</a>
-                ))}
-              </div>
-            )}
+            {t.a && <Markdown text={t.a} />}
           </div>
         ))}
         {turns.length === 0 && (

@@ -186,6 +186,41 @@ a {
   box-shadow: 0 12px 30px rgba(38, 76, 215, 0.12);
 }
 
+/* ── Ask IAsense briefing (digest house style) ──────────────────────────────── */
+.markdown-answer {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ia-black);
+}
+.markdown-answer > *:first-child { margin-top: 0; }
+.markdown-answer .md-h {
+  font-family: "Spectral", Georgia, serif;
+  font-weight: 400;
+  color: var(--ia-blue-dark);
+  margin: 22px 0 8px;
+  line-height: 1.2;
+}
+.markdown-answer h3.md-h { font-size: 20px; }
+.markdown-answer h4.md-h { font-size: 16px; font-family: "Inter Tight", sans-serif; font-weight: 600; color: var(--ia-black); }
+.markdown-answer .md-p { margin: 0 0 12px; }
+.markdown-answer .md-ul { margin: 0 0 14px; padding-left: 20px; }
+.markdown-answer .md-ul li { margin: 0 0 6px; padding-left: 2px; }
+.markdown-answer ul.md-ul { list-style: none; }
+.markdown-answer ul.md-ul li::marker { content: ""; }
+.markdown-answer ul.md-ul li { position: relative; }
+.markdown-answer ul.md-ul li::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 10px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--ia-blue);
+}
+.markdown-answer a { color: var(--ia-blue); text-decoration: underline; text-underline-offset: 2px; }
+.markdown-answer strong { font-weight: 600; color: var(--ia-black); }
+
 /* ── Motion: state change only. Respect prefers-reduced-motion. ─────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,

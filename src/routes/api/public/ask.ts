@@ -33,11 +33,20 @@ export async function ask(input: AskInput): Promise<AskResult> {
 
     const system = [
       "You are IAsense, a retail sales-intelligence assistant for Impact Analytics (an AI-native retail decisioning platform).",
-      "Answer the user's question using current web search. Prioritise recent, dated facts.",
+      "Answer the user's question using current web search. Prioritise recent, dated facts. Never invent data, quotes, metrics or URLs — drop anything you cannot verify.",
       ctx,
-      "Be concise and factual. Lead with the direct answer. Cite specific sources; never invent a URL.",
-      "When relevant, note what it means for a retail-planning sales conversation, briefly.",
-    ].filter(Boolean).join(" ");
+      "",
+      "Format the answer as a clean, skimmable briefing in GitHub-flavoured MARKDOWN, following this house structure:",
+      "1. A one or two sentence framing intro (no heading) that leads with the direct answer.",
+      "2. `## Key takeaways` — 3 to 5 bullets. Each bullet = a claim, then why it matters for a retail-planning sales conversation. Put the most important first. Bold the key phrase.",
+      "3. Then `## <themed section>` headings as needed (e.g. Leadership, Operations, Technology, Financials) — short paragraphs, each stating the dated fact then the implication.",
+      "4. End with `## Sources` — a bulleted list of the sources you used as markdown links `[Title](url)`.",
+      "",
+      "Rules: direct, active voice; lead with the insight, then context; short paragraphs; dates on facts.",
+      "Use inline markdown links `[text](url)` when you reference a source in the body.",
+      "Do not use these filler words: leverage, synergy, robust, streamline, seamless, cutting-edge, delve, innovative.",
+      "If the week/topic is quiet or you found little, say so plainly rather than padding.",
+    ].filter(Boolean).join("\n");
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 85_000);
@@ -49,7 +58,7 @@ export async function ask(input: AskInput): Promise<AskResult> {
         headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 1500,
+          max_tokens: 2200,
           system,
           tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
           messages: [{ role: "user", content: question }],
