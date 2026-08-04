@@ -45,8 +45,10 @@ export function BulkView() {
     setExpanded(null);
   }
 
-  function loadFromText() {
-    const pairs = text
+  // The textarea parses live — no separate "load" step.
+  function onText(value: string) {
+    setText(value);
+    const pairs = value
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
@@ -63,7 +65,10 @@ export function BulkView() {
       const parsed = parseCsv(String(reader.result || ""));
       const looksHeader = parsed[0]?.some((c) => /company|website|domain|name|url/i.test(c));
       const body = looksHeader ? parsed.slice(1) : parsed;
-      buildRows(body.map((r) => ({ company: (r[0] || "").trim(), site: (r[1] || "").trim() })));
+      const pairs = body.map((r) => ({ company: (r[0] || "").trim(), site: (r[1] || "").trim() }));
+      // Reflect the uploaded list in the textarea, then parse it.
+      setText(pairs.map((p) => (p.company ? `${p.company}, ${p.site}` : p.site)).filter(Boolean).join("\n"));
+      buildRows(pairs);
     };
     reader.readAsText(file);
   }
@@ -119,15 +124,13 @@ export function BulkView() {
           <span className="eyebrow">Paste websites — one per line</span>
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => onText(e.target.value)}
             rows={6}
             placeholder={"gap.com\ntarget.com\nwilliams-sonoma.com"}
             style={{ resize: "vertical", padding: "12px 14px", borderRadius: 13, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", fontSize: 14, fontFamily: "inherit", color: "var(--ia-black)", lineHeight: 1.6 }}
           />
         </label>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <button onClick={loadFromText} disabled={!text.trim()} style={btnGhost}>Load list</button>
-          <span className="secondary">or</span>
           <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
           <button onClick={() => fileRef.current?.click()} style={btnGhost}>Upload CSV</button>
