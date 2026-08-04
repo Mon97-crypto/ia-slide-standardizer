@@ -122,7 +122,7 @@ export function BulkView() {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <div className="eyebrow" style={{ marginBottom: 10 }}>Bulk upload</div>
+        <div className="eyebrow" style={{ marginBottom: 10 }}>Bulk upload · account intelligence</div>
         <h1 className="h1" style={{ margin: 0 }}>Rank a <span className="accent">list</span> at once.</h1>
         <p className="secondary" style={{ marginTop: 12, maxWidth: 620 }}>
           Paste up to {MAX} websites (one per line) or upload a CSV. Get a ranked summary, then expand any row for the

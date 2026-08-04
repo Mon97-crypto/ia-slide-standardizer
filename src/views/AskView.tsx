@@ -41,7 +41,7 @@ export function AskView() {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <div className="eyebrow" style={{ marginBottom: 10 }}>Ask IAsense</div>
+        <div className="eyebrow" style={{ marginBottom: 10 }}>Ask IAsense · account intelligence</div>
         <h1 className="h1" style={{ margin: 0 }}>Ask about any <span className="accent">account</span>.</h1>
         <p className="secondary" style={{ marginTop: 12, maxWidth: 620 }}>
           Ask a question about any company's news, leadership, operations or vendors. IAsense researches the web
