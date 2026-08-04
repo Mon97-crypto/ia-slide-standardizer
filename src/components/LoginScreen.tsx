@@ -18,6 +18,8 @@ export function LoginScreen() {
   const params = new URLSearchParams(window.location.search);
   const denied = params.get("auth") === "denied";
   const error = params.get("auth") === "error";
+  const deniedEmail = params.get("e") || "";
+  const allowedDomain = params.get("d") || "";
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -31,7 +33,11 @@ export function LoginScreen() {
 
         {denied && (
           <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 13, border: "1px solid var(--ia-orange)", background: "#fff1e8", fontSize: 14, textAlign: "left" }}>
-            <strong style={{ color: "var(--ia-orange)" }}>Access denied.</strong> That Google account is not authorized for this tool. Please sign in with an approved account, or contact your admin to be added.
+            <strong style={{ color: "var(--ia-orange)" }}>Access denied.</strong>{" "}
+            {deniedEmail ? <>You signed in as <strong>{deniedEmail}</strong>. </> : "That Google account is not authorized. "}
+            {allowedDomain
+              ? <>Access is limited to <strong>@{allowedDomain}</strong> accounts — sign in with that account.</>
+              : <>The server has no allowed domain or email list configured. Set <code>ALLOWED_EMAIL_DOMAIN</code> or <code>ALLOWED_EMAILS</code>.</>}
           </div>
         )}
         {error && (
