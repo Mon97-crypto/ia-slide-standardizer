@@ -15,10 +15,12 @@ export function Header({
   tab,
   onTab,
   status,
+  email,
 }: {
   tab: TabKey;
   onTab: (t: TabKey) => void;
   status: Status;
+  email?: string;
 }) {
   return (
     <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
@@ -39,7 +41,17 @@ export function Header({
           ))}
         </nav>
       </div>
-      <StatusPill status={status} />
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <StatusPill status={status} />
+        {email && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="secondary" style={{ fontSize: 13 }}>{email}</span>
+            <a href="/auth/logout" className="label" style={{ padding: "5px 11px", borderRadius: 999, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", color: "var(--ia-blue)", textDecoration: "none", fontWeight: 600 }}>
+              Sign out
+            </a>
+          </div>
+        )}
+      </div>
     </header>
   );
 }

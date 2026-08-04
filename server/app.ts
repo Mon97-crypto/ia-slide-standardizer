@@ -21,11 +21,16 @@ import { apolloContacts } from "../src/routes/api/public/apollo-contacts";
 import { accountInfoForCard } from "../src/routes/api/public/account-info";
 import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
+import { registerAuth } from "./auth";
 
 const now = () => Date.now();
 
 export const app = new Hono();
 app.use("/api/*", cors());
+
+// Google SSO (domain-restricted). Registers /auth/*, /api/auth/me, and the guard
+// on /api/public/* — MUST be before the /api/public route handlers below.
+registerAuth(app);
 
 interface ScanBody {
   company?: string;

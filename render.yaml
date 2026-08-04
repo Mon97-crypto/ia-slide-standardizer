@@ -23,4 +23,14 @@ services:
         sync: false
       - key: SERPAPI_KEY         # enables the deep news search
         sync: false
+      # ── Google SSO (restricted to @impactanalytics.co) ──────────────────────
+      - key: GOOGLE_CLIENT_ID       # from your Google Cloud OAuth client
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET   # from your Google Cloud OAuth client
+        sync: false
+      - key: SESSION_SECRET         # Render auto-generates a strong random value
+        generateValue: true
+      # Optional: override the allowed domain (defaults to impactanalytics.co)
+      # - key: ALLOWED_EMAIL_DOMAIN
+      #   value: impactanalytics.co
       # The Dockerfile sets PORT=10000 and a writable SCAN_CACHE_DIR; no need to set them here.
