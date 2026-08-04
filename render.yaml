@@ -1,13 +1,26 @@
+# Render Blueprint — one-click deploy of the IA Account Scanner.
+#
+# In Render:  New  >  Blueprint  >  pick this repo.  Render reads this file, builds
+# the Docker image (see ./Dockerfile), then prompts you to paste the three secret
+# values below. The secrets are entered in Render's GUI and are NEVER committed.
 services:
   - type: web
     name: ia-account-scanner
     runtime: docker
-    plan: free
+    dockerfilePath: ./Dockerfile
+    branch: claude/edgar-techstack-news-scanner-3cb5jm
+    # "starter" = always-on ($7/mo). Change to "free" for a zero-cost instance that
+    # sleeps after ~15 min idle and cold-starts on the next request (slower first scan).
+    plan: starter
     healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
-      - key: PORT
-        value: 10000
-      # Set these in the Render dashboard (server-side secrets only):
-      # - key: ANTHROPIC_API_KEY   (enables the scan-news AI function)
-      # - key: APOLLO_API_KEY      (enables apollo-contacts)
-      # - key: SEC_USER_AGENT      (optional; descriptive UA for SEC requests)
+      # sync:false => Render prompts for the value on deploy and stores it server-side
+      # only. Paste each key into the GUI field (no terminal paste to corrupt).
+      - key: ANTHROPIC_API_KEY   # enables AI news classification + web-verified company facts
+        sync: false
+      - key: APOLLO_API_KEY      # enables Account info + Contacts
+        sync: false
+      - key: SERPAPI_KEY         # enables the deep news search
+        sync: false
+      # The Dockerfile sets PORT=10000 and a writable SCAN_CACHE_DIR; no need to set them here.
