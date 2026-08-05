@@ -58,6 +58,7 @@ export function App() {
           onScanning={setScanning}
           pending={pendingScan}
           onConsumePending={() => setPendingScan(null)}
+          email={auth.email}
         />
       )}
       {tab === "ask" && <AskView />}

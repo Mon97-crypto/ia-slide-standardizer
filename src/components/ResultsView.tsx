@@ -10,6 +10,7 @@ import { KEY_SIGNALS, SUPPORTING_SIGNALS } from "../lib/scan-contract";
 import { SignalTile } from "./SignalTile";
 import { SignalsFoundRing } from "./SignalsFoundRing";
 import { AccountCard } from "./AccountCard";
+import { CrmCard } from "./CrmCard";
 
 const STEP_NAMES: Record<StepKey, string> = {
   edgar: "SEC filings",
@@ -23,6 +24,7 @@ export function ResultsView({
   account,
   accountLoading = false,
   compact = false,
+  email,
 }: {
   result: ScanResult;
   onRefresh: () => void;
@@ -30,6 +32,8 @@ export function ResultsView({
   accountLoading?: boolean;
   /** Hide the sticky company sub-header (e.g. inside a bulk row that already shows it). */
   compact?: boolean;
+  /** Logged-in user's email — used to highlight accounts they own in the CRM card. */
+  email?: string;
 }) {
   if (!result.verified) {
     return (
@@ -76,6 +80,8 @@ export function ResultsView({
       )}
 
       {(account || accountLoading) && <AccountCard account={account ?? null} loading={accountLoading} />}
+
+      <CrmCard domain={result.domain} email={email} />
 
       {(result.newsClassifier || result.resolvedEntity) && (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 12 }}>

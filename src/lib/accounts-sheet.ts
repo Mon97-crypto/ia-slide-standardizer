@@ -34,6 +34,35 @@ export async function fetchAccounts(refresh = false): Promise<AccountsResponse> 
   }
 }
 
+// Shared, in-flight-deduped fetch so the dashboard and the scan lookup reuse one
+// request instead of hitting the endpoint twice.
+let accountsPromise: Promise<AccountsResponse> | null = null;
+export function getAccountsCached(refresh = false): Promise<AccountsResponse> {
+  if (refresh) accountsPromise = null;
+  if (!accountsPromise) accountsPromise = fetchAccounts(refresh);
+  return accountsPromise;
+}
+
+// Normalize a domain for comparison: lowercase, drop scheme/www/path.
+function domainKey(raw: string): string {
+  return (raw || "")
+    .toLowerCase()
+    .trim()
+    .replace(/^[a-z]+:\/\//, "")
+    .replace(/^www\./, "")
+    .split(/[/?#]/)[0]
+    .trim();
+}
+
+/** Find the Salesforce row whose Domain_Text__c matches this website, if any. */
+export async function findAccountByDomain(domain: string): Promise<SheetAccount | null> {
+  const key = domainKey(domain);
+  if (!key) return null;
+  const r = await getAccountsCached();
+  if (!r.ok) return null;
+  return r.accounts.find((a) => domainKey(a.domain) === key) ?? null;
+}
+
 /** "monica.a@impactanalytics.co" -> "Monica A". Falls back gracefully. */
 export function displayNameFromEmail(email: string | undefined): string {
   if (!email) return "there";

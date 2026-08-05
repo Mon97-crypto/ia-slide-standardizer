@@ -20,10 +20,12 @@ export function ScanView({
   onScanning,
   pending,
   onConsumePending,
+  email,
 }: {
   onScanning: (b: boolean) => void;
   pending?: ScanRequest | null;
   onConsumePending?: () => void;
+  email?: string;
 }) {
   const [scanning, setScanning] = useState(false);
   const [steps, setSteps] = useState<StepState[] | null>(null);
@@ -100,6 +102,7 @@ export function ScanView({
             result={result}
             account={account}
             accountLoading={accountLoading}
+            email={email}
             onRefresh={() => lastReq.current && doScan(lastReq.current, true)}
           />
           <DecisionMakers company={result.company} domain={result.domain} />
