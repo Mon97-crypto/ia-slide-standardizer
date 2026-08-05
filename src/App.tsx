@@ -21,7 +21,7 @@ export interface PendingScan {
 }
 
 export function App() {
-  const [tab, setTab] = useState<TabKey>("dashboard");
+  const [tab, setTab] = useState<TabKey>("scan");
   const [scanning, setScanning] = useState(false);
   const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
   const [auth, setAuth] = useState<Auth>({ loading: true, authenticated: false });
