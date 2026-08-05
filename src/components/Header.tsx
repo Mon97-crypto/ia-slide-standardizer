@@ -3,9 +3,10 @@
  */
 import { StatusPill, type Status } from "./StatusPill";
 
-export type TabKey = "scan" | "ask" | "bulk";
+export type TabKey = "dashboard" | "scan" | "ask" | "bulk";
 
 const TABS: { key: TabKey; label: string }[] = [
+  { key: "dashboard", label: "My dashboard" },
   { key: "scan", label: "Scan" },
   { key: "bulk", label: "Bulk upload" },
   { key: "ask", label: "Ask IAsense" },

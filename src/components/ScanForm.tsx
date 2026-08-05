@@ -14,9 +14,11 @@ export interface ScanRequest {
 export function ScanForm({
   onScan,
   scanning,
+  prefill,
 }: {
   onScan: (req: ScanRequest) => void;
   scanning: boolean;
+  prefill?: ScanRequest | null;
 }) {
   const [website, setWebsite] = useState("");
   const [company, setCompany] = useState("");
@@ -25,6 +27,14 @@ export function ScanForm({
   useEffect(() => {
     ref.current?.focus();
   }, []);
+
+  // Reflect a scan started from the dashboard in the form fields.
+  useEffect(() => {
+    if (prefill) {
+      setWebsite(prefill.domain);
+      setCompany(prefill.company);
+    }
+  }, [prefill]);
 
   function submit() {
     const domain = normalizeDomain(website);

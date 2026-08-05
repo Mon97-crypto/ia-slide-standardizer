@@ -22,6 +22,7 @@ import { accountInfoForCard } from "../src/routes/api/public/account-info";
 import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
 import { registerAuth } from "./auth";
+import { readAccounts, sheetsConfigured } from "./sheets";
 
 const now = () => Date.now();
 
@@ -109,6 +110,21 @@ app.post("/api/public/scan-cache", async (c) => {
     writeCache(body.domain, body.company || "", body.result, now());
   }
   return c.json({ ok: true });
+});
+
+// Salesforce accounts pulled live from a private Google Sheet (service-account
+// auth, server-side only). Behind the /api/public/* auth guard.
+app.get("/api/public/accounts", async (c) => {
+  if (!sheetsConfigured()) {
+    return c.json({ ok: false, configured: false, accounts: [], error: "Google Sheet not connected" });
+  }
+  try {
+    const force = c.req.query("refresh") === "1";
+    const { accounts, updatedAt, count } = await readAccounts(force);
+    return c.json({ ok: true, configured: true, accounts, updatedAt, count });
+  } catch (e) {
+    return c.json({ ok: false, configured: true, accounts: [], error: (e as Error).message }, 502);
+  }
 });
 
 app.get("/api/health", (c) => c.json({ ok: true }));

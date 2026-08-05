@@ -1,7 +1,7 @@
 /**
  * ScanView — single-account scan: form → parallel progress → dashboard results.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ScanForm, type ScanRequest } from "../components/ScanForm";
 import { type StepState } from "../components/ProgressCard";
 import { SignalProgress } from "../components/SignalProgress";
@@ -16,13 +16,22 @@ const INITIAL_STEPS: StepState[] = [
   { key: "news", label: "News, hiring and Reddit", status: "pending" },
 ];
 
-export function ScanView({ onScanning }: { onScanning: (b: boolean) => void }) {
+export function ScanView({
+  onScanning,
+  pending,
+  onConsumePending,
+}: {
+  onScanning: (b: boolean) => void;
+  pending?: ScanRequest | null;
+  onConsumePending?: () => void;
+}) {
   const [scanning, setScanning] = useState(false);
   const [steps, setSteps] = useState<StepState[] | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prefill, setPrefill] = useState<ScanRequest | null>(null);
   const lastReq = useRef<ScanRequest | null>(null);
 
   const doScan = useCallback(async (req: ScanRequest, refresh = false) => {
@@ -51,6 +60,14 @@ export function ScanView({ onScanning }: { onScanning: (b: boolean) => void }) {
     }
   }, [onScanning]);
 
+  // A scan requested from the dashboard: pre-fill the form and run it immediately.
+  useEffect(() => {
+    if (!pending) return;
+    setPrefill(pending);
+    doScan(pending);
+    onConsumePending?.();
+  }, [pending, doScan, onConsumePending]);
+
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -63,7 +80,7 @@ export function ScanView({ onScanning }: { onScanning: (b: boolean) => void }) {
       </div>
 
       <section className="card" style={{ padding: 20, marginBottom: 24 }}>
-        <ScanForm onScan={(req) => doScan(req)} scanning={scanning} />
+        <ScanForm onScan={(req) => doScan(req)} scanning={scanning} prefill={prefill} />
       </section>
 
       {error && (
