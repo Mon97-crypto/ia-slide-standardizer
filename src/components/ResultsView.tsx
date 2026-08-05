@@ -90,7 +90,9 @@ export function ResultsView({
               color: result.newsClassifier === "llm-grounded" ? "var(--ia-blue-dark)" : "var(--ia-orange)" }}>
               {result.newsClassifier === "llm-grounded"
                 ? "AI-verified news (entity + recency checked)"
-                : `news classifier: ${result.newsClassifier} — set ANTHROPIC_API_KEY for entity filtering`}
+                : result.newsClassifier === "none"
+                ? "No recent news found in the last 365 days"
+                : "Keyword-matched news — set ANTHROPIC_API_KEY for AI entity filtering"}
             </span>
           )}
         </div>
