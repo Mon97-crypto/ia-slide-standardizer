@@ -15,6 +15,14 @@ interface Auth {
   email?: string;
 }
 
+// Browser-tab title per surface, so the tab reads e.g. "Scan · Account Intelligence".
+const TAB_TITLE: Record<TabKey, string> = {
+  scan: "Scan",
+  dashboard: "My Dashboard",
+  bulk: "Bulk upload",
+  ask: "Ask IAsense",
+};
+
 export function App() {
   const [tab, setTab] = useState<TabKey>("scan");
   const [scanning, setScanning] = useState(false);
@@ -26,6 +34,13 @@ export function App() {
       .then((d: { authenticated: boolean; email?: string }) => setAuth({ loading: false, authenticated: d.authenticated, email: d.email }))
       .catch(() => setAuth({ loading: false, authenticated: false }));
   }, []);
+
+  // Keep the browser tab title in sync with the active tab.
+  useEffect(() => {
+    document.title = auth.authenticated
+      ? `${TAB_TITLE[tab]} · Account Intelligence`
+      : "IA Sense · Account Intelligence";
+  }, [tab, auth.authenticated]);
 
   if (auth.loading) {
     return (
