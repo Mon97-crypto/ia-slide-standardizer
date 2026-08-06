@@ -17,6 +17,7 @@ import {
 } from "../lib/accounts-sheet";
 import { runScan, type ScanResult } from "../lib/scan";
 import { ResultsView } from "../components/ResultsView";
+import { ScanProgressBar } from "../components/ScanProgressBar";
 import { normalizeDomain, companyFromDomain } from "../lib/normalize";
 
 type LoadState = "loading" | "ready" | "unconfigured" | "error";
@@ -292,7 +293,12 @@ function AccountsTable({
                     {!scan && (
                       <button disabled={!domain} onClick={() => onScan(company, domain)} style={scanBtn(!domain)}>Scan</button>
                     )}
-                    {scan?.status === "running" && <span className="secondary" style={{ fontSize: 13 }}>Scanning…</span>}
+                    {scan?.status === "running" && (
+                      <button onClick={() => onExpand(domain)} style={{ ...viewBtn, cursor: "pointer" }}>
+                        <span aria-hidden style={{ display: "inline-block", width: 7, height: 7, borderRadius: 999, background: "var(--ia-blue)", marginRight: 6, animation: "pulse 1s ease-in-out infinite" }} />
+                        {isOpen ? "Scanning…" : "Show"}
+                      </button>
+                    )}
                     {scan?.status === "done" && (
                       <button onClick={() => onExpand(domain)} style={viewBtn}>{isOpen ? "Hide" : "View"}</button>
                     )}
@@ -301,6 +307,15 @@ function AccountsTable({
                     )}
                   </td>
                 </tr>
+                {isOpen && scan?.status === "running" && (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "0 16px 18px", background: "var(--ia-offwhite)" }}>
+                      <div style={{ paddingTop: 12 }}>
+                        <ScanProgressBar company={company} />
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {isOpen && scan?.status === "done" && scan.result && (
                   <tr>
                     <td colSpan={8} style={{ padding: "0 16px 18px", background: "var(--ia-offwhite)" }}>
