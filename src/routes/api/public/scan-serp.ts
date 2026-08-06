@@ -78,11 +78,14 @@ export async function scanSerp(input: ScanInput): Promise<FunctionResult> {
     const pool = dropStale(dedupeHits([...searchArrays.flat(), ...redditSearch, ...reddit]));
 
     if (pool.length === 0) {
-      // No results — return all search signals as found:false.
+      // Distinguish a genuine "no recent news" from the search backend being rate-
+      // limited / out of quota (common in large bulk runs) so the UI can tell the
+      // truth instead of showing fake zeros.
+      const classifier = provider.state?.limited ? "rate_limited" : provider.state?.errored ? "error" : "none";
       return {
         ok: true,
         signals: SEARCH_SIGNAL_IDS.map((id) => classifySignal(id, [], name, domain)),
-        meta: { source: provider.name, classifier: "none", hits: 0, resolvedName: name },
+        meta: { source: provider.name, classifier, hits: 0, resolvedName: name },
       };
     }
 

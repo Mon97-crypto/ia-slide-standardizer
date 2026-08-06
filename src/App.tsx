@@ -15,15 +15,9 @@ interface Auth {
   email?: string;
 }
 
-export interface PendingScan {
-  company: string;
-  domain: string;
-}
-
 export function App() {
   const [tab, setTab] = useState<TabKey>("scan");
   const [scanning, setScanning] = useState(false);
-  const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
   const [auth, setAuth] = useState<Auth>({ loading: true, authenticated: false });
 
   useEffect(() => {
@@ -32,12 +26,6 @@ export function App() {
       .then((d: { authenticated: boolean; email?: string }) => setAuth({ loading: false, authenticated: d.authenticated, email: d.email }))
       .catch(() => setAuth({ loading: false, authenticated: false }));
   }, []);
-
-  // Fired from the dashboard's per-row "Scan" button: switch to Scan and run it.
-  function scanFromDashboard(req: PendingScan) {
-    setPendingScan(req);
-    setTab("scan");
-  }
 
   if (auth.loading) {
     return (
@@ -52,15 +40,8 @@ export function App() {
   return (
     <div style={{ maxWidth: 1120, margin: "0 auto", padding: "28px 24px 96px" }}>
       <Header tab={tab} onTab={setTab} status={scanning ? "scanning" : "ready"} email={auth.email} />
-      {tab === "dashboard" && <DashboardView email={auth.email} onScan={scanFromDashboard} />}
-      {tab === "scan" && (
-        <ScanView
-          onScanning={setScanning}
-          pending={pendingScan}
-          onConsumePending={() => setPendingScan(null)}
-          email={auth.email}
-        />
-      )}
+      {tab === "dashboard" && <DashboardView email={auth.email} />}
+      {tab === "scan" && <ScanView onScanning={setScanning} email={auth.email} />}
       {tab === "ask" && <AskView />}
       {tab === "bulk" && <BulkView />}
     </div>

@@ -27,9 +27,13 @@ export function LoginScreen() {
         <img src="/ia_logo.png" alt="Impact Analytics" style={{ height: 36, width: "auto", margin: "0 auto 22px", display: "block" }} />
         <div className="eyebrow" style={{ marginBottom: 8 }}>Sales and BD · account intelligence</div>
         <h1 className="h2" style={{ fontSize: 26, margin: "0 0 8px" }}>Sign in to continue</h1>
-        <p className="secondary" style={{ margin: "0 auto 24px", maxWidth: 320 }}>
+        <p className="secondary" style={{ margin: "0 auto 16px", maxWidth: 320 }}>
           This tool is for authorized Impact Analytics users. Sign in with your approved Google account to continue.
         </p>
+        <div style={{ margin: "0 auto 24px", maxWidth: 340, padding: "10px 14px", borderRadius: 13, border: "1px solid var(--ia-blue-soft)", background: "var(--ia-blue-soft)", fontSize: 13, color: "var(--ia-blue-dark)", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}>
+          <span aria-hidden style={{ fontSize: 15 }}>🔒</span>
+          <span>Please sign in with your <strong>@impactanalytics.co</strong> email address only. Other accounts can't access this tool.</span>
+        </div>
 
         {denied && (
           <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 13, border: "1px solid var(--ia-orange)", background: "#fff1e8", fontSize: 14, textAlign: "left" }}>

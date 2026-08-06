@@ -19,7 +19,9 @@ interface Row {
 }
 
 const MAX = 30;
-const CONCURRENCY = 3;
+// Kept low on purpose: each account fires ~9 news searches, so a high concurrency
+// bursts the SerpAPI rate limit and later accounts come back empty.
+const CONCURRENCY = 2;
 
 const keyFoundOf = (res: ScanResult) => res.signals.filter((s) => s.group === "key" && s.found).length;
 const supFoundOf = (res: ScanResult) => res.signals.filter((s) => s.group === "supporting" && s.found).length;
@@ -128,6 +130,14 @@ export function BulkView() {
           Paste up to {MAX} websites (one per line) or upload a CSV. Get a ranked summary, then expand any row for the
           full signal detail. Cached results make re-runs instant.
         </p>
+        <div style={{ marginTop: 14, maxWidth: 620, padding: "10px 14px", borderRadius: 13, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", fontSize: 13, color: "var(--ia-gray-3)", display: "flex", gap: 8 }}>
+          <span aria-hidden>ℹ️</span>
+          <span>
+            Add <strong>around {MAX} companies</strong> per run. Each account uses several live news searches, so very
+            large batches can hit the news provider's monthly search quota — if some rows come back with 0 signals and a
+            "News source limit reached" note, the SerpAPI quota is the cause, not the company. Run the rest later or top up the quota.
+          </span>
+        </div>
       </div>
 
       <section className="card" style={{ padding: 20, marginBottom: 24, display: "grid", gap: 14 }}>

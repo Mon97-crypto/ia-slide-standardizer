@@ -81,7 +81,7 @@ export function ResultsView({
 
       {(account || accountLoading) && <AccountCard account={account ?? null} loading={accountLoading} />}
 
-      <CrmCard domain={result.domain} email={email} />
+      {!compact && <CrmCard domain={result.domain} email={email} />}
 
       {(result.newsClassifier || result.resolvedEntity) && (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 12 }}>
@@ -98,6 +98,10 @@ export function ResultsView({
                 ? "AI-verified news (entity + recency checked)"
                 : result.newsClassifier === "none"
                 ? "No recent news found in the last 365 days"
+                : result.newsClassifier === "rate_limited"
+                ? "News source limit reached — SerpAPI quota/rate limit (try again later)"
+                : result.newsClassifier === "error"
+                ? "News source temporarily unavailable — try again"
                 : "Keyword-matched news — set ANTHROPIC_API_KEY for AI entity filtering"}
             </span>
           )}
