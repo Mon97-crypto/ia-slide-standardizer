@@ -1,24 +1,32 @@
 /**
  * DashboardView — "My Dashboard". A personalised landing:
  *   - "Welcome <Name>!" derived from the logged-in email.
- *   - Two sub-tabs:
- *       Account Scan — every account synced from the Salesforce Google Sheet.
- *       My Accounts  — only accounts whose Owner.Name or BD_Owner__r maps to the
- *                      logged-in user.
+ *   - Two sub-tabs, both filtered SERVER-SIDE (the full ~10k-row book is never
+ *     shipped to the browser):
+ *       My Top Accounts — only accounts whose Owner.Name or BD_Owner__r map to
+ *                         the signed-in user.
+ *       All Accounts    — only accounts flagged Tier_1__c = TRUE in the sheet.
  * Each row can be scanned directly (jumps to the Scan tab, pre-filled).
  */
 import { useEffect, useMemo, useState } from "react";
 import {
   fetchAccounts,
   displayNameFromEmail,
-  nameTokensFromEmail,
-  isMine,
   formatRevenue,
+  type AccountScope,
   type SheetAccount,
 } from "../lib/accounts-sheet";
 import { normalizeDomain, companyFromDomain } from "../lib/normalize";
 
-type Sub = "all" | "mine";
+type LoadState = "loading" | "ready" | "unconfigured" | "error";
+
+interface ScopeData {
+  state: LoadState;
+  accounts: SheetAccount[];
+  error?: string;
+}
+
+const EMPTY: ScopeData = { state: "loading", accounts: [] };
 
 export function DashboardView({
   email,
@@ -27,59 +35,62 @@ export function DashboardView({
   email?: string;
   onScan: (req: { company: string; domain: string }) => void;
 }) {
-  const [sub, setSub] = useState<Sub>("all");
-  const [accounts, setAccounts] = useState<SheetAccount[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "unconfigured" | "error">("loading");
-  const [error, setError] = useState<string>("");
+  const [scope, setScope] = useState<AccountScope>("mine");
+  const [data, setData] = useState<Record<AccountScope, ScopeData>>({ mine: { ...EMPTY }, tier1: { ...EMPTY } });
   const [q, setQ] = useState("");
 
-  const load = (refresh = false) => {
-    setState("loading");
-    fetchAccounts(refresh).then((r) => {
-      if (!r.configured) { setState("unconfigured"); return; }
-      if (!r.ok) { setError(r.error || "Could not load accounts."); setState("error"); return; }
-      setAccounts(r.accounts);
-      setState("ready");
+  const load = (s: AccountScope, refresh = false) => {
+    setData((d) => ({ ...d, [s]: { ...EMPTY, state: "loading" } }));
+    fetchAccounts(s, refresh).then((r) => {
+      setData((d) => ({
+        ...d,
+        [s]: r.configured === false
+          ? { state: "unconfigured", accounts: [] }
+          : !r.ok
+          ? { state: "error", accounts: [], error: r.error || "Could not load accounts." }
+          : { state: "ready", accounts: r.accounts },
+      }));
     });
   };
-  useEffect(() => { load(); }, []);
+
+  // Load the active scope on first view / when it changes (once each).
+  useEffect(() => {
+    if (data[scope].state === "loading" && data[scope].accounts.length === 0) load(scope);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope]);
 
   const name = displayNameFromEmail(email);
-  const tokens = useMemo(() => nameTokensFromEmail(email), [email]);
-  const mine = useMemo(() => accounts.filter((a) => isMine(a, tokens)), [accounts, tokens]);
+  const cur = data[scope];
 
-  const base = sub === "mine" ? mine : accounts;
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return base;
-    return base.filter((a) =>
-      [a.name, a.domain, a.owner, a.bdOwner, a.type, a.status].some((f) => f.toLowerCase().includes(needle)),
+    if (!needle) return cur.accounts;
+    return cur.accounts.filter((a) =>
+      [a.name, a.domain, a.owner, a.bdOwner, a.type, a.status].some((f) => (f || "").toLowerCase().includes(needle)),
     );
-  }, [base, q]);
+  }, [cur.accounts, q]);
+
+  const countLabel = (s: AccountScope) => (data[s].state === "ready" ? ` · ${data[s].accounts.length}` : "");
 
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
         <div className="eyebrow" style={{ marginBottom: 10 }}>My dashboard · account intelligence</div>
         <h1 className="h1" style={{ margin: 0 }}>Welcome <span className="accent">{name}</span>!</h1>
-        <p className="secondary" style={{ marginTop: 12, maxWidth: 620 }}>
-          Your Salesforce accounts, synced live. Browse the full book or jump to just the accounts you own — then
-          scan any of them in one click.
+        <p className="secondary" style={{ marginTop: 12, maxWidth: 640 }}>
+          Your book of accounts, synced live from Salesforce. Jump to the accounts you own, or browse the
+          Tier 1 target list — then scan any of them in one click.
         </p>
       </div>
 
       {/* Sub-tabs */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 4, background: "var(--ia-white)", padding: 4, borderRadius: 999, border: "1px solid var(--ia-gray-1)" }}>
-          <SubTab active={sub === "all"} onClick={() => setSub("all")}>
-            Account Scan{state === "ready" ? ` · ${accounts.length}` : ""}
-          </SubTab>
-          <SubTab active={sub === "mine"} onClick={() => setSub("mine")}>
-            My Accounts{state === "ready" ? ` · ${mine.length}` : ""}
-          </SubTab>
+          <SubTab active={scope === "mine"} onClick={() => setScope("mine")}>My Top Accounts{countLabel("mine")}</SubTab>
+          <SubTab active={scope === "tier1"} onClick={() => setScope("tier1")}>All Accounts{countLabel("tier1")}</SubTab>
         </div>
         <div style={{ flex: 1 }} />
-        {state === "ready" && (
+        {cur.state === "ready" && (
           <>
             <input
               value={q}
@@ -87,18 +98,18 @@ export function DashboardView({
               placeholder="Filter…"
               style={{ height: 38, padding: "0 12px", borderRadius: 11, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", fontSize: 14, fontFamily: "inherit", color: "var(--ia-black)", width: 180 }}
             />
-            <button onClick={() => load(true)} style={btnGhost}>Refresh</button>
+            <button onClick={() => load(scope, true)} style={btnGhost}>Refresh</button>
           </>
         )}
       </div>
 
-      {state === "loading" && (
+      {cur.state === "loading" && (
         <div style={{ textAlign: "center", padding: "56px 0", color: "var(--ia-gray-3)" }}>
-          <p className="secondary">Loading your accounts…</p>
+          <p className="secondary">Loading accounts…</p>
         </div>
       )}
 
-      {state === "unconfigured" && (
+      {cur.state === "unconfigured" && (
         <div className="card" style={{ padding: 20 }}>
           <strong>Google Sheet not connected yet.</strong>
           <p className="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
@@ -108,21 +119,23 @@ export function DashboardView({
         </div>
       )}
 
-      {state === "error" && (
+      {cur.state === "error" && (
         <div className="card" style={{ padding: 20, border: "1px solid var(--ia-orange)" }}>
           <strong style={{ color: "var(--ia-orange)" }}>Couldn't load accounts.</strong>
-          <p className="secondary" style={{ marginTop: 8, marginBottom: 12 }}>{error}</p>
-          <button onClick={() => load(true)} style={btnGhost}>Try again</button>
+          <p className="secondary" style={{ marginTop: 8, marginBottom: 12 }}>{cur.error}</p>
+          <button onClick={() => load(scope, true)} style={btnGhost}>Try again</button>
         </div>
       )}
 
-      {state === "ready" && (
+      {cur.state === "ready" && (
         rows.length === 0 ? (
           <div style={{ textAlign: "center", padding: "48px 0", color: "var(--ia-gray-3)" }}>
             <p className="secondary">
-              {sub === "mine"
-                ? `No accounts are mapped to ${name} yet. We match your name against the Owner and BD Owner columns.`
-                : "No accounts match your filter."}
+              {q.trim()
+                ? "No accounts match your filter."
+                : scope === "mine"
+                ? `No accounts are mapped to ${name} yet. We match your name against the Owner and BD Owner columns — if you expect accounts here, check how your name is written in those cells.`
+                : "No Tier 1 accounts found. Flag accounts with Tier_1__c = TRUE in the sheet to surface them here."}
             </p>
           </div>
         ) : (

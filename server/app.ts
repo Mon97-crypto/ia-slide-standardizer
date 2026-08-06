@@ -21,8 +21,8 @@ import { apolloContacts } from "../src/routes/api/public/apollo-contacts";
 import { accountInfoForCard } from "../src/routes/api/public/account-info";
 import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
-import { registerAuth } from "./auth";
-import { readAccounts, sheetsConfigured } from "./sheets";
+import { registerAuth, sessionEmail } from "./auth";
+import { accountsForUser, tier1Accounts, accountByDomain, sheetsConfigured } from "./sheets";
 
 const now = () => Date.now();
 
@@ -113,17 +113,36 @@ app.post("/api/public/scan-cache", async (c) => {
 });
 
 // Salesforce accounts pulled live from a private Google Sheet (service-account
-// auth, server-side only). Behind the /api/public/* auth guard.
+// auth, server-side only). The FULL book is NEVER sent to the browser — the
+// server returns only the requested scope:
+//   scope=mine  -> accounts owned by the signed-in user (Owner or BD Owner)
+//   scope=tier1 -> curated accounts flagged Tier_1__c = TRUE (default)
+// Behind the /api/public/* auth guard.
 app.get("/api/public/accounts", async (c) => {
   if (!sheetsConfigured()) {
     return c.json({ ok: false, configured: false, accounts: [], error: "Google Sheet not connected" });
   }
   try {
     const force = c.req.query("refresh") === "1";
-    const { accounts, updatedAt, count } = await readAccounts(force);
-    return c.json({ ok: true, configured: true, accounts, updatedAt, count });
+    const scope = c.req.query("scope") === "mine" ? "mine" : "tier1";
+    const accounts = scope === "mine"
+      ? await accountsForUser(sessionEmail(c) ?? undefined, force)
+      : await tier1Accounts(force);
+    return c.json({ ok: true, configured: true, scope, accounts, count: accounts.length });
   } catch (e) {
     return c.json({ ok: false, configured: true, accounts: [], error: (e as Error).message }, 502);
+  }
+});
+
+// Single account by website domain — for the CRM card on a scan. Returns one row
+// (or null), never the whole book.
+app.get("/api/public/account-lookup", async (c) => {
+  if (!sheetsConfigured()) return c.json({ ok: false, configured: false, account: null });
+  try {
+    const account = await accountByDomain(c.req.query("domain") || "");
+    return c.json({ ok: true, configured: true, account });
+  } catch (e) {
+    return c.json({ ok: false, configured: true, account: null, error: (e as Error).message }, 502);
   }
 });
 

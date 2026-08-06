@@ -45,6 +45,15 @@ export function authEnabled(): boolean {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.SESSION_SECRET);
 }
 
+/** The signed-in user's email from the session cookie, or null (also null when
+ * auth is disabled, e.g. local dev). Used to scope data to the current user. */
+export function sessionEmail(c: { req: { header: (n: string) => string | undefined } }): string | null {
+  if (!authEnabled()) return null;
+  const token = getCookie(c as never, SESSION_COOKIE);
+  const sess = verifySession(token, process.env.SESSION_SECRET as string);
+  return sess?.email ?? null;
+}
+
 interface SessionPayload {
   email: string;
   name: string;

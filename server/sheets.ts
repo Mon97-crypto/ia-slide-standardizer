@@ -80,7 +80,53 @@ export interface SheetAccount {
   type: string;        // Type
   status: string;      // Account_Status__c
   revenue: string;     // AnnualRevenue (raw text as in the sheet)
+  tier1: boolean;      // Tier_1__c === TRUE
   raw: Record<string, string>;
+}
+
+function isTruthy(v: string): boolean {
+  return ["true", "yes", "1", "x", "y", "✓", "checked", "t"].includes((v || "").trim().toLowerCase());
+}
+
+// ---- owner matching (mirror of the client logic, kept server-side so the full
+// book is never shipped to the browser) ----
+export function nameTokensFromEmail(email: string | undefined): string[] {
+  if (!email) return [];
+  const local = email.split("@")[0] || "";
+  return local
+    .toLowerCase()
+    .split(/[._\-+]+/)
+    .map((t) => t.replace(/[^a-z]/g, ""))
+    .filter(Boolean);
+}
+
+function ownerTokens(field: string): string[] {
+  return (field || "").toLowerCase().replace(/[^a-z]+/g, " ").split(/\s+/).filter(Boolean);
+}
+
+function ownerMatches(field: string, tokens: string[]): boolean {
+  if (!field || tokens.length === 0) return false;
+  const o = ownerTokens(field);
+  if (!o.length) return false;
+  const first = tokens[0];
+  if (!o.includes(first)) return false;
+  if (tokens.length === 1) return true;
+  const last = tokens[tokens.length - 1];
+  return o.some((t) => t !== first && (t.startsWith(last) || last.startsWith(t)));
+}
+
+export function isMine(a: SheetAccount, tokens: string[]): boolean {
+  return ownerMatches(a.owner, tokens) || ownerMatches(a.bdOwner, tokens);
+}
+
+export function domainKey(raw: string): string {
+  return (raw || "")
+    .toLowerCase()
+    .trim()
+    .replace(/^[a-z]+:\/\//, "")
+    .replace(/^www\./, "")
+    .split(/[/?#]/)[0]
+    .trim();
 }
 
 // Map a header cell to a canonical key. Tolerant of case / spacing / punctuation
@@ -129,17 +175,20 @@ export async function readAccounts(force = false): Promise<SheetResult> {
 
   const headers = rows[0].map((h) => (h ?? "").trim());
   const cols = headers.map(canonHeader);
+  // Locate the Tier_1__c column (normalized: "tier1c") wherever it sits.
+  const tierCol = headers.findIndex((h) => h.toLowerCase().replace(/[^a-z0-9]/g, "").includes("tier1"));
 
   const accounts: SheetAccount[] = [];
   for (const row of rows.slice(1)) {
     const raw: Record<string, string> = {};
-    const rec: SheetAccount = { domain: "", name: "", owner: "", bdOwner: "", type: "", status: "", revenue: "", raw };
+    const rec: SheetAccount = { domain: "", name: "", owner: "", bdOwner: "", type: "", status: "", revenue: "", tier1: false, raw };
     headers.forEach((h, i) => {
       const v = (row[i] ?? "").toString().trim();
       raw[h] = v;
       const key = cols[i];
-      if (key && key !== "raw" && v) rec[key] = v;
+      if (key && key !== "raw" && key !== "tier1" && v) rec[key] = v;
     });
+    rec.tier1 = tierCol >= 0 && isTruthy((row[tierCol] ?? "").toString());
     // Skip empty rows (no name and no website).
     if (!rec.name && !rec.domain) continue;
     accounts.push(rec);
@@ -147,4 +196,26 @@ export async function readAccounts(force = false): Promise<SheetResult> {
 
   rowCache = { at: Date.now(), accounts };
   return { accounts, updatedAt: rowCache.at, count: accounts.length };
+}
+
+/** Accounts owned by the user (Owner.Name or BD_Owner__r maps to their email). */
+export async function accountsForUser(email: string | undefined, force = false): Promise<SheetAccount[]> {
+  const tokens = nameTokensFromEmail(email);
+  if (!tokens.length) return [];
+  const { accounts } = await readAccounts(force);
+  return accounts.filter((a) => isMine(a, tokens));
+}
+
+/** Curated subset: only accounts flagged Tier_1__c = TRUE. */
+export async function tier1Accounts(force = false): Promise<SheetAccount[]> {
+  const { accounts } = await readAccounts(force);
+  return accounts.filter((a) => a.tier1);
+}
+
+/** A single account by website domain (for the CRM card on a scan). */
+export async function accountByDomain(domain: string): Promise<SheetAccount | null> {
+  const key = domainKey(domain);
+  if (!key) return null;
+  const { accounts } = await readAccounts();
+  return accounts.find((a) => domainKey(a.domain) === key) ?? null;
 }
