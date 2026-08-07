@@ -90,10 +90,8 @@ export function DashboardView({ email }: { email?: string }) {
     }
   }
 
-  async function scanSelected() {
-    const picked = rows
-      .map((a) => ({ company: a.name || companyFromDomain(normalizeDomain(a.domain)), domain: normalizeDomain(a.domain) }))
-      .filter((r) => r.domain && selected.has(r.domain));
+  async function runList(list: { company: string; domain: string }[]) {
+    const picked = list.filter((r) => r.domain);
     if (!picked.length) return;
     const queue = [...picked];
     const worker = async () => {
@@ -105,6 +103,12 @@ export function DashboardView({ email }: { email?: string }) {
     };
     await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, picked.length) }, worker));
   }
+
+  const rowsAsTargets = () =>
+    rows.map((a) => ({ company: a.name || companyFromDomain(normalizeDomain(a.domain)), domain: normalizeDomain(a.domain) }));
+
+  const scanSelected = () => runList(rowsAsTargets().filter((r) => selected.has(r.domain)));
+  const scanAll = () => runList(rowsAsTargets());
 
   function toggleSelect(domain: string) {
     setSelected((s) => {
@@ -145,6 +149,11 @@ export function DashboardView({ email }: { email?: string }) {
         {cur.state === "ready" && (
           <button onClick={() => load(scope, true)} title="Refresh accounts" aria-label="Refresh accounts" style={iconBtn}>
             <RefreshIcon />
+          </button>
+        )}
+        {scope === "top" && cur.state === "ready" && rows.length > 0 && (
+          <button onClick={scanAll} disabled={anyScanning} style={btnPrimary(anyScanning)}>
+            {anyScanning ? "Scanning…" : `Scan all (${rows.length})`}
           </button>
         )}
         <div style={{ flex: 1 }} />
