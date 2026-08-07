@@ -38,8 +38,8 @@ interface RowScan {
 const EMPTY: ScopeData = { state: "loading", accounts: [] };
 
 export function DashboardView({ email }: { email?: string }) {
-  const [scope, setScope] = useState<AccountScope>("mine");
-  const [data, setData] = useState<Record<AccountScope, ScopeData>>({ mine: { ...EMPTY }, tier1: { ...EMPTY } });
+  const [scope, setScope] = useState<AccountScope>("top");
+  const [data, setData] = useState<Record<AccountScope, ScopeData>>({ top: { ...EMPTY }, mine: { ...EMPTY } });
   const [q, setQ] = useState("");
   const [scans, setScans] = useState<Record<string, RowScan>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -139,8 +139,8 @@ export function DashboardView({ email }: { email?: string }) {
       {/* Toolbar: sub-tabs + refresh (left) · filter + notifications (right) */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 4, background: "var(--ia-white)", padding: 4, borderRadius: 999, border: "1px solid var(--ia-gray-1)" }}>
-          <SubTab active={scope === "mine"} onClick={() => setScope("mine")}>My Top Accounts{countLabel("mine")}</SubTab>
-          <SubTab active={scope === "tier1"} onClick={() => setScope("tier1")}>All Accounts{countLabel("tier1")}</SubTab>
+          <SubTab active={scope === "top"} onClick={() => setScope("top")}>My Top Accounts{countLabel("top")}</SubTab>
+          <SubTab active={scope === "mine"} onClick={() => setScope("mine")}>All Accounts{countLabel("mine")}</SubTab>
         </div>
         {cur.state === "ready" && (
           <button onClick={() => load(scope, true)} title="Refresh accounts" aria-label="Refresh accounts" style={iconBtn}>
@@ -207,7 +207,7 @@ export function DashboardView({ email }: { email?: string }) {
                 ? "No accounts match your filter."
                 : scope === "mine"
                 ? `No accounts are mapped to ${name} yet. We match your name against the Owner and BD Owner columns.`
-                : "No Tier 1 accounts found. Flag accounts with Tier_1__c = TRUE in the sheet to surface them here."}
+                : `No Tier 1 accounts mapped to ${name} yet. My Top Accounts shows your accounts flagged Tier_1__c = TRUE — check "All Accounts" for your full book.`}
             </p>
           </div>
         ) : (

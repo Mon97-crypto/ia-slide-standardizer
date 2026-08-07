@@ -206,10 +206,10 @@ export async function accountsForUser(email: string | undefined, force = false):
   return accounts.filter((a) => isMine(a, tokens));
 }
 
-/** Curated subset: only accounts flagged Tier_1__c = TRUE. */
-export async function tier1Accounts(force = false): Promise<SheetAccount[]> {
-  const { accounts } = await readAccounts(force);
-  return accounts.filter((a) => a.tier1);
+/** The user's accounts that are ALSO flagged Tier_1__c = TRUE (their top accounts). */
+export async function topAccountsForUser(email: string | undefined, force = false): Promise<SheetAccount[]> {
+  const mine = await accountsForUser(email, force);
+  return mine.filter((a) => a.tier1);
 }
 
 /** A single account by website domain (for the CRM card on a scan). */

@@ -22,7 +22,7 @@ import { accountInfoForCard } from "../src/routes/api/public/account-info";
 import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
 import { registerAuth, sessionEmail } from "./auth";
-import { accountsForUser, tier1Accounts, accountByDomain, sheetsConfigured } from "./sheets";
+import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured } from "./sheets";
 
 const now = () => Date.now();
 
@@ -113,10 +113,10 @@ app.post("/api/public/scan-cache", async (c) => {
 });
 
 // Salesforce accounts pulled live from a private Google Sheet (service-account
-// auth, server-side only). The FULL book is NEVER sent to the browser — the
-// server returns only the requested scope:
-//   scope=mine  -> accounts owned by the signed-in user (Owner or BD Owner)
-//   scope=tier1 -> curated accounts flagged Tier_1__c = TRUE (default)
+// auth, server-side only). The FULL book is NEVER sent to the browser — every
+// scope is limited to the signed-in user's own accounts:
+//   scope=top  -> the user's accounts that are ALSO Tier_1__c = TRUE (default)
+//   scope=mine -> all of the user's accounts (Owner or BD Owner match)
 // Behind the /api/public/* auth guard.
 app.get("/api/public/accounts", async (c) => {
   if (!sheetsConfigured()) {
@@ -124,10 +124,11 @@ app.get("/api/public/accounts", async (c) => {
   }
   try {
     const force = c.req.query("refresh") === "1";
-    const scope = c.req.query("scope") === "mine" ? "mine" : "tier1";
+    const email = sessionEmail(c) ?? undefined;
+    const scope = c.req.query("scope") === "mine" ? "mine" : "top";
     const accounts = scope === "mine"
-      ? await accountsForUser(sessionEmail(c) ?? undefined, force)
-      : await tier1Accounts(force);
+      ? await accountsForUser(email, force)
+      : await topAccountsForUser(email, force);
     return c.json({ ok: true, configured: true, scope, accounts, count: accounts.length });
   } catch (e) {
     return c.json({ ok: false, configured: true, accounts: [], error: (e as Error).message }, 502);

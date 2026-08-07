@@ -17,7 +17,7 @@ export interface SheetAccount {
   raw: Record<string, string>;
 }
 
-export type AccountScope = "mine" | "tier1";
+export type AccountScope = "top" | "mine";
 
 export interface AccountsResponse {
   ok: boolean;
