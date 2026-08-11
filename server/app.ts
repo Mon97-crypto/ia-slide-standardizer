@@ -22,7 +22,7 @@ import { accountInfoForCard } from "../src/routes/api/public/account-info";
 import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
 import { registerAuth, sessionEmail, isAdminEmail } from "./auth";
-import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured, readAccounts, domainKey, type SheetAccount } from "./sheets";
+import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured, readAccounts, domainKey, crmContext, type SheetAccount } from "./sheets";
 import { personDigest } from "../src/routes/api/public/providers/digest-provider";
 
 const now = () => Date.now();
@@ -90,7 +90,9 @@ app.post("/api/public/account-info", async (c) => {
 
 app.post("/api/public/ask", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { question?: string; company?: string; domain?: string };
-  return c.json(await ask({ question: body.question ?? "", company: body.company, domain: body.domain }));
+  // Feed the connected Salesforce sheet as CRM context (relevance-matched).
+  const crm = await crmContext(body.question ?? "", body.company, body.domain).catch(() => "");
+  return c.json(await ask({ question: body.question ?? "", company: body.company, domain: body.domain, crm }));
 });
 
 // 30-day cache read/write (best-effort; on serverless it degrades gracefully).

@@ -11,6 +11,8 @@ interface AskInput {
   question: string;
   company?: string;
   domain?: string;
+  /** Compact Salesforce CRM context (owner/BD/status/revenue for relevant accounts). */
+  crm?: string;
 }
 
 export interface AskResult {
@@ -31,11 +33,24 @@ export async function ask(input: AskInput): Promise<AskResult> {
       ? `The user is asking about ${input.company}${input.domain ? ` (${input.domain})` : ""}. Only use sources about that specific company.`
       : "";
 
+    const crm = (input.crm || "").trim();
+    const crmBlock = crm
+      ? [
+          "You also have INTERNAL Salesforce CRM data from Impact Analytics' own records (below). Treat it as authoritative ground truth for account ownership, BD owner, account type, status, revenue and Tier 1 flags — prefer it over the web for those facts, and cite it as \"per Impact Analytics CRM\" (no URL needed). Use web search for external/market news and blend the two.",
+          "",
+          "── Salesforce CRM data ──",
+          crm,
+          "──",
+          "",
+        ].join("\n")
+      : "";
+
     const system = [
       "You are IAsense, a retail sales-intelligence assistant for Impact Analytics (an AI-native retail decisioning platform).",
-      "Answer the user's question using current web search. Prioritise recent, dated facts. Never invent data, quotes, metrics or URLs — drop anything you cannot verify.",
+      "Answer the user's question using current web search AND the internal CRM data provided. Prioritise recent, dated facts. Never invent data, quotes, metrics or URLs — drop anything you cannot verify.",
       ctx,
       "",
+      crmBlock,
       "Format the answer as a clean, skimmable briefing in GitHub-flavoured MARKDOWN, following this house structure:",
       "1. A one or two sentence framing intro (no heading) that leads with the direct answer.",
       "2. `## Key takeaways` — 3 to 5 bullets. Each bullet = a claim, then why it matters for a retail-planning sales conversation. Put the most important first. Bold the key phrase.",

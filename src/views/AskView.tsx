@@ -45,7 +45,8 @@ export function AskView() {
         <h1 className="h1" style={{ margin: 0 }}>Ask about any <span className="accent">account</span>.</h1>
         <p className="secondary" style={{ marginTop: 12, maxWidth: 620 }}>
           Ask a question about any company's news, leadership, operations or vendors. IAsense researches the web
-          live and answers with dated, sourced facts.
+          live and answers with dated, sourced facts — and now also draws on your connected Salesforce accounts
+          (owner, BD owner, type, status, revenue, Tier 1) for internal questions.
         </p>
       </div>
 

@@ -219,3 +219,49 @@ export async function accountByDomain(domain: string): Promise<SheetAccount | nu
   const { accounts } = await readAccounts();
   return accounts.find((a) => domainKey(a.domain) === key) ?? null;
 }
+
+/**
+ * Build a compact CRM context block for Ask IASense: overall counts plus the
+ * accounts most relevant to the question (matched by domain / name / keyword).
+ * The full ~10k-row book is never sent — only the matches + aggregate stats.
+ */
+export async function crmContext(query: string, company?: string, domain?: string, max = 12): Promise<string> {
+  if (!sheetsConfigured()) return "";
+  let accounts: SheetAccount[];
+  try { ({ accounts } = await readAccounts()); } catch { return ""; }
+  if (!accounts.length) return "";
+
+  const q = `${query} ${company ?? ""} ${domain ?? ""}`.toLowerCase();
+  const dk = domain ? domainKey(domain) : "";
+  const scored = accounts
+    .map((a) => {
+      let s = 0;
+      const name = (a.name || "").toLowerCase();
+      const adk = domainKey(a.domain);
+      if (dk && adk && adk === dk) s += 100;
+      if (name && name.length > 2 && q.includes(name)) s += 60;
+      if (adk && q.includes(adk)) s += 40;
+      if (adk && q.includes(adk.split(".")[0]) && adk.split(".")[0].length > 3) s += 15;
+      for (const w of name.split(/\s+/)) if (w.length > 3 && q.includes(w)) s += 6;
+      return { a, s };
+    })
+    .filter((x) => x.s > 0)
+    .sort((x, y) => y.s - x.s)
+    .slice(0, max);
+
+  const tier1 = accounts.filter((a) => a.tier1).length;
+  const header =
+    `Salesforce CRM snapshot (from the connected Google Sheet — internal ground truth):\n` +
+    `Total accounts on record: ${accounts.length}. Tier 1 accounts: ${tier1}.`;
+
+  if (!scored.length) {
+    return `${header}\nNo specific account matched this question by name or domain.`;
+  }
+  const rows = scored
+    .map(({ a }) => {
+      const d = domainKey(a.domain);
+      return `- ${a.name}${d ? ` (${d})` : ""} — Owner: ${a.owner || "—"}; BD Owner: ${a.bdOwner || "—"}; Type: ${a.type || "—"}; Status: ${a.status || "—"}; Annual revenue: ${a.revenue || "—"}${a.tier1 ? "; Tier 1: yes" : ""}`;
+    })
+    .join("\n");
+  return `${header}\nAccounts relevant to this question:\n${rows}`;
+}
