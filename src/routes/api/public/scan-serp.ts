@@ -37,12 +37,13 @@ function dedupeHits(hits: Hit[], cap = 60): Hit[] {
 }
 
 /**
- * Drop hits whose date is clearly older than ~13 months. Undated hits are kept
+ * Drop hits whose date is clearly older than ~200 days (180-day window + slack).
+ * Undated hits are kept
  * (SerpAPI often omits the date); the query-level recency filter + the classifier
  * handle those. Reddit permalinks (no parseable date) are always kept.
  */
 function dropStale(hits: Hit[]): Hit[] {
-  const cutoff = Date.now() - 400 * 24 * 60 * 60 * 1000; // ~13 months of slack
+  const cutoff = Date.now() - 200 * 24 * 60 * 60 * 1000; // ~180-day window + slack
   return hits.filter((h) => {
     if (!h.date) return true;
     const t = Date.parse(h.date);

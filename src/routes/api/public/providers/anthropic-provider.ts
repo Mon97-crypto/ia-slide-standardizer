@@ -39,7 +39,7 @@ function buildSystemPrompt(company: string, domain: string, industry: string | n
   return [
     `You research B2B sales signals for Impact Analytics, an AI-native retail`,
     `decisioning platform. Today is ${today}. Assess ${company} (${domain})${industry ? `, a ${industry} company,` : ""}`,
-    `over the LAST 12 MONTHS ONLY for exactly these ${NEWS_SIGNALS.length} signals, judged`,
+    `over the LAST 180 DAYS ONLY for exactly these ${NEWS_SIGNALS.length} signals, judged`,
     `against Impact Analytics' ideal-customer criteria.`,
     ``,
     domainGuard(company, domain, industry),

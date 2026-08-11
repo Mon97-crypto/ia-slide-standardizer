@@ -111,7 +111,7 @@ export function ResultsView({
                 : result.newsClassifier === "llm-grounded"
                 ? "AI-verified news (entity + recency checked)"
                 : result.newsClassifier === "none"
-                ? "No recent news found in the last 365 days"
+                ? "No recent news found in the last 180 days"
                 : result.newsClassifier === "rate_limited"
                 ? "News source limit reached — SerpAPI quota/rate limit (try again later)"
                 : result.newsClassifier === "error"

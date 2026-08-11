@@ -23,6 +23,7 @@ import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
 import { registerAuth, sessionEmail, isAdminEmail } from "./auth";
 import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured, readAccounts, domainKey, type SheetAccount } from "./sheets";
+import { personDigest } from "../src/routes/api/public/providers/digest-provider";
 
 const now = () => Date.now();
 
@@ -223,6 +224,15 @@ app.get("/api/public/admin/owners", async (c) => {
   } catch (e) {
     return c.json({ ok: false, configured: true, error: (e as Error).message }, 502);
   }
+});
+
+// Admin: last-7-days digest of developments across ONE person's top accounts.
+app.post("/api/public/admin/person-digest", async (c) => {
+  if (!isAdminEmail(sessionEmail(c))) return c.json({ ok: false, error: "forbidden" }, 403);
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string; accounts?: Array<{ name?: string; domain?: string }> };
+  const accounts = (body.accounts ?? []).map((a) => ({ name: String(a.name ?? ""), domain: String(a.domain ?? "") }));
+  const r = await personDigest(String(body.name ?? ""), accounts);
+  return c.json({ ...r, generatedAt: now() });
 });
 
 app.get("/api/health", (c) => c.json({ ok: true }));

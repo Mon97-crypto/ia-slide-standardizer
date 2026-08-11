@@ -59,8 +59,8 @@ function buildSystem(
     `     subject is a DIFFERENT legal entity, a differently-punctuated name, or a company`,
     `     in a different industry or country is NOT about the target, even if the words`,
     `     look similar. If the result does not clearly concern ${domain}, reject it.`,
-    `  2. It is recent: dated within the last 365 days (on or after ${cutoffDate(today)}).`,
-    `     If a result has no date or is clearly older than 365 days, do NOT use it.`,
+    `  2. It is recent: dated within the last 180 days (on or after ${cutoffDate(today)}).`,
+    `     If a result has no date or is clearly older than 180 days, do NOT use it.`,
     `  3. It satisfies the signal's criteria below.`,
     `If any of the three fails, that signal is found:false. When unsure, choose found:false.`,
     ``,
@@ -90,7 +90,7 @@ function buildSystem(
 function cutoffDate(todayIso: string): string {
   const t = Date.parse(todayIso);
   const base = Number.isNaN(t) ? Date.now() : t;
-  return new Date(base - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return new Date(base - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function buildUser(hits: Hit[]): string {
@@ -174,12 +174,12 @@ async function callOnce(
   }
 }
 
-/** Reject evidence whose parseable date is older than 365 days. Undated kept. */
+/** Reject evidence whose parseable date is older than 180 days. Undated kept. */
 function isRecent(dateStr: string): boolean {
   if (!dateStr) return true;
   const t = Date.parse(dateStr);
   if (Number.isNaN(t)) return true;
-  return t >= Date.now() - 365 * 24 * 60 * 60 * 1000;
+  return t >= Date.now() - 180 * 24 * 60 * 60 * 1000;
 }
 
 function coerce(raw: RawSignal[], allowedUrls: Set<string>): Signal[] {

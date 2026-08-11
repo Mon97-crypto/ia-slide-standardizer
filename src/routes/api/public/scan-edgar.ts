@@ -8,7 +8,7 @@
  * match the company is treated as private and no EDGAR signals are fired — this
  * prevents wrong-company filings (e.g. a namesake) from leaking in.
  *
- * Signals derived from 8-K item codes filed in the LAST 365 DAYS (item codes are
+ * Signals derived from 8-K item codes filed in the LAST 180 DAYS (item codes are
  * in the submissions JSON, so no filing-text fetch is needed):
  *   bankruptcy         : 8-K item 1.03
  *   ma_activity        : 8-K item 2.01, or DEFM14A / SC 13D / S-4
@@ -131,7 +131,7 @@ function withinLastYear(dateStr: string): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr).getTime();
   if (!Number.isFinite(d)) return false;
-  return Date.now() - d <= 365 * 24 * 60 * 60 * 1000;
+  return Date.now() - d <= 180 * 24 * 60 * 60 * 1000;
 }
 
 function evidenceFor(cik: string, f: Filing): Evidence {
@@ -181,18 +181,18 @@ export async function scanEdgar(input: ScanInput): Promise<FunctionResult> {
     } as Record<CatalogId, Filing[]>;
 
     const FOUND_DETAIL: Record<string, string> = {
-      bankruptcy: "Chapter 11 / bankruptcy item 1.03 filed in the last year.",
-      ma_activity: "Acquisition, merger or change-of-control filing in the last year.",
-      leadership_change: "Officer or director change (8-K item 5.02) in the last year.",
-      budget_cuts: "Restructuring / exit-and-disposal costs (8-K item 2.05) in the last year.",
-      debt_restructuring: "Acceleration of a financial obligation (8-K item 2.04) in the last year.",
+      bankruptcy: "Chapter 11 / bankruptcy item 1.03 filed in the last 180 days.",
+      ma_activity: "Acquisition, merger or change-of-control filing in the last 180 days.",
+      leadership_change: "Officer or director change (8-K item 5.02) in the last 180 days.",
+      budget_cuts: "Restructuring / exit-and-disposal costs (8-K item 2.05) in the last 180 days.",
+      debt_restructuring: "Acceleration of a financial obligation (8-K item 2.04) in the last 180 days.",
     };
     const EMPTY_DETAIL: Record<string, string> = {
-      bankruptcy: "No bankruptcy filings in the last year.",
-      ma_activity: "No acquisition or merger filings in the last year.",
-      leadership_change: "No officer/director-change filings in the last year.",
-      budget_cuts: "No restructuring-cost filings in the last year.",
-      debt_restructuring: "No debt-acceleration filings in the last year.",
+      bankruptcy: "No bankruptcy filings in the last 180 days.",
+      ma_activity: "No acquisition or merger filings in the last 180 days.",
+      leadership_change: "No officer/director-change filings in the last 180 days.",
+      budget_cuts: "No restructuring-cost filings in the last 180 days.",
+      debt_restructuring: "No debt-acceleration filings in the last 180 days.",
     };
 
     const signals: Signal[] = EDGAR_IDS.map((id) => {

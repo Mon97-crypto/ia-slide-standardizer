@@ -1,124 +1,143 @@
 /**
- * AdminView — admin-only "Team intelligence". Lists every person named as an
- * Owner or BD Owner on a Tier 1 account, with their email and top-account count.
- * "Send intelligence" opens Gmail's compose window prefilled with a digest of
- * THAT person's top accounts; "Preview" opens the styled digest in a new tab.
+ * AdminView — admin-only "Team intelligence". Lists every Owner / BD Owner on a
+ * Tier 1 account. For each person you "Prepare digest" (fetches last-7-days
+ * developments across their top accounts, de-duplicated against prior weeks),
+ * then "Preview" the styled digest or "Send via Gmail" (opens a prefilled draft
+ * and records the items as sent so next week only shows what's new).
  */
 import { useEffect, useState } from "react";
-import { fetchOwners, gmailComposeUrl, previewDigest, type AdminPerson } from "../lib/admin";
+import {
+  fetchOwners, fetchPersonDigest, dedupItems, markSent,
+  gmailComposeUrl, previewDigest, type AdminPerson, type DigestItem,
+} from "../lib/admin";
 
 type State = "loading" | "ready" | "unconfigured" | "forbidden" | "error";
+
+interface Prep {
+  status: "idle" | "loading" | "ready" | "error";
+  fresh: DigestItem[];
+  skipped: number;
+  sent?: boolean;
+  error?: string;
+}
+const IDLE: Prep = { status: "idle", fresh: [], skipped: 0 };
 
 export function AdminView() {
   const [people, setPeople] = useState<AdminPerson[]>([]);
   const [state, setState] = useState<State>("loading");
   const [error, setError] = useState("");
+  const [prep, setPrep] = useState<Record<number, Prep>>({});
 
   const load = () => {
-    setState("loading");
+    setState("loading"); setPrep({});
     fetchOwners().then((r) => {
       if (r.error === "forbidden") { setState("forbidden"); return; }
       if (r.configured === false) { setState("unconfigured"); return; }
       if (!r.ok) { setError(r.error || "Could not load team data."); setState("error"); return; }
-      setPeople(r.people);
-      setState("ready");
+      setPeople(r.people); setState("ready");
     });
   };
   useEffect(() => { load(); }, []);
 
-  const sendOne = (p: AdminPerson) => window.open(gmailComposeUrl(p), "_blank");
-  // "Send to all" opens one Gmail compose per person. Browsers throttle multiple
-  // window.open calls, so we stagger them slightly; if popups are blocked, the
-  // admin can still send each from its own row button.
-  const sendAll = () => {
-    people.forEach((p, i) => setTimeout(() => window.open(gmailComposeUrl(p), "_blank"), i * 600));
+  const prepare = async (i: number, p: AdminPerson) => {
+    setPrep((m) => ({ ...m, [i]: { ...IDLE, status: "loading" } }));
+    const r = await fetchPersonDigest(p);
+    if (!r.ok) { setPrep((m) => ({ ...m, [i]: { ...IDLE, status: "error", error: r.error || "Could not fetch." } })); return; }
+    const { fresh, skipped } = dedupItems(p.email, r.items);
+    setPrep((m) => ({ ...m, [i]: { status: "ready", fresh, skipped } }));
   };
+
+  const send = (i: number, p: AdminPerson) => {
+    const cur = prep[i];
+    if (!cur || cur.status !== "ready") return;
+    window.open(gmailComposeUrl(p, cur.fresh), "_blank");
+    markSent(p.email, cur.fresh);
+    setPrep((m) => ({ ...m, [i]: { ...cur, sent: true } }));
+  };
+
+  const busy = Object.values(prep).some((p) => p.status === "loading");
 
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
         <div className="eyebrow" style={{ marginBottom: 10 }}>Admin · account intelligence</div>
         <h1 className="h1" style={{ margin: 0 }}>Team <span className="accent">intelligence</span></h1>
-        <p className="secondary" style={{ marginTop: 12, maxWidth: 640 }}>
-          Everyone named as an Owner or BD Owner on a Tier 1 account. Send each person a digest of their own top
-          accounts — it opens a prefilled Gmail draft so you can review before sending.
+        <p className="secondary" style={{ marginTop: 12, maxWidth: 660 }}>
+          Everyone named as an Owner or BD Owner on a Tier 1 account. Prepare each person's weekly digest — the last
+          7 days of developments across their top accounts, de-duplicated against what they were already sent — then
+          send it as a prefilled Gmail draft.
         </p>
       </div>
 
       {state === "ready" && people.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
           <span className="secondary" style={{ fontSize: 14 }}>{people.length} {people.length === 1 ? "person" : "people"}</span>
           <div style={{ flex: 1 }} />
-          <button onClick={load} style={btnGhost}>Refresh</button>
-          <button onClick={sendAll} style={btnPrimary}>Send intelligence to all</button>
-        </div>
-      )}
-
-      {state === "loading" && (
-        <div style={{ textAlign: "center", padding: "56px 0", color: "var(--ia-gray-3)" }}>
-          <p className="secondary">Loading team…</p>
-        </div>
-      )}
-
-      {state === "forbidden" && (
-        <div className="card" style={{ padding: 20, border: "1px solid var(--ia-orange)" }}>
-          <strong style={{ color: "var(--ia-orange)" }}>Admins only.</strong>
-          <p className="secondary" style={{ marginTop: 8, marginBottom: 0 }}>Your account isn't on the admin list.</p>
-        </div>
-      )}
-
-      {state === "unconfigured" && (
-        <div className="card" style={{ padding: 20 }}>
-          <strong>Google Sheet not connected yet.</strong>
-          <p className="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-            Connect the Salesforce sheet (see the dashboard) to populate the team list.
-          </p>
-        </div>
-      )}
-
-      {state === "error" && (
-        <div className="card" style={{ padding: 20, border: "1px solid var(--ia-orange)" }}>
-          <strong style={{ color: "var(--ia-orange)" }}>Couldn't load.</strong>
-          <p className="secondary" style={{ marginTop: 8, marginBottom: 12 }}>{error}</p>
-          <button onClick={load} style={btnGhost}>Try again</button>
+          <button onClick={load} disabled={busy} style={btnGhost}>Refresh list</button>
         </div>
       )}
 
       {state === "ready" && (
+        <div className="card" style={{ padding: "10px 14px", marginBottom: 16, background: "var(--ia-blue-soft)", border: "1px solid #dfe4f5", fontSize: 13, color: "var(--ia-blue-dark)", display: "flex", gap: 8 }}>
+          <span aria-hidden>ℹ️</span>
+          <span>Preparing a digest runs a live 7-day web search (uses Anthropic credits). Items already sent to a person in a prior week are hidden automatically, so each weekly send only carries what's new.</span>
+        </div>
+      )}
+
+      {state === "loading" && <Centered>Loading team…</Centered>}
+      {state === "forbidden" && <Card orange><strong style={{ color: "var(--ia-orange)" }}>Admins only.</strong><p className="secondary" style={{ marginTop: 8, marginBottom: 0 }}>Your account isn't on the admin list.</p></Card>}
+      {state === "unconfigured" && <Card><strong>Google Sheet not connected yet.</strong><p className="secondary" style={{ marginTop: 8, marginBottom: 0 }}>Connect the Salesforce sheet to populate the team list.</p></Card>}
+      {state === "error" && <Card orange><strong style={{ color: "var(--ia-orange)" }}>Couldn't load.</strong><p className="secondary" style={{ marginTop: 8, marginBottom: 12 }}>{error}</p><button onClick={load} style={btnGhost}>Try again</button></Card>}
+
+      {state === "ready" && (
         people.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "48px 0", color: "var(--ia-gray-3)" }}>
-            <p className="secondary">No Tier 1 accounts with an assigned Owner or BD Owner yet.</p>
-          </div>
+          <Centered>No Tier 1 accounts with an assigned Owner or BD Owner yet.</Centered>
         ) : (
-          <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 720 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--ia-gray-1)" }}>
-                  <Th>Person</Th>
-                  <Th>Email</Th>
-                  <Th right>Top accounts</Th>
-                  <Th right>Scanned</Th>
-                  <Th right> </Th>
-                </tr>
-              </thead>
-              <tbody>
-                {people.map((p, i) => {
-                  const scanned = p.accounts.filter((a) => a.intel && a.intel.found > 0).length;
-                  return (
-                    <tr key={i} style={{ borderTop: "1px solid var(--ia-gray-1)" }} className="hover-lift">
-                      <td style={td}><span style={{ fontWeight: 600 }}>{p.name}</span></td>
-                      <td style={td}><span className="secondary">{p.email}</span></td>
-                      <td style={{ ...td, textAlign: "right" }} className="tnum">{p.accounts.length}</td>
-                      <td style={{ ...td, textAlign: "right" }} className="tnum secondary">{scanned}/{p.accounts.length}</td>
-                      <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
-                        <button onClick={() => previewDigest(p)} style={{ ...btnGhost, marginRight: 8 }}>Preview</button>
-                        <button onClick={() => sendOne(p)} style={btnPrimary}>Send intelligence</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div style={{ display: "grid", gap: 12 }}>
+            {people.map((p, i) => {
+              const pr = prep[i] ?? IDLE;
+              return (
+                <div key={i} className="card" style={{ padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 600 }}>{p.name}</div>
+                      <div className="secondary" style={{ fontSize: 13 }}>{p.email} · {p.accounts.length} top account{p.accounts.length === 1 ? "" : "s"}</div>
+                    </div>
+                    {pr.status === "idle" && <button onClick={() => prepare(i, p)} style={btnPrimary}>Prepare digest</button>}
+                    {pr.status === "loading" && (
+                      <span className="secondary" style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                        <span aria-hidden style={{ width: 7, height: 7, borderRadius: 999, background: "var(--ia-blue)", animation: "pulse 1s ease-in-out infinite" }} />
+                        Researching last 7 days…
+                      </span>
+                    )}
+                    {pr.status === "error" && <button onClick={() => prepare(i, p)} style={{ ...btnGhost, color: "var(--ia-orange)", borderColor: "var(--ia-orange)" }}>Retry</button>}
+                    {pr.status === "ready" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => previewDigest(p, pr.fresh)} style={btnGhost}>Preview</button>
+                        <button onClick={() => send(i, p)} disabled={pr.fresh.length === 0} style={pr.fresh.length ? btnPrimary : btnDisabled}>
+                          {pr.sent ? "Re-open in Gmail" : "Send via Gmail"}
+                        </button>
+                        <button onClick={() => prepare(i, p)} style={btnGhost}>Re-check</button>
+                      </div>
+                    )}
+                  </div>
+                  {pr.status === "ready" && (
+                    <div style={{ marginTop: 10, fontSize: 13 }}>
+                      {pr.fresh.length === 0 ? (
+                        <span className="secondary">No new developments in the last 7 days{pr.skipped ? ` (${pr.skipped} already sent earlier, hidden)` : ""}.</span>
+                      ) : (
+                        <span>
+                          <strong style={{ color: "var(--ia-blue)" }}>{pr.fresh.length}</strong> new item{pr.fresh.length === 1 ? "" : "s"} to send
+                          {pr.skipped ? <span className="secondary"> · {pr.skipped} repeat{pr.skipped === 1 ? "" : "s"} hidden</span> : null}
+                          {pr.sent ? <span className="secondary"> · draft opened & marked sent</span> : null}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {pr.status === "error" && <div style={{ marginTop: 8, fontSize: 13, color: "var(--ia-orange)" }}>{pr.error}</div>}
+                </div>
+              );
+            })}
           </div>
         )
       )}
@@ -126,9 +145,12 @@ export function AdminView() {
   );
 }
 
-const Th = ({ children, right }: { children: React.ReactNode; right?: boolean }) => (
-  <th className="eyebrow" style={{ textAlign: right ? "right" : "left", padding: "12px 16px", fontWeight: 600, whiteSpace: "nowrap" }}>{children}</th>
+const Centered = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ textAlign: "center", padding: "48px 0", color: "var(--ia-gray-3)" }}><p className="secondary">{children}</p></div>
 );
-const td: React.CSSProperties = { padding: "12px 16px", verticalAlign: "middle" };
+const Card = ({ children, orange }: { children: React.ReactNode; orange?: boolean }) => (
+  <div className="card" style={{ padding: 20, border: orange ? "1px solid var(--ia-orange)" : undefined }}>{children}</div>
+);
 const btnGhost: React.CSSProperties = { height: 34, padding: "0 14px", borderRadius: 10, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", color: "var(--ia-blue)", fontWeight: 600, fontSize: 13 };
 const btnPrimary: React.CSSProperties = { height: 34, padding: "0 14px", borderRadius: 10, border: "none", background: "var(--ia-blue)", color: "#fff", fontWeight: 600, fontSize: 13 };
+const btnDisabled: React.CSSProperties = { ...btnPrimary, background: "var(--ia-blue-light)" };

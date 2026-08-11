@@ -27,7 +27,7 @@ export interface SearchProvider {
   name: string;
   available: boolean;
   state?: ProviderState;
-  /** recentOnly restricts results to roughly the last 12 months. */
+  /** recentOnly restricts results to roughly the last 180 days. */
   search: (query: string, num?: number, recentOnly?: boolean) => Promise<Hit[]>;
 }
 
@@ -76,7 +76,7 @@ function serpApi(key: string): SearchProvider {
     available: true,
     state,
     async search(query, num = 8, recentOnly = false) {
-      const recency = recentOnly ? "&tbs=qdr:y" : ""; // Google "past year" filter
+      const recency = recentOnly ? "&tbs=qdr:m6" : ""; // Google "past 6 months" filter (~180 days)
       const url =
         `${base}/search.json?engine=google&num=${num}${recency}` +
         `&q=${encodeURIComponent(query)}&api_key=${encodeURIComponent(key)}`;
@@ -103,7 +103,7 @@ function googleCse(key: string, cx: string): SearchProvider {
     available: true,
     state,
     async search(query, num = 8, recentOnly = false) {
-      const recency = recentOnly ? "&dateRestrict=m12" : ""; // last 12 months
+      const recency = recentOnly ? "&dateRestrict=d180" : ""; // last 180 days
       const url =
         `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(key)}` +
         `&cx=${encodeURIComponent(cx)}&num=${Math.min(num, 10)}${recency}&q=${encodeURIComponent(query)}`;
