@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { parseCsv, toCsv, downloadCsv } from "../lib/csv";
 import { runScan, type ScanResult } from "../lib/scan";
 import { ResultsView } from "../components/ResultsView";
+import { ScanProgressBar } from "../components/ScanProgressBar";
 import { normalizeDomain, companyFromDomain } from "../lib/normalize";
 
 interface Row {
@@ -195,8 +196,16 @@ export function BulkView() {
                   </div>
                   <span className="tnum" style={{ width: 70, textAlign: "right", fontWeight: 600 }}>{res ? keyFoundOf(res) : statusDot(r.status)}</span>
                   <span className="tnum secondary" style={{ width: 90, textAlign: "right" }}>{res ? supFoundOf(res) : ""}</span>
-                  <span className="tnum" style={{ width: 70, textAlign: "right", fontWeight: 600, color: "var(--ia-blue)" }}>{res ? `${foundOf(res)}/${res.signals.length}` : (r.error ? "failed" : "")}</span>
+                  <span className="tnum" style={{ width: 70, textAlign: "right", fontWeight: 600, color: r.status === "running" ? "var(--ia-blue)" : r.error ? "var(--ia-orange)" : "var(--ia-blue)" }}>
+                    {res ? `${foundOf(res)}/${res.signals.length}` : r.status === "running" ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 500 }}>
+                        <span aria-hidden style={{ width: 7, height: 7, borderRadius: 999, background: "var(--ia-blue)", animation: "pulse 1s ease-in-out infinite" }} />
+                        scanning
+                      </span>
+                    ) : r.status === "queued" ? <span className="secondary" style={{ fontSize: 13, fontWeight: 400 }}>queued</span> : (r.error ? "failed" : "")}
+                  </span>
                 </div>
+                {r.status === "running" && <div style={{ padding: "0 16px 16px" }}><ScanProgressBar company={r.company} /></div>}
                 {open && res && <div style={{ padding: "0 16px 16px" }}><ResultsView result={res} onRefresh={() => {}} compact /></div>}
               </div>
             );
