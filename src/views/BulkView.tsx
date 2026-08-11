@@ -134,7 +134,7 @@ export function BulkView() {
         <div style={{ marginTop: 14, maxWidth: 620, padding: "10px 14px", borderRadius: 13, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", fontSize: 13, color: "var(--ia-gray-3)", display: "flex", gap: 8 }}>
           <span aria-hidden>ℹ️</span>
           <span>
-            Add <strong>around {MAX} companies</strong> per run. Each account uses several live news searches, so very
+            Add a <strong>maximum of {MAX} companies</strong> per run. Each account uses several live news searches, so very
             large batches can hit the news provider's monthly search quota — if some rows come back with 0 signals and a
             "News source limit reached" note, the SerpAPI quota is the cause, not the company. Run the rest later or top up the quota.
           </span>
