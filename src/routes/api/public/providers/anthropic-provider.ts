@@ -175,8 +175,9 @@ export async function scanNewsAnthropic(input: ScanInput): Promise<FunctionResul
           max_tokens: 4000,
           system: buildSystemPrompt(name, domain, entity.industry),
           // Cap Claude's own searches per scan (balances Anthropic web-search cost
-          // vs coverage). 6 is plenty for one company; override with NEWS_WEB_SEARCH_MAX.
-          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Number(process.env.NEWS_WEB_SEARCH_MAX || 6) }],
+          // vs coverage). 4 keeps per-scan cost/rate low while staying accurate;
+          // override with NEWS_WEB_SEARCH_MAX.
+          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Number(process.env.NEWS_WEB_SEARCH_MAX || 4) }],
           messages: [
             {
               role: "user",

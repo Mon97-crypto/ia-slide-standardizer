@@ -28,8 +28,9 @@ services:
       # - key: NEWS_SOURCE
       #   value: auto
       # Max searches Claude runs per scan when using its own web search (cost vs coverage).
+      # Defaults to 4 in code; raise for deeper coverage at higher cost.
       # - key: NEWS_WEB_SEARCH_MAX
-      #   value: "6"
+      #   value: "4"
       # ── Google SSO (restricted to @impactanalytics.co) ──────────────────────
       - key: GOOGLE_CLIENT_ID       # from your Google Cloud OAuth client
         sync: false
