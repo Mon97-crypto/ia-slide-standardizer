@@ -92,9 +92,11 @@ export function ResultsView({
           )}
           {result.newsClassifier && (
             <span className="label" style={{ padding: "3px 9px", borderRadius: 999,
-              background: result.newsClassifier === "llm-grounded" ? "var(--ia-blue-soft)" : "#fff1e8",
-              color: result.newsClassifier === "llm-grounded" ? "var(--ia-blue-dark)" : "var(--ia-orange)" }}>
-              {result.newsClassifier === "llm-grounded"
+              background: result.newsClassifier === "llm-grounded" || result.newsClassifier === "anthropic" ? "var(--ia-blue-soft)" : "#fff1e8",
+              color: result.newsClassifier === "llm-grounded" || result.newsClassifier === "anthropic" ? "var(--ia-blue-dark)" : "var(--ia-orange)" }}>
+              {result.newsClassifier === "anthropic"
+                ? "AI web search — grounded, entity + recency checked"
+                : result.newsClassifier === "llm-grounded"
                 ? "AI-verified news (entity + recency checked)"
                 : result.newsClassifier === "none"
                 ? "No recent news found in the last 365 days"

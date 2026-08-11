@@ -174,7 +174,9 @@ export async function scanNewsAnthropic(input: ScanInput): Promise<FunctionResul
           model: MODEL,
           max_tokens: 4000,
           system: buildSystemPrompt(name, domain, entity.industry),
-          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 8 }],
+          // Cap Claude's own searches per scan (balances Anthropic web-search cost
+          // vs coverage). 6 is plenty for one company; override with NEWS_WEB_SEARCH_MAX.
+          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Number(process.env.NEWS_WEB_SEARCH_MAX || 6) }],
           messages: [
             {
               role: "user",
@@ -209,7 +211,18 @@ export async function scanNewsAnthropic(input: ScanInput): Promise<FunctionResul
       return { ok: false, signals: [], error: "Could not parse model output as JSON." };
     }
 
-    return { ok: true, signals: coerceSignals(parsed), meta: { model: MODEL } };
+    const signals = coerceSignals(parsed);
+    return {
+      ok: true,
+      signals,
+      meta: {
+        model: MODEL,
+        source: "anthropic-web-search",
+        classifier: "anthropic",
+        resolvedName: name,
+        hits: signals.filter((s) => s.found).length,
+      },
+    };
   } catch (err) {
     return { ok: false, signals: [], error: (err as Error).message };
   }

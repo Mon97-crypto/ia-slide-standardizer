@@ -1,13 +1,19 @@
 /**
- * scan-news.ts — orchestrates the dedicated per-source providers into the
- * "News and hiring" tier the frontend expects. It composes:
- *   - scan-serp   (search API): 9 news-derived signals
- *   - jobs feed:   hiring_activity, no_job_openings
- *   - funding:     optional ma_activity / ipo_preparation supplements
+ * scan-news.ts — orchestrates the "News and hiring" tier. The heavy news-signal
+ * gathering can run from either of two backends; jobs + funding always supplement
+ * (neither uses SerpAPI):
+ *   - Anthropic web search (scanNewsAnthropic): Claude searches AND judges in one
+ *     grounded call. Zero SerpAPI credits per scan.
+ *   - SerpAPI (scanSerp): ~9 searches/scan, then Claude classifies the pool.
  *
- * If no search key is configured but ANTHROPIC_API_KEY is, it falls back to the
- * single Anthropic web-search classifier so the tier still works. If nothing is
- * configured it returns ok:false naming the keys to set. Never throws.
+ * Which is PRIMARY is controlled by NEWS_SOURCE:
+ *   - "anthropic" → always Claude web search (SerpAPI never touched for news).
+ *   - "serp"      → always SerpAPI (legacy behaviour).
+ *   - "auto" (default) → prefer Claude web search whenever ANTHROPIC_API_KEY is
+ *     set (saves SerpAPI credits), otherwise SerpAPI.
+ * The non-primary backend is used only as a FALLBACK when the primary errors, so
+ * a rate-limit / quota / API blip still yields results without spending both.
+ * Never throws.
  */
 
 import type { FunctionResult, Signal } from "../../../lib/scan-contract";
@@ -28,47 +34,66 @@ export async function scanNews(input: ScanInput): Promise<FunctionResult> {
     if (!company) return { ok: false, signals: [], error: "company is required" };
 
     const hasSearch = getSearchProvider().available;
+    const hasAnthropic = anthropicAvailable();
+    const mode = (process.env.NEWS_SOURCE || "auto").toLowerCase();
 
-    // Fallback: no dedicated search key, but Anthropic is available.
-    if (!hasSearch) {
-      if (anthropicAvailable()) return scanNewsAnthropic(input);
+    // Decide the primary news backend. Default (auto): prefer Anthropic web search
+    // when available to keep SerpAPI credits for when they're actually needed.
+    const preferAnthropic = mode === "anthropic" ? true : mode === "serp" ? false : hasAnthropic;
+
+    if (!hasSearch && !hasAnthropic) {
       return {
         ok: false,
         signals: [],
         error:
-          "No news source configured. Set SERPAPI_KEY (or GOOGLE_CSE_KEY + GOOGLE_CSE_CX) for search, and a jobs key for hiring. ANTHROPIC_API_KEY also works as a single-source fallback.",
+          "No news source configured. Set ANTHROPIC_API_KEY (Claude web search) and/or SERPAPI_KEY (or GOOGLE_CSE_KEY + GOOGLE_CSE_CX).",
       };
     }
 
-    const tasks: Array<Promise<FunctionResult>> = [scanSerp(input), scanJobs(company, domain).then(toResult)];
-    if (fundingEnabled()) tasks.push(scanFunding(input));
+    // Run the primary; fall back to the other backend only if the primary errored.
+    const runAnthropic = () => scanNewsAnthropic(input);
+    const runSerp = () => scanSerp(input);
 
-    const settled = await Promise.allSettled(tasks);
-    const signals: Signal[] = [];
+    let primary: FunctionResult;
+    if (preferAnthropic && hasAnthropic) {
+      primary = await runAnthropic();
+      if (!primary.ok && hasSearch) primary = await runSerp();
+    } else if (hasSearch) {
+      primary = await runSerp();
+      if (!primary.ok && hasAnthropic) primary = await runAnthropic();
+    } else {
+      // preferAnthropic requested but no anthropic → fall to whatever's available.
+      primary = hasAnthropic ? await runAnthropic() : await runSerp();
+    }
+
+    // Supplement with jobs + funding (independent of SerpAPI).
+    const suppTasks: Array<Promise<FunctionResult>> = [scanJobs(company, domain).then(toResult)];
+    if (fundingEnabled()) suppTasks.push(scanFunding(input));
+    const settled = await Promise.allSettled(suppTasks);
+
+    const signals: Signal[] = [...(primary.signals ?? [])];
     const sources: string[] = [];
     const failed: string[] = [];
-    let classifier: string | undefined;
-    let resolvedName: string | undefined;
+    let classifier = primary.meta?.classifier ? String(primary.meta.classifier) : undefined;
+    let resolvedName = primary.meta?.resolvedName ? String(primary.meta.resolvedName) : undefined;
+    if (primary.meta?.source) sources.push(String(primary.meta.source));
+    if (!primary.ok && primary.error) failed.push(primary.error);
 
     for (const s of settled) {
-      if (s.status !== "fulfilled") {
-        failed.push("provider error");
-        continue;
-      }
+      if (s.status !== "fulfilled") { failed.push("provider error"); continue; }
       const r = s.value;
       if (r.ok) {
         signals.push(...r.signals);
         if (r.meta?.source) sources.push(String(r.meta.source));
-        if (r.meta?.classifier) classifier = String(r.meta.classifier);
-        if (r.meta?.resolvedName) resolvedName = String(r.meta.resolvedName);
+        if (!classifier && r.meta?.classifier) classifier = String(r.meta.classifier);
+        if (!resolvedName && r.meta?.resolvedName) resolvedName = String(r.meta.resolvedName);
       } else if (r.error) {
         failed.push(r.error);
       }
     }
 
-    // ok as long as at least one provider produced signals.
     return {
-      ok: signals.length > 0 || sources.length > 0,
+      ok: primary.ok || signals.length > 0,
       signals,
       meta: { sources, failed, classifier, resolvedName },
     };
