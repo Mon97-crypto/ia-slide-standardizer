@@ -18,5 +18,5 @@
     }
   },
   "include": ["server", "api", "src/routes", "src/lib", "vite.config.ts", "tailwind.config.ts"],
-  "exclude": ["src/lib/csv.ts", "src/lib/report.ts"]
+  "exclude": ["src/lib/csv.ts", "src/lib/report.ts", "src/lib/admin.ts"]
 }

@@ -37,7 +37,7 @@ interface RowScan {
 
 const EMPTY: ScopeData = { state: "loading", accounts: [] };
 
-export function DashboardView({ email }: { email?: string }) {
+export function DashboardView({ email, onBell }: { email?: string; onBell?: () => void }) {
   const [scope, setScope] = useState<AccountScope>("top");
   const [data, setData] = useState<Record<AccountScope, ScopeData>>({ top: { ...EMPTY }, mine: { ...EMPTY } });
   const [q, setQ] = useState("");
@@ -165,8 +165,14 @@ export function DashboardView({ email }: { email?: string }) {
             style={{ height: 38, padding: "0 12px", borderRadius: 11, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", fontSize: 14, fontFamily: "inherit", color: "var(--ia-black)", width: 180 }}
           />
         )}
-        <button title="Notifications" aria-label="Notifications" style={iconBtn}>
+        <button
+          onClick={onBell}
+          title={onBell ? "Team intelligence (admin)" : "Notifications"}
+          aria-label="Notifications"
+          style={{ ...iconBtn, cursor: onBell ? "pointer" : "default", position: "relative" }}
+        >
           <BellIcon />
+          {onBell && <span aria-hidden style={{ position: "absolute", top: 7, right: 8, width: 7, height: 7, borderRadius: 999, background: "var(--ia-orange)" }} />}
         </button>
       </div>
 

@@ -37,6 +37,24 @@ function isAllowed(email: string): boolean {
   return false;
 }
 
+// Admins see the Admin tab and can send team intelligence. Comma-separated
+// ADMIN_EMAILS overrides the default trio.
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS ??
+    "monica.a@impactanalytics.co,garvit.sindhwani@impactanalytics.co,marketing@impactanalytics.co")
+    .toLowerCase()
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  // When auth is disabled (local dev) there is no email — allow admin so the tab
+  // is testable locally.
+  if (!authEnabled()) return true;
+  return ADMIN_EMAILS.has((email || "").toLowerCase());
+}
+
 const SESSION_TTL = 60 * 60 * 12; // 12 hours
 const SESSION_COOKIE = "ia_session";
 const STATE_COOKIE = "ia_oauth_state";
@@ -124,10 +142,10 @@ export function registerAuth(app: Hono): void {
 
   // Who am I? (used by the client to decide whether to show the login screen)
   app.get("/api/auth/me", (c) => {
-    if (!authEnabled()) return c.json({ authenticated: true, authDisabled: true });
+    if (!authEnabled()) return c.json({ authenticated: true, authDisabled: true, isAdmin: true });
     const sess = verifySession(getCookie(c, SESSION_COOKIE), process.env.SESSION_SECRET as string);
     if (!sess) return c.json({ authenticated: false });
-    return c.json({ authenticated: true, email: sess.email, name: sess.name });
+    return c.json({ authenticated: true, email: sess.email, name: sess.name, isAdmin: isAdminEmail(sess.email) });
   });
 
   // Start the Google OAuth flow.

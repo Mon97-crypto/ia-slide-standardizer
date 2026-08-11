@@ -3,9 +3,9 @@
  */
 import { StatusPill, type Status } from "./StatusPill";
 
-export type TabKey = "dashboard" | "scan" | "ask" | "bulk";
+export type TabKey = "dashboard" | "scan" | "ask" | "bulk" | "admin";
 
-const TABS: { key: TabKey; label: string }[] = [
+const BASE_TABS: { key: TabKey; label: string }[] = [
   { key: "scan", label: "Scan" },
   { key: "dashboard", label: "My dashboard" },
   { key: "bulk", label: "Bulk upload" },
@@ -17,12 +17,15 @@ export function Header({
   onTab,
   status,
   email,
+  isAdmin,
 }: {
   tab: TabKey;
   onTab: (t: TabKey) => void;
   status: Status;
   email?: string;
+  isAdmin?: boolean;
 }) {
+  const TABS = isAdmin ? [...BASE_TABS, { key: "admin" as TabKey, label: "Admin" }] : BASE_TABS;
   return (
     <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>

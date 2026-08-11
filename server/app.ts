@@ -21,8 +21,8 @@ import { apolloContacts } from "../src/routes/api/public/apollo-contacts";
 import { accountInfoForCard } from "../src/routes/api/public/account-info";
 import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
-import { registerAuth, sessionEmail } from "./auth";
-import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured } from "./sheets";
+import { registerAuth, sessionEmail, isAdminEmail } from "./auth";
+import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured, readAccounts, domainKey, type SheetAccount } from "./sheets";
 
 const now = () => Date.now();
 
@@ -144,6 +144,84 @@ app.get("/api/public/account-lookup", async (c) => {
     return c.json({ ok: true, configured: true, account });
   } catch (e) {
     return c.json({ ok: false, configured: true, account: null, error: (e as Error).message }, 502);
+  }
+});
+
+// ── Admin: team intelligence ────────────────────────────────────────────────
+// Aggregates every person named in Owner.Name / BD_Owner__r across the Tier 1
+// accounts, derives each one's email, and attaches any cached scan intelligence
+// per account, so an admin can email each person a digest of THEIR top accounts.
+// Admin-only (403 otherwise), on top of the /api/public/* auth guard.
+const IGNORE_OWNER = /^(unassigned|n\/?a|none|-|marketing team)$/i;
+
+function nameToEmail(name: string): string {
+  const parts = name.toLowerCase().replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "";
+  return `${parts.join(".")}@impactanalytics.co`;
+}
+
+interface IntelSummary {
+  total: number; found: number; keyFound: number; supFound: number;
+  top: Array<{ label: string; detail: string; type: string; soWhat: string }>;
+  ageMs: number | null;
+}
+
+function intelForDomain(domain: string, now: number): IntelSummary | null {
+  const hit = readCache(domainKey(domain), now);
+  if (!hit.hit || !hit.result) return null;
+  const r = hit.result as { signals?: Array<{ found?: boolean; label?: string; detail?: string; type?: string; group?: string; soWhat?: string }> };
+  const sigs = r.signals ?? [];
+  const found = sigs.filter((s) => s.found);
+  const top = found.slice(0, 3).map((s) => ({ label: String(s.label ?? ""), detail: String(s.detail ?? ""), type: String(s.type ?? ""), soWhat: String(s.soWhat ?? "") }));
+  return {
+    total: sigs.length,
+    found: found.length,
+    keyFound: found.filter((s) => s.group === "key").length,
+    supFound: found.filter((s) => s.group === "supporting").length,
+    top,
+    ageMs: hit.ageMs ?? null,
+  };
+}
+
+app.get("/api/public/admin/owners", async (c) => {
+  if (!isAdminEmail(sessionEmail(c))) return c.json({ ok: false, error: "forbidden" }, 403);
+  if (!sheetsConfigured()) return c.json({ ok: false, configured: false, people: [] });
+  try {
+    const { accounts } = await readAccounts();
+    const tier1 = accounts.filter((a) => a.tier1);
+    const byPerson = new Map<string, { name: string; accounts: SheetAccount[] }>();
+    const add = (personName: string | undefined, a: SheetAccount) => {
+      const name = (personName || "").trim();
+      if (!name || IGNORE_OWNER.test(name)) return;
+      const key = name.toLowerCase();
+      let p = byPerson.get(key);
+      if (!p) { p = { name, accounts: [] }; byPerson.set(key, p); }
+      if (!p.accounts.some((x) => x.domain === a.domain)) p.accounts.push(a);
+    };
+    for (const a of tier1) {
+      add(a.owner, a);
+      if (a.bdOwner && a.bdOwner.toLowerCase() !== a.owner.toLowerCase()) add(a.bdOwner, a);
+    }
+    const now = Date.now();
+    const people = [...byPerson.values()]
+      .map((p) => ({
+        name: p.name,
+        email: nameToEmail(p.name),
+        accounts: p.accounts.map((a) => ({
+          name: a.name,
+          domain: domainKey(a.domain),
+          type: a.type,
+          status: a.status,
+          revenue: a.revenue,
+          owner: a.owner,
+          bdOwner: a.bdOwner,
+          intel: intelForDomain(a.domain, now),
+        })),
+      }))
+      .sort((x, y) => y.accounts.length - x.accounts.length);
+    return c.json({ ok: true, configured: true, people, count: people.length });
+  } catch (e) {
+    return c.json({ ok: false, configured: true, error: (e as Error).message }, 502);
   }
 });
 

@@ -45,6 +45,10 @@ services:
         sync: false
       # - key: ALLOWED_EMAIL_DOMAIN  # defaults to impactanalytics.co; set "" to disable
       #   value: impactanalytics.co
+      # Admins see the Admin tab + can send team intelligence. Defaults in code to
+      # monica.a@, garvit.sindhwani@, marketing@impactanalytics.co. Override here:
+      # - key: ADMIN_EMAILS
+      #   value: monica.a@impactanalytics.co,garvit.sindhwani@impactanalytics.co,marketing@impactanalytics.co
       # ── My Dashboard: Salesforce accounts from a PRIVATE Google Sheet ────────
       # Service-account auth. Share the sheet (Viewer) with GOOGLE_SA_EMAIL; the
       # sheet is never made public. Get these from the service account's JSON key.
