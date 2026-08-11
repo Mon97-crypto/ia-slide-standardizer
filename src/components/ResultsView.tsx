@@ -11,6 +11,7 @@ import { SignalTile } from "./SignalTile";
 import { SignalsFoundRing } from "./SignalsFoundRing";
 import { AccountCard } from "./AccountCard";
 import { CrmCard } from "./CrmCard";
+import { downloadScanPdf } from "../lib/report";
 
 const STEP_NAMES: Record<StepKey, string> = {
   edgar: "SEC filings",
@@ -57,12 +58,23 @@ export function ResultsView({
   const positiveCount = result.signals.filter((s) => s.found && s.type === "positive").length;
   const negativeCount = result.signals.filter((s) => s.found && s.type === "negative").length;
   const mixedCount = result.signals.filter((s) => s.found && s.type === "neutral").length;
-  const topOpp = result.signals
-    .filter((s) => s.found && s.score_contribution > 0)
-    .sort((a, b) => b.score_contribution - a.score_contribution)[0];
 
   return (
     <div className="anim-fade-up" style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          onClick={() => downloadScanPdf(result, account ?? undefined)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 34, padding: "0 14px", borderRadius: 10, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", color: "var(--ia-blue)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <path d="M7 10l5 5 5-5" />
+            <path d="M12 15V3" />
+          </svg>
+          Download PDF
+        </button>
+      </div>
+
       {/* Sticky context sub-header (hidden in compact/bulk mode) */}
       {!compact && (
         <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--ia-offwhite)", paddingBlock: 8, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, borderBottom: "1px solid var(--ia-gray-1)" }}>
@@ -134,7 +146,6 @@ export function ResultsView({
         <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
           <Metric label="Key signals" value={`${keyFound}/${keyRows.length}`} />
           <Metric label="Supporting" value={`${supFound}/${supRows.length}`} />
-          <Metric label="Top signal" value={topOpp ? topOpp.label : "—"} small />
           <div className="card" style={{ padding: 16, gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 10 }}>
             <span className="eyebrow">Signals detected</span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
