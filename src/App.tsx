@@ -9,6 +9,7 @@ import { ScanView } from "./views/ScanView";
 import { AskView } from "./views/AskView";
 import { BulkView } from "./views/BulkView";
 import { AdminView } from "./views/AdminView";
+import { GuideView } from "./views/GuideView";
 
 interface Auth {
   loading: boolean;
@@ -24,6 +25,7 @@ const TAB_TITLE: Record<TabKey, string> = {
   bulk: "Bulk upload",
   ask: "Ask IAsense",
   admin: "Admin",
+  guide: "How to use",
 };
 
 export function App() {
@@ -63,6 +65,7 @@ export function App() {
       {tab === "ask" && <AskView />}
       {tab === "bulk" && <BulkView />}
       {tab === "admin" && auth.isAdmin && <AdminView />}
+      {tab === "guide" && <GuideView isAdmin={auth.isAdmin} onGo={setTab} />}
     </div>
   );
 }

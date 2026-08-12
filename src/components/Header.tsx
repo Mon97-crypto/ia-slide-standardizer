@@ -3,13 +3,14 @@
  */
 import { StatusPill, type Status } from "./StatusPill";
 
-export type TabKey = "dashboard" | "scan" | "ask" | "bulk" | "admin";
+export type TabKey = "dashboard" | "scan" | "ask" | "bulk" | "admin" | "guide";
 
 const BASE_TABS: { key: TabKey; label: string }[] = [
   { key: "scan", label: "Scan" },
   { key: "dashboard", label: "My dashboard" },
   { key: "bulk", label: "Bulk upload" },
   { key: "ask", label: "Ask IAsense" },
+  { key: "guide", label: "How to use" },
 ];
 
 export function Header({
