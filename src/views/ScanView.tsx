@@ -7,6 +7,7 @@ import { type StepState } from "../components/ProgressCard";
 import { SignalProgress } from "../components/SignalProgress";
 import { ResultsView } from "../components/ResultsView";
 import { DecisionMakers } from "../components/DecisionMakers";
+import { CompetitorFootprint } from "../components/CompetitorFootprint";
 import { runScan, type ScanResult, type StepKey } from "../lib/scan";
 import { fetchAccount, type AccountInfo } from "../lib/account";
 
@@ -105,6 +106,7 @@ export function ScanView({
             email={email}
             onRefresh={() => lastReq.current && doScan(lastReq.current, true)}
           />
+          <CompetitorFootprint company={result.company} domain={result.domain} />
           <DecisionMakers company={result.company} domain={result.domain} />
         </div>
       )}

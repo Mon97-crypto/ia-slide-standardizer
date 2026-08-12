@@ -24,6 +24,7 @@ import { readCache, writeCache } from "./cache";
 import { registerAuth, sessionEmail, isAdminEmail } from "./auth";
 import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured, readAccounts, domainKey, crmContext, type SheetAccount } from "./sheets";
 import { personDigest } from "../src/routes/api/public/providers/digest-provider";
+import { competitorFootprint } from "../src/routes/api/public/providers/competitor-provider";
 
 const now = () => Date.now();
 
@@ -81,6 +82,13 @@ app.post("/api/public/scan-funding", async (c) => {
 app.post("/api/public/apollo-contacts", async (c) => {
   const { company = "", domain = "" } = await readBody(c);
   return c.json(await apolloContacts({ company, domain }));
+});
+
+// Competitor footprint — verifiable public evidence a target uses/evaluates an
+// Impact Analytics competitor. On-demand (button) to keep credit use controlled.
+app.post("/api/public/competitor-footprint", async (c) => {
+  const { company = "", domain = "" } = await readBody(c);
+  return c.json(await competitorFootprint({ company, domain }));
 });
 
 app.post("/api/public/account-info", async (c) => {
