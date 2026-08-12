@@ -25,6 +25,7 @@ import { registerAuth, sessionEmail, isAdminEmail } from "./auth";
 import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured, readAccounts, domainKey, crmContext, type SheetAccount } from "./sheets";
 import { personDigest } from "../src/routes/api/public/providers/digest-provider";
 import { competitorFootprint } from "../src/routes/api/public/providers/competitor-provider";
+import { sendEmail, mailerConfigured } from "./mailer";
 
 const now = () => Date.now();
 
@@ -243,6 +244,18 @@ app.post("/api/public/admin/person-digest", async (c) => {
   const accounts = (body.accounts ?? []).map((a) => ({ name: String(a.name ?? ""), domain: String(a.domain ?? "") }));
   const r = await personDigest(String(body.name ?? ""), accounts);
   return c.json({ ...r, generatedAt: now() });
+});
+
+// Admin: send a rendered HTML digest email (Resend). Admin-only.
+app.post("/api/public/admin/send-email", async (c) => {
+  if (!isAdminEmail(sessionEmail(c))) return c.json({ ok: false, error: "forbidden" }, 403);
+  if (!mailerConfigured()) return c.json({ ok: false, error: "email_not_configured" });
+  const body = (await c.req.json().catch(() => ({}))) as { to?: string; subject?: string; html?: string };
+  const to = String(body.to ?? "").trim();
+  const subject = String(body.subject ?? "").trim() || "Account Intelligence";
+  const html = String(body.html ?? "");
+  if (!to || !html) return c.json({ ok: false, error: "to and html are required" });
+  return c.json(await sendEmail(to, subject, html));
 });
 
 app.get("/api/health", (c) => c.json({ ok: true }));

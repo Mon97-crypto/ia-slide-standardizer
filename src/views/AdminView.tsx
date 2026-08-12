@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import {
-  fetchOwners, fetchPersonDigest, dedupItems, markSent,
+  fetchOwners, fetchPersonDigest, dedupItems, markSent, sendDigestEmail,
   gmailComposeUrl, previewDigest, type AdminPerson, type DigestItem,
 } from "../lib/admin";
 
@@ -17,7 +17,10 @@ interface Prep {
   status: "idle" | "loading" | "ready" | "error";
   fresh: DigestItem[];
   skipped: number;
+  sending?: boolean;
   sent?: boolean;
+  sendMsg?: string;
+  gmailFallback?: boolean;
   error?: string;
 }
 const IDLE: Prep = { status: "idle", fresh: [], skipped: 0 };
@@ -47,12 +50,30 @@ export function AdminView() {
     setPrep((m) => ({ ...m, [i]: { status: "ready", fresh, skipped } }));
   };
 
-  const send = (i: number, p: AdminPerson) => {
+  // Primary: send the formatted HTML digest via the server mailer.
+  const send = async (i: number, p: AdminPerson) => {
+    const cur = prep[i];
+    if (!cur || cur.status !== "ready") return;
+    setPrep((m) => ({ ...m, [i]: { ...cur, sending: true, sendMsg: undefined } }));
+    const r = await sendDigestEmail(p, cur.fresh);
+    if (r.ok) {
+      markSent(p.email, cur.fresh);
+      setPrep((m) => ({ ...m, [i]: { ...cur, sending: false, sent: true, sendMsg: `Emailed to ${p.email}` } }));
+    } else if (r.error === "email_not_configured") {
+      // No mail provider — reveal the Gmail-compose (plain-text) fallback.
+      setPrep((m) => ({ ...m, [i]: { ...cur, sending: false, gmailFallback: true, sendMsg: "Email sending isn't set up (add RESEND_API_KEY). Use the Gmail fallback below." } }));
+    } else {
+      setPrep((m) => ({ ...m, [i]: { ...cur, sending: false, sendMsg: `Send failed: ${r.error || "unknown error"}` } }));
+    }
+  };
+
+  // Fallback: plain-text Gmail compose.
+  const sendGmail = (i: number, p: AdminPerson) => {
     const cur = prep[i];
     if (!cur || cur.status !== "ready") return;
     window.open(gmailComposeUrl(p, cur.fresh), "_blank");
     markSent(p.email, cur.fresh);
-    setPrep((m) => ({ ...m, [i]: { ...cur, sent: true } }));
+    setPrep((m) => ({ ...m, [i]: { ...cur, sent: true, sendMsg: "Opened in Gmail (plain text) & marked sent" } }));
   };
 
   const busy = Object.values(prep).some((p) => p.status === "loading");
@@ -80,7 +101,7 @@ export function AdminView() {
       {state === "ready" && (
         <div className="card" style={{ padding: "10px 14px", marginBottom: 16, background: "var(--ia-blue-soft)", border: "1px solid #dfe4f5", fontSize: 13, color: "var(--ia-blue-dark)", display: "flex", gap: 8 }}>
           <span aria-hidden>ℹ️</span>
-          <span>Preparing a digest runs a live 7-day web search (uses Anthropic credits). Items already sent to a person in a prior week are hidden automatically, so each weekly send only carries what's new.</span>
+          <span>Preparing a digest runs a live 7-day web search (uses Anthropic credits). Items already sent to a person in a prior week are hidden automatically. <strong>Send email</strong> delivers the formatted HTML digest (needs <code>RESEND_API_KEY</code>); without it, use the Gmail plain-text fallback.</span>
         </div>
       )}
 
@@ -114,9 +135,13 @@ export function AdminView() {
                     {pr.status === "ready" && (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <button onClick={() => previewDigest(p, pr.fresh)} style={btnGhost}>Preview</button>
-                        <button onClick={() => send(i, p)} disabled={pr.fresh.length === 0} style={pr.fresh.length ? btnPrimary : btnDisabled}>
-                          {pr.sent ? "Re-open in Gmail" : "Send via Gmail"}
-                        </button>
+                        {pr.gmailFallback ? (
+                          <button onClick={() => sendGmail(i, p)} disabled={pr.fresh.length === 0} style={pr.fresh.length ? btnPrimary : btnDisabled}>Open in Gmail (plain text)</button>
+                        ) : (
+                          <button onClick={() => send(i, p)} disabled={pr.fresh.length === 0 || pr.sending} style={pr.fresh.length && !pr.sending ? btnPrimary : btnDisabled}>
+                            {pr.sending ? "Sending…" : pr.sent ? "Re-send email" : "Send email"}
+                          </button>
+                        )}
                         <button onClick={() => prepare(i, p)} style={btnGhost}>Re-check</button>
                       </div>
                     )}
@@ -129,7 +154,7 @@ export function AdminView() {
                         <span>
                           <strong style={{ color: "var(--ia-blue)" }}>{pr.fresh.length}</strong> new item{pr.fresh.length === 1 ? "" : "s"} to send
                           {pr.skipped ? <span className="secondary"> · {pr.skipped} repeat{pr.skipped === 1 ? "" : "s"} hidden</span> : null}
-                          {pr.sent ? <span className="secondary"> · draft opened & marked sent</span> : null}
+                          {pr.sendMsg ? <span style={{ color: pr.sent ? "#1e7e49" : "var(--ia-orange)" }}> · {pr.sendMsg}</span> : null}
                         </span>
                       )}
                     </div>

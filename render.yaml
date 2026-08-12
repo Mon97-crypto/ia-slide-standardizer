@@ -49,6 +49,14 @@ services:
       # monica.a@, garvit.sindhwani@, marketing@impactanalytics.co. Override here:
       # - key: ADMIN_EMAILS
       #   value: monica.a@impactanalytics.co,garvit.sindhwani@impactanalytics.co,marketing@impactanalytics.co
+      # ── Formatted HTML digest email (Resend) ────────────────────────────────
+      # Set RESEND_API_KEY to send the admin top-accounts digest as styled HTML.
+      # RESEND_FROM must be a verified sender (verify impactanalytics.co in Resend);
+      # until then Resend's test sender only delivers to your own account email.
+      - key: RESEND_API_KEY   # from resend.com — enables "Send email" (HTML digest)
+        sync: false
+      # - key: RESEND_FROM
+      #   value: IAsense <intelligence@impactanalytics.co>
       # ── My Dashboard: Salesforce accounts from a PRIVATE Google Sheet ────────
       # Service-account auth. Share the sheet (Viewer) with GOOGLE_SA_EMAIL; the
       # sheet is never made public. Get these from the service account's JSON key.

@@ -139,72 +139,68 @@ function esc(s: string): string {
   return (s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 }
 
-/** Visually appealing HTML digest (competitive-intel-digest style). */
+// Email-safe HTML: inline styles + literal colors only (email clients strip CSS
+// variables and most <style> rules), table wrapper for width — renders the same
+// in Gmail as in the preview.
+const C = { blue: "#2f4fd8", bluedark: "#1d4ed8", ink: "#14181f", muted: "#7a8494", line: "#e6e9f0", soft: "#eef2fd", body: "#2a2f39" };
+const FONT = "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+
+function itemHtml(it: DigestItem): string {
+  return `<div style="padding:13px 0;border-bottom:1px dashed ${C.line};">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>
+      <td style="font:700 15px/1.3 ${FONT};color:${C.ink};padding-right:10px;">${esc(it.headline)}</td>
+      <td align="right" style="font:500 12px ${FONT};color:${C.muted};white-space:nowrap;vertical-align:top;">${esc(it.date)}</td>
+    </tr></table>
+    ${it.detail ? `<p style="margin:6px 0;font:400 14px/1.55 ${FONT};color:${C.body};">${esc(it.detail)}</p>` : ""}
+    ${it.soWhat ? `<div style="background:${C.soft};border-radius:9px;padding:10px 12px;margin:8px 0;font:400 14px/1.5 ${FONT};color:${C.ink};"><b style="color:${C.blue};">What it means:</b> ${esc(it.soWhat)}</div>` : ""}
+    ${it.url ? `<a href="${esc(it.url)}" style="font:600 13px ${FONT};color:${C.blue};text-decoration:none;">Source →</a>` : ""}
+  </div>`;
+}
+
+function cardHtml(g: { account: string; domain: string; items: DigestItem[] }): string {
+  const items = g.items.map(itemHtml).join("");
+  // remove trailing divider on last item
+  return `<div style="border:1px solid ${C.line};border-radius:14px;padding:4px 18px 12px;margin:16px 0;">
+    <div style="border-bottom:1px solid ${C.line};padding:13px 0 11px;margin-bottom:2px;">
+      <span style="font:800 17px ${FONT};color:${C.blue};">${esc(g.account)}</span>${g.domain ? `&nbsp;&nbsp;<span style="font:400 13px ${FONT};color:${C.muted};">${esc(g.domain)}</span>` : ""}
+    </div>${items}</div>`;
+}
+
+/** Visually appealing, email-safe HTML digest (competitive-intel-digest style). */
 export function buildDigestHtml(person: AdminPerson, items: DigestItem[]): string {
   const groups = groupByAccount(items);
   const count = items.length;
-  const cards = groups.map((g) => `
-    <div class="card">
-      <div class="acct-head"><span class="acct-name">${esc(g.account)}</span>${g.domain ? `<span class="dom">${esc(g.domain)}</span>` : ""}</div>
-      ${g.items.map((it) => `
-        <div class="item">
-          <div class="hl">${esc(it.headline)}${it.date ? `<span class="date">${esc(it.date)}</span>` : ""}</div>
-          ${it.detail ? `<p class="detail">${esc(it.detail)}</p>` : ""}
-          ${it.soWhat ? `<div class="means"><b>What it means:</b> ${esc(it.soWhat)}</div>` : ""}
-          ${it.url ? `<a class="src" href="${esc(it.url)}">Source</a>` : ""}
-        </div>`).join("")}
-    </div>`).join("");
+  const pill = count === 0 ? "No new developments this week" : `${count} new development${count === 1 ? "" : "s"} across ${groups.length} account${groups.length === 1 ? "" : "s"}`;
+  const cards = count === 0
+    ? `<div style="color:${C.muted};text-align:center;padding:30px;border:1px dashed ${C.line};border-radius:12px;font:400 14px ${FONT};">No new developments across ${esc(firstName(person.name))}'s top accounts in the last 7 days. Nothing to send this week.</div>`
+    : groups.map(cardHtml).join("");
 
-  const empty = `<div class="empty">No new developments across ${esc(firstName(person.name))}'s top accounts in the last 7 days. Nothing to send this week.</div>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(person.name)} — Top Accounts, This Week</title></head>
+<body style="margin:0;padding:0;background:#eef1f6;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;border-collapse:collapse;"><tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:16px;border-collapse:separate;overflow:hidden;">
+      <tr><td style="border-top:5px solid ${C.blue};padding:34px 36px 24px;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="padding-right:10px;"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden><path d="M8.5 2l4 2-2 6-4-2z" fill="${C.blue}"/><path d="M6 8l3.5 1.5L7 21l-4-2z" fill="${C.blue}"/><path d="M13 8l6 12H10z" fill="${C.blue}"/></svg></td>
+          <td style="font:800 15px ${FONT};color:${C.ink};letter-spacing:.02em;">IMPACT<div style="font:700 8px ${FONT};letter-spacing:.28em;color:${C.muted};">ANALYTICS</div></td>
+        </tr></table>
+        <div style="margin-top:20px;font:800 12px ${FONT};letter-spacing:.1em;text-transform:uppercase;color:${C.blue};">Top Accounts · This Week</div>
+        <h1 style="font:400 32px/1.12 Georgia,'Times New Roman',serif;color:${C.ink};margin:10px 0 8px;">What moved across your accounts</h1>
+        <p style="font:400 14px ${FONT};color:${C.muted};margin:0;">${esc(person.name)} · ${esc(person.email)} · ${weekWindow()}</p>
+        <div style="display:inline-block;margin-top:16px;background:${C.soft};border:1px solid #dfe4f5;color:${C.blue};font:700 13px ${FONT};padding:8px 16px;border-radius:999px;">${pill}</div>
+      </td></tr>
+      <tr><td style="padding:18px 36px 38px;">
+        <p style="font:400 15px/1.6 ${FONT};color:${C.body};margin:6px 0 20px;">The latest, de-duplicated against what you were sent in prior weeks — only new items from the last 7 days on your Tier 1 accounts, with what each means for outreach.</p>
+        ${cards}
+        <p style="font:400 12px ${FONT};color:#9aa3b2;margin:26px 0 0;border-top:1px solid ${C.line};padding-top:14px;">Generated by IAsense · Account Intelligence · de-duplicated weekly</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+}
 
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(person.name)} — Top Accounts, This Week</title>
-  <style>
-    :root{--blue:#2f4fd8;--ink:#14181f;--muted:#7a8494;--line:#e6e9f0;--soft:#f1f4fb;}
-    *{box-sizing:border-box;}
-    body{font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);margin:0;background:#eef1f6;padding:24px;}
-    .wrap{max-width:720px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 40px rgba(20,24,31,.08);}
-    .head{border-top:5px solid var(--blue);padding:34px 40px 26px;}
-    .brand{display:flex;align-items:center;gap:10px;margin-bottom:20px;}
-    .mark{width:26px;height:26px;flex:none;}
-    .brandname{font-weight:800;letter-spacing:.02em;font-size:15px;}
-    .brandname small{display:block;letter-spacing:.28em;font-size:8px;color:var(--muted);font-weight:700;}
-    .eyebrow{text-transform:uppercase;letter-spacing:.1em;font-size:12px;color:var(--blue);font-weight:800;}
-    h1{font-family:Georgia,"Times New Roman",serif;font-size:32px;line-height:1.12;margin:10px 0 8px;}
-    .meta{color:var(--muted);font-size:14px;margin:0;}
-    .pill{display:inline-block;margin-top:16px;background:var(--soft);border:1px solid #dfe4f5;color:var(--blue);font-weight:700;font-size:13px;padding:8px 16px;border-radius:999px;}
-    .body{padding:22px 40px 40px;}
-    .lead{color:#2a2f39;line-height:1.6;margin:6px 0 22px;}
-    .card{border:1px solid var(--line);border-radius:14px;padding:8px 18px 14px;margin:16px 0;}
-    .acct-head{display:flex;align-items:baseline;gap:10px;border-bottom:1px solid var(--line);padding:12px 0 10px;margin-bottom:6px;}
-    .acct-name{font-weight:800;font-size:17px;color:var(--blue);}
-    .dom{color:var(--muted);font-size:13px;}
-    .item{padding:12px 0;border-bottom:1px dashed var(--line);}
-    .item:last-child{border-bottom:none;}
-    .hl{font-weight:700;font-size:15px;display:flex;justify-content:space-between;gap:12px;}
-    .hl .date{color:var(--muted);font-weight:500;font-size:12px;white-space:nowrap;}
-    .detail{margin:5px 0;color:#2a2f39;}
-    .means{background:var(--soft);border-radius:9px;padding:9px 12px;margin:8px 0;font-size:14px;}
-    .means b{color:var(--blue);}
-    .src{font-size:13px;color:var(--blue);text-decoration:none;font-weight:600;}
-    .empty{color:var(--muted);text-align:center;padding:30px;border:1px dashed var(--line);border-radius:12px;}
-    footer{color:#9aa3b2;font-size:12px;padding:0 40px 30px;}
-  </style></head><body><div class="wrap">
-    <div class="head">
-      <div class="brand">
-        <svg class="mark" viewBox="0 0 24 24" aria-hidden><path d="M8.5 2l4 2-2 6-4-2z" fill="#2f4fd8"/><path d="M6 8l3.5 1.5L7 21l-4-2z" fill="#2f4fd8"/><path d="M13 8l6 12H10z" fill="#2f4fd8"/></svg>
-        <div class="brandname">IMPACT<small>ANALYTICS</small></div>
-      </div>
-      <div class="eyebrow">Top Accounts · This Week</div>
-      <h1>What moved across your accounts</h1>
-      <p class="meta">${esc(person.name)} · ${esc(person.email)} · ${weekWindow()}</p>
-      <span class="pill">${count === 0 ? "No new developments this week" : `${count} new development${count === 1 ? "" : "s"} across ${groups.length} account${groups.length === 1 ? "" : "s"}`}</span>
-    </div>
-    <div class="body">
-      <p class="lead">The latest, de-duplicated against what you were sent in prior weeks — only new items from the last 7 days on your Tier 1 accounts, with what each means for outreach.</p>
-      ${count === 0 ? empty : cards}
-    </div>
-    <footer>Generated by IAsense · Account Intelligence · de-duplicated weekly</footer>
-  </div></body></html>`;
+export function digestSubject(): string {
+  return `Your top accounts this week — Account Intelligence (${today()})`;
 }
 
 export function previewDigest(person: AdminPerson, items: DigestItem[]): void {
@@ -213,4 +209,19 @@ export function previewDigest(person: AdminPerson, items: DigestItem[]): void {
   w.document.open();
   w.document.write(buildDigestHtml(person, items));
   w.document.close();
+}
+
+/** Send the rendered HTML digest via the server mailer. Returns an error code so
+ * the UI can fall back to Gmail-compose when email isn't configured. */
+export async function sendDigestEmail(person: AdminPerson, items: DigestItem[]): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/public/admin/send-email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ to: person.email, subject: digestSubject(), html: buildDigestHtml(person, items) }),
+    });
+    return (await res.json()) as { ok: boolean; error?: string };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
