@@ -120,9 +120,6 @@ export function AdminView() {
               {exec.data.stats && (
                 <div className="secondary" style={{ fontSize: 12, marginBottom: 8 }}>{exec.data.stats.accounts} Tier 1 accounts · {exec.data.stats.owners} owners</div>
               )}
-              {exec.data.overview && (
-                <div style={{ background: "var(--ia-white)", border: "1px solid var(--ia-gray-1)", borderRadius: 12, padding: "12px 14px", fontSize: 14.5, lineHeight: 1.55, marginBottom: 12 }}>{exec.data.overview}</div>
-              )}
               {exec.data.highlights.length > 0 ? (
                 <ul style={{ margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
                   {exec.data.highlights.slice(0, 5).map((h, i) => (
