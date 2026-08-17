@@ -32,6 +32,104 @@ function jsonArray(t: string): string {
   return a >= 0 && b > a ? s.slice(a, b + 1) : s;
 }
 
+export interface RollupHighlight {
+  account: string;
+  domain: string;
+  headline: string;
+  detail: string;
+  whyItMatters: string;
+  url: string;
+  date: string;
+}
+
+function jsonObject(t: string): string {
+  const s = stripFences(t);
+  const a = s.indexOf("{"); const b = s.lastIndexOf("}");
+  return a >= 0 && b > a ? s.slice(a, b + 1) : s;
+}
+
+/** Executive roll-up across the whole Tier 1 book (for CXOs): a short portfolio
+ * overview + the most significant last-7-day developments, each cited. */
+export async function execRollup(accounts: AcctInput[]): Promise<{ ok: boolean; overview: string; highlights: RollupHighlight[]; error?: string }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { ok: false, overview: "", highlights: [], error: "ANTHROPIC_API_KEY not configured" };
+  const list = accounts.filter((a) => a.name || a.domain).slice(0, 30);
+  if (!list.length) return { ok: true, overview: "", highlights: [] };
+
+  const today = iso(0);
+  const cutoff = iso(7);
+  const companies = list.map((a) => `- ${a.name} (${a.domain})`).join("\n");
+  const system = [
+    `You write a concise EXECUTIVE roll-up for the Impact Analytics leadership team (CXOs), summarising activity`,
+    `across the sales team's Tier 1 target accounts. Today is ${today}.`,
+    ``,
+    `Look for the MOST SIGNIFICANT developments in the LAST 7 DAYS ONLY (on/after ${cutoff}) across these accounts:`,
+    `leadership changes, M&A, major expansion or store moves, inventory/markdown/supply-chain pain, ERP/planning/`,
+    `vendor decisions, earnings surprises, layoffs/restructuring, funding. Prioritise items with clear pipeline or`,
+    `strategic relevance to Impact Analytics; skip minor noise.`,
+    ``,
+    `Rules:`,
+    `- Only include a highlight with a REAL, dated source from the last 7 days. Never invent a url or date.`,
+    `- Judge each company by its domain; ignore same-named but different companies.`,
+    `- Rank highlights by significance; return 5–10 (fewer if the week was quiet).`,
+    `- Return ONLY a JSON object, no preamble, no markdown fences:`,
+    `  { "overview": 2–4 sentence executive summary of the week across the portfolio,`,
+    `    "highlights": [ { "account": exact name from the list, "headline": <=80 chars,`,
+    `      "detail": one sentence <=200 chars, "whyItMatters": one sentence <=180 chars on the strategic/pipeline`,
+    `      implication for Impact Analytics, "url": string, "date": "YYYY-MM-DD" } ] }`,
+    `- If almost nothing happened, say so in "overview" and return few or no highlights.`,
+    ``,
+    `Accounts:`,
+    companies,
+  ].join("\n");
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 110_000);
+    let res: Response;
+    try {
+      res = await fetch(ANTHROPIC_URL, {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 3500,
+          system,
+          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Math.min(10, Math.max(5, Math.round(list.length / 3))) }],
+          messages: [{ role: "user", content: `Research the last 7 days across these ${list.length} Tier 1 accounts and return the executive roll-up JSON object now.` }],
+        }),
+      });
+    } finally { clearTimeout(timer); }
+    if (!res.ok) return { ok: false, overview: "", highlights: [], error: `Anthropic HTTP ${res.status}` };
+    const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+    const text = (data.content ?? []).filter((b) => b.type === "text" && typeof b.text === "string").map((b) => b.text as string).join("\n");
+    let obj: Record<string, unknown>;
+    try { obj = JSON.parse(jsonObject(text)) as Record<string, unknown>; } catch { return { ok: false, overview: "", highlights: [], error: "parse error" }; }
+
+    const byName = new Map(list.map((a) => [a.name.toLowerCase(), a.domain]));
+    const rawH = Array.isArray(obj.highlights) ? (obj.highlights as Array<Record<string, unknown>>) : [];
+    const highlights: RollupHighlight[] = [];
+    for (const r of rawH) {
+      const account = String(r.account ?? "").trim();
+      const url = String(r.url ?? "").trim();
+      if (!account || !/^https?:\/\//i.test(url)) continue;
+      highlights.push({
+        account,
+        domain: byName.get(account.toLowerCase()) ?? "",
+        headline: String(r.headline ?? "").slice(0, 100),
+        detail: String(r.detail ?? "").slice(0, 240),
+        whyItMatters: String(r.whyItMatters ?? "").slice(0, 220),
+        url,
+        date: String(r.date ?? ""),
+      });
+    }
+    return { ok: true, overview: String(obj.overview ?? "").slice(0, 900), highlights };
+  } catch (e) {
+    return { ok: false, overview: "", highlights: [], error: (e as Error).message };
+  }
+}
+
 export async function personDigest(personName: string, accounts: AcctInput[]): Promise<{ ok: boolean; items: DigestItem[]; error?: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { ok: false, items: [], error: "ANTHROPIC_API_KEY not configured" };

@@ -23,7 +23,7 @@ import { ask } from "../src/routes/api/public/ask";
 import { readCache, writeCache } from "./cache";
 import { registerAuth, sessionEmail, isAdminEmail } from "./auth";
 import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured, readAccounts, domainKey, crmContext, type SheetAccount } from "./sheets";
-import { personDigest } from "../src/routes/api/public/providers/digest-provider";
+import { personDigest, execRollup } from "../src/routes/api/public/providers/digest-provider";
 import { competitorFootprint } from "../src/routes/api/public/providers/competitor-provider";
 import { sendEmail, mailerConfigured } from "./mailer";
 
@@ -234,6 +234,30 @@ app.get("/api/public/admin/owners", async (c) => {
     return c.json({ ok: true, configured: true, people, count: people.length });
   } catch (e) {
     return c.json({ ok: false, configured: true, error: (e as Error).message }, 502);
+  }
+});
+
+// Admin: executive roll-up across EVERYONE's Tier 1 accounts (for CXOs).
+app.post("/api/public/admin/exec-rollup", async (c) => {
+  if (!isAdminEmail(sessionEmail(c))) return c.json({ ok: false, error: "forbidden" }, 403);
+  if (!sheetsConfigured()) return c.json({ ok: false, configured: false, error: "sheet not connected" });
+  try {
+    const { accounts } = await readAccounts();
+    const tier1 = accounts.filter((a) => a.tier1);
+    // De-dupe accounts by domain; collect the roster of owners/BD owners.
+    const seen = new Set<string>();
+    const uniq: Array<{ name: string; domain: string }> = [];
+    const owners = new Set<string>();
+    for (const a of tier1) {
+      const key = domainKey(a.domain) || a.name.toLowerCase();
+      if (a.owner) owners.add(a.owner.trim().toLowerCase());
+      if (a.bdOwner) owners.add(a.bdOwner.trim().toLowerCase());
+      if (key && !seen.has(key)) { seen.add(key); uniq.push({ name: a.name, domain: domainKey(a.domain) }); }
+    }
+    const r = await execRollup(uniq);
+    return c.json({ ...r, generatedAt: now(), stats: { accounts: uniq.length, owners: owners.size } });
+  } catch (e) {
+    return c.json({ ok: false, overview: "", highlights: [], error: (e as Error).message }, 502);
   }
 });
 

@@ -8,7 +8,9 @@
 import { useEffect, useState } from "react";
 import {
   fetchOwners, fetchPersonDigest, dedupItems, markSent,
-  gmailComposeUrl, previewDigest, type AdminPerson, type DigestItem,
+  gmailComposeUrl, previewDigest,
+  fetchExecRollup, previewExecRollup, execGmailUrl, type ExecRollup,
+  type AdminPerson, type DigestItem,
 } from "../lib/admin";
 
 type State = "loading" | "ready" | "unconfigured" | "forbidden" | "error";
@@ -28,6 +30,7 @@ export function AdminView() {
   const [state, setState] = useState<State>("loading");
   const [error, setError] = useState("");
   const [prep, setPrep] = useState<Record<number, Prep>>({});
+  const [exec, setExec] = useState<{ status: "idle" | "loading" | "done" | "error"; data?: ExecRollup; error?: string }>({ status: "idle" });
 
   const load = () => {
     setState("loading"); setPrep({});
@@ -57,6 +60,13 @@ export function AdminView() {
     setPrep((m) => ({ ...m, [i]: { ...cur, sent: true, sendMsg: `Gmail draft opened for ${p.email} & marked sent` } }));
   };
 
+  const runExec = async () => {
+    setExec({ status: "loading" });
+    const d = await fetchExecRollup();
+    if (!d.ok) { setExec({ status: "error", error: d.error === "forbidden" ? "Admins only." : d.error || "Could not generate." }); return; }
+    setExec({ status: "done", data: d });
+  };
+
   const busy = Object.values(prep).some((p) => p.status === "loading");
 
   return (
@@ -83,6 +93,55 @@ export function AdminView() {
         <div className="card" style={{ padding: "10px 14px", marginBottom: 16, background: "var(--ia-blue-soft)", border: "1px solid #dfe4f5", fontSize: 13, color: "var(--ia-blue-dark)", display: "flex", gap: 8 }}>
           <span aria-hidden>ℹ️</span>
           <span>Preparing a digest runs a live 7-day web search (uses Anthropic credits). Items already sent to a person in a prior week are hidden automatically. <strong>Preview</strong> shows the styled digest; <strong>Send email</strong> opens a prefilled Gmail draft (nicely formatted) for you to review and send.</span>
+        </div>
+      )}
+
+      {state === "ready" && (
+        <div className="card" style={{ padding: "16px 18px", marginBottom: 16, borderColor: "var(--ia-blue-soft)", background: "linear-gradient(180deg, var(--ia-blue-soft) 0%, var(--ia-white) 60%)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="eyebrow" style={{ color: "var(--ia-blue-dark)" }}>Executive roll-up · for CXOs</div>
+              <div className="secondary" style={{ fontSize: 13, marginTop: 2 }}>One summary of activity across everyone's Tier 1 accounts — the biggest developments this week, ready to forward to leadership.</div>
+            </div>
+            {exec.status === "idle" && <button onClick={runExec} style={btnPrimary}>Generate roll-up</button>}
+            {exec.status === "loading" && (
+              <span className="secondary" style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                <span aria-hidden style={{ width: 7, height: 7, borderRadius: 999, background: "var(--ia-blue)", animation: "pulse 1s ease-in-out infinite" }} />
+                Analysing the whole Tier 1 book…
+              </span>
+            )}
+            {(exec.status === "done" || exec.status === "error") && <button onClick={runExec} style={btnGhost}>Regenerate</button>}
+          </div>
+
+          {exec.status === "error" && <div style={{ marginTop: 12, color: "var(--ia-orange)", fontSize: 14 }}>{exec.error}</div>}
+
+          {exec.status === "done" && exec.data && (
+            <div style={{ marginTop: 14 }}>
+              {exec.data.stats && (
+                <div className="secondary" style={{ fontSize: 12, marginBottom: 8 }}>{exec.data.stats.accounts} Tier 1 accounts · {exec.data.stats.owners} owners</div>
+              )}
+              {exec.data.overview && (
+                <div style={{ background: "var(--ia-white)", border: "1px solid var(--ia-gray-1)", borderRadius: 12, padding: "12px 14px", fontSize: 14.5, lineHeight: 1.55, marginBottom: 12 }}>{exec.data.overview}</div>
+              )}
+              {exec.data.highlights.length > 0 ? (
+                <ul style={{ margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.6 }}>
+                  {exec.data.highlights.slice(0, 5).map((h, i) => (
+                    <li key={i} style={{ marginBottom: 4, fontSize: 14 }}>
+                      <strong>{h.account}:</strong> {h.headline}
+                      {h.date ? <span className="secondary" style={{ fontSize: 12 }}> · {h.date}</span> : null}
+                    </li>
+                  ))}
+                  {exec.data.highlights.length > 5 && <li className="secondary" style={{ fontSize: 13 }}>+ {exec.data.highlights.length - 5} more in the full roll-up</li>}
+                </ul>
+              ) : (
+                <div className="secondary" style={{ fontSize: 14, marginBottom: 12 }}>A quiet week — no material developments across the Tier 1 book.</div>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={() => previewExecRollup(exec.data!)} style={btnGhost}>Preview full roll-up</button>
+                <button onClick={() => window.open(execGmailUrl(exec.data!), "_blank")} style={btnPrimary}>Open in Gmail (to CXOs)</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

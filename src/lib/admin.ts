@@ -25,6 +25,24 @@ export interface DigestItem {
 }
 export interface DigestResponse { ok: boolean; items: DigestItem[]; error?: string; }
 
+export interface RollupHighlight {
+  account: string; domain: string; headline: string; detail: string; whyItMatters: string; url: string; date: string;
+}
+export interface ExecRollup {
+  ok: boolean; overview: string; highlights: RollupHighlight[];
+  stats?: { accounts: number; owners: number }; generatedAt?: number; error?: string;
+}
+
+export async function fetchExecRollup(): Promise<ExecRollup> {
+  try {
+    const res = await fetch("/api/public/admin/exec-rollup", { method: "POST" });
+    if (res.status === 403) return { ok: false, overview: "", highlights: [], error: "forbidden" };
+    return (await res.json()) as ExecRollup;
+  } catch (e) {
+    return { ok: false, overview: "", highlights: [], error: (e as Error).message };
+  }
+}
+
 export async function fetchOwners(): Promise<OwnersResponse> {
   try {
     const res = await fetch("/api/public/admin/owners");
@@ -224,6 +242,91 @@ export function previewDigest(person: AdminPerson, items: DigestItem[]): void {
   if (!w) return;
   w.document.open();
   w.document.write(buildDigestHtml(person, items));
+  w.document.close();
+}
+
+// ── Executive roll-up (for CXOs) ────────────────────────────────────────────
+export function execSubject(): string {
+  return `Executive roll-up — Tier 1 accounts (${today()})`;
+}
+
+/** Styled HTML executive roll-up. */
+export function buildExecHtml(data: ExecRollup): string {
+  const hi = data.highlights || [];
+  const stat = data.stats ? `${data.stats.accounts} Tier 1 accounts · ${data.stats.owners} owners` : "";
+  const cards = hi.length === 0
+    ? `<div style="color:${C.muted};text-align:center;padding:26px;border:1px dashed ${C.line};border-radius:12px;font:400 14px ${FONT};">A quiet week — no material developments across the Tier 1 book in the last 7 days.</div>`
+    : hi.map((h, i) => `
+      <div style="border:1px solid ${C.line};border-radius:14px;padding:14px 18px;margin:14px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>
+          <td style="font:800 12px ${FONT};letter-spacing:.04em;color:${C.blue};text-transform:uppercase;">${i + 1}. ${esc(h.account)}${h.domain ? ` · ${esc(h.domain)}` : ""}</td>
+          <td align="right" style="font:500 12px ${FONT};color:${C.muted};white-space:nowrap;">${esc(h.date)}</td>
+        </tr></table>
+        <div style="font:700 16px/1.35 ${FONT};color:${C.ink};margin:6px 0 4px;">${esc(h.headline)}</div>
+        ${h.detail ? `<p style="font:400 14px/1.55 ${FONT};color:${C.body};margin:0 0 6px;">${esc(h.detail)}</p>` : ""}
+        ${h.whyItMatters ? `<div style="background:${C.soft};border-radius:9px;padding:9px 12px;font:400 14px/1.5 ${FONT};color:${C.ink};"><b style="color:${C.blue};">Why it matters:</b> ${esc(h.whyItMatters)}</div>` : ""}
+        ${h.url ? `<a href="${esc(h.url)}" style="font:600 13px ${FONT};color:${C.blue};text-decoration:none;display:inline-block;margin-top:8px;">Source →</a>` : ""}
+      </div>`).join("");
+
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Executive roll-up — Tier 1 accounts</title></head>
+<body style="margin:0;padding:0;background:#eef1f6;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;border-collapse:collapse;"><tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="660" cellpadding="0" cellspacing="0" style="width:660px;max-width:660px;background:#ffffff;border-radius:16px;border-collapse:separate;overflow:hidden;">
+      <tr><td style="border-top:5px solid ${C.blue};padding:34px 38px 24px;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="padding-right:10px;"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden><path d="M8.5 2l4 2-2 6-4-2z" fill="${C.blue}"/><path d="M6 8l3.5 1.5L7 21l-4-2z" fill="${C.blue}"/><path d="M13 8l6 12H10z" fill="${C.blue}"/></svg></td>
+          <td style="font:800 15px ${FONT};color:${C.ink};letter-spacing:.02em;">IMPACT<div style="font:700 8px ${FONT};letter-spacing:.28em;color:${C.muted};">ANALYTICS</div></td>
+        </tr></table>
+        <div style="margin-top:20px;font:800 12px ${FONT};letter-spacing:.1em;text-transform:uppercase;color:${C.blue};">Executive Roll-up · This Week</div>
+        <h1 style="font:400 30px/1.14 Georgia,'Times New Roman',serif;color:${C.ink};margin:10px 0 8px;">Tier 1 account activity</h1>
+        <p style="font:400 14px ${FONT};color:${C.muted};margin:0;">${weekWindow()}${stat ? ` · ${stat}` : ""}</p>
+      </td></tr>
+      <tr><td style="padding:16px 38px 38px;">
+        ${data.overview ? `<div style="background:${C.soft};border:1px solid #dfe4f5;border-radius:12px;padding:16px 18px;font:400 15px/1.6 ${FONT};color:${C.ink};margin:6px 0 18px;">${esc(data.overview)}</div>` : ""}
+        <div style="font:800 12px ${FONT};letter-spacing:.08em;text-transform:uppercase;color:${C.muted};margin:6px 0 4px;">Top developments</div>
+        ${cards}
+        <p style="font:400 12px ${FONT};color:#9aa3b2;margin:26px 0 0;border-top:1px solid ${C.line};padding-top:14px;">Generated by IAsense · Account Intelligence · across the full Tier 1 book, last 7 days</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+}
+
+export function buildExecText(data: ExecRollup): string {
+  const RULE = "──────────────────────────────────────────";
+  const L: string[] = [];
+  L.push("IMPACT ANALYTICS · EXECUTIVE ROLL-UP");
+  L.push(`Tier 1 account activity · ${weekWindow()}`);
+  if (data.stats) L.push(`${data.stats.accounts} Tier 1 accounts · ${data.stats.owners} owners`);
+  L.push(RULE);
+  L.push("");
+  if (data.overview) { L.push(data.overview); L.push(""); }
+  L.push("TOP DEVELOPMENTS");
+  (data.highlights || []).forEach((h, i) => {
+    L.push("");
+    L.push(`${i + 1}. ${h.account}${h.domain ? ` (${h.domain})` : ""}${h.date ? `   ·   ${h.date}` : ""}`);
+    L.push(`   ${h.headline}`);
+    if (h.detail) L.push(`   ${h.detail}`);
+    if (h.whyItMatters) L.push(`   ➜ Why it matters: ${h.whyItMatters}`);
+    if (h.url) L.push(`   🔗 ${h.url}`);
+  });
+  if (!(data.highlights || []).length) L.push("(A quiet week — no material developments across the Tier 1 book.)");
+  L.push("");
+  L.push(RULE);
+  L.push("Generated by IAsense · Account Intelligence");
+  return L.join("\n");
+}
+
+/** Gmail compose for the CXOs — recipient left blank for the admin to fill. */
+export function execGmailUrl(data: ExecRollup): string {
+  return `https://mail.google.com/mail/?view=cm&fs=1&to=&su=${encodeURIComponent(execSubject())}&body=${encodeURIComponent(buildExecText(data))}`;
+}
+
+export function previewExecRollup(data: ExecRollup): void {
+  const w = window.open("", "_blank");
+  if (!w) return;
+  w.document.open();
+  w.document.write(buildExecHtml(data));
   w.document.close();
 }
 
