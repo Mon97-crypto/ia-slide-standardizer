@@ -107,25 +107,41 @@ function groupByAccount(items: DigestItem[]): Array<{ account: string; domain: s
   return [...map.values()];
 }
 
-/** Plain-text digest for the Gmail compose body. */
+/** Beautified plain-text digest for the Gmail compose body (Gmail carries text
+ * only, so we structure it with clear per-account sections and spacing). */
 export function buildDigestText(person: AdminPerson, items: DigestItem[]): string {
+  const groups = groupByAccount(items);
+  const RULE = "──────────────────────────────────────────";
   const L: string[] = [];
+
+  L.push("IMPACT ANALYTICS · ACCOUNT INTELLIGENCE");
+  L.push("Top accounts · this week");
+  L.push(RULE);
+  L.push("");
   L.push(`Hi ${firstName(person.name)},`);
   L.push("");
   L.push(`Here's what moved across your top accounts this week (${weekWindow()}).`);
+  L.push(`${items.length} new development${items.length === 1 ? "" : "s"} across ${groups.length} account${groups.length === 1 ? "" : "s"}, de-duplicated against prior weeks.`);
   L.push("");
-  for (const g of groupByAccount(items)) {
-    L.push(`━━ ${g.account}${g.domain ? ` (${g.domain})` : ""} ━━`);
-    for (const it of g.items) {
-      L.push(`• ${it.headline}${it.date ? ` (${it.date})` : ""}`);
-      if (it.detail) L.push(`  ${it.detail}`);
-      if (it.soWhat) L.push(`  What it means: ${it.soWhat}`);
-      if (it.url) L.push(`  Source: ${it.url}`);
-    }
+
+  groups.forEach((g, gi) => {
+    L.push(RULE);
+    L.push(`▌ ${g.account.toUpperCase()}${g.domain ? `   ·   ${g.domain}` : ""}`);
+    L.push(RULE);
+    g.items.forEach((it, i) => {
+      L.push("");
+      L.push(`${i + 1}. ${it.headline}${it.date ? `   (${it.date})` : ""}`);
+      if (it.detail) L.push(`   ${it.detail}`);
+      if (it.soWhat) L.push(`   ➜ What it means: ${it.soWhat}`);
+      if (it.url) L.push(`   🔗 ${it.url}`);
+    });
     L.push("");
-  }
-  L.push(`Full dashboard: ${window.location.origin}`);
-  L.push("— Sent from IAsense · Account Intelligence");
+    if (gi < groups.length - 1) L.push("");
+  });
+
+  L.push(RULE);
+  L.push(`Open the dashboard:  ${window.location.origin}`);
+  L.push("Sent from IAsense · Account Intelligence · de-duplicated weekly");
   return L.join("\n");
 }
 
