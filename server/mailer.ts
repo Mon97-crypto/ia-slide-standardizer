@@ -15,10 +15,14 @@ export function mailerConfigured(): boolean {
 
 const FROM = () => process.env.RESEND_FROM || "IAsense <onboarding@resend.dev>";
 
+/** `to` may be a single address or a comma-separated list (for CXO roll-ups). */
 export async function sendEmail(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string }> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, error: "email_not_configured" };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { ok: false, error: "invalid recipient" };
+  const recipients = to.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!recipients.length || !recipients.every((r) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r))) {
+    return { ok: false, error: "invalid recipient" };
+  }
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
@@ -28,14 +32,14 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
         method: "POST",
         signal: controller.signal,
         headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-        body: JSON.stringify({ from: FROM(), to, subject, html }),
+        body: JSON.stringify({ from: FROM(), to: recipients, subject, html }),
       });
     } finally {
       clearTimeout(timer);
     }
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      return { ok: false, error: `Resend HTTP ${res.status}: ${body.slice(0, 200)}` };
+      return { ok: false, error: `Resend ${res.status}: ${body.slice(0, 220)}` };
     }
     return { ok: true };
   } catch (e) {

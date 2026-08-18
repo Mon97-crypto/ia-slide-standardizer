@@ -320,6 +320,20 @@ export function execGmailUrl(data: ExecRollup): string {
   return `https://mail.google.com/mail/?view=cm&fs=1&to=&su=${encodeURIComponent(execSubject())}&body=${encodeURIComponent(buildExecText(data))}`;
 }
 
+/** Send the styled exec roll-up as HTML email to one or more CXO recipients. */
+export async function sendExecEmail(recipients: string, data: ExecRollup): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/public/admin/send-email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ to: recipients, subject: execSubject(), html: buildExecHtml(data) }),
+    });
+    return (await res.json()) as { ok: boolean; error?: string };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 export function previewExecRollup(data: ExecRollup): void {
   const w = window.open("", "_blank");
   if (!w) return;

@@ -7,9 +7,9 @@
  */
 import { useEffect, useState } from "react";
 import {
-  fetchOwners, fetchPersonDigest, dedupItems, markSent,
+  fetchOwners, fetchPersonDigest, dedupItems, markSent, sendDigestEmail,
   gmailComposeUrl, previewDigest,
-  fetchExecRollup, previewExecRollup, execGmailUrl, type ExecRollup,
+  fetchExecRollup, previewExecRollup, execGmailUrl, sendExecEmail, type ExecRollup,
   type AdminPerson, type DigestItem,
 } from "../lib/admin";
 
@@ -19,6 +19,7 @@ interface Prep {
   status: "idle" | "loading" | "ready" | "error";
   fresh: DigestItem[];
   skipped: number;
+  sending?: boolean;
   sent?: boolean;
   sendMsg?: string;
   error?: string;
@@ -31,6 +32,8 @@ export function AdminView() {
   const [error, setError] = useState("");
   const [prep, setPrep] = useState<Record<number, Prep>>({});
   const [exec, setExec] = useState<{ status: "idle" | "loading" | "done" | "error"; data?: ExecRollup; error?: string }>({ status: "idle" });
+  const [execTo, setExecTo] = useState("");
+  const [execSend, setExecSend] = useState<{ busy?: boolean; msg?: string; ok?: boolean }>({});
 
   const load = () => {
     setState("loading"); setPrep({});
@@ -51,8 +54,25 @@ export function AdminView() {
     setPrep((m) => ({ ...m, [i]: { status: "ready", fresh, skipped } }));
   };
 
-  // Open a prefilled Gmail draft with the person's digest, and mark items sent.
-  const send = (i: number, p: AdminPerson) => {
+  // Primary: send the styled HTML digest via Resend, and mark items sent.
+  const send = async (i: number, p: AdminPerson) => {
+    const cur = prep[i];
+    if (!cur || cur.status !== "ready" || cur.fresh.length === 0) return;
+    setPrep((m) => ({ ...m, [i]: { ...cur, sending: true, sendMsg: undefined } }));
+    const r = await sendDigestEmail(p, cur.fresh);
+    if (r.ok) {
+      markSent(p.email, cur.fresh);
+      setPrep((m) => ({ ...m, [i]: { ...cur, sending: false, sent: true, sendMsg: `Emailed to ${p.email}` } }));
+    } else {
+      const msg = r.error === "email_not_configured"
+        ? "Email not set up — add RESEND_API_KEY, or use the Gmail draft."
+        : `Send failed (${r.error}). Tip: the Resend test sender only delivers to your own account email until the domain is verified — use the Gmail draft for others.`;
+      setPrep((m) => ({ ...m, [i]: { ...cur, sending: false, sendMsg: msg } }));
+    }
+  };
+
+  // Secondary: open a prefilled Gmail draft (works for anyone), and mark sent.
+  const sendGmail = (i: number, p: AdminPerson) => {
     const cur = prep[i];
     if (!cur || cur.status !== "ready" || cur.fresh.length === 0) return;
     window.open(gmailComposeUrl(p, cur.fresh), "_blank");
@@ -133,10 +153,29 @@ export function AdminView() {
               ) : (
                 <div className="secondary" style={{ fontSize: 14, marginBottom: 12 }}>A quiet week — no material developments across the Tier 1 book.</div>
               )}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => previewExecRollup(exec.data!)} style={btnGhost}>Preview full roll-up</button>
-                <button onClick={() => window.open(execGmailUrl(exec.data!), "_blank")} style={btnPrimary}>Open in Gmail (to CXOs)</button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input
+                  value={execTo}
+                  onChange={(e) => setExecTo(e.target.value)}
+                  placeholder="CXO emails, comma-separated"
+                  style={{ height: 34, padding: "0 12px", borderRadius: 10, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", fontSize: 13, fontFamily: "inherit", color: "var(--ia-black)", minWidth: 240, flex: 1 }}
+                />
+                <button
+                  onClick={async () => {
+                    if (!execTo.trim()) { setExecSend({ msg: "Add at least one CXO email." }); return; }
+                    setExecSend({ busy: true });
+                    const r = await sendExecEmail(execTo.trim(), exec.data!);
+                    setExecSend({ busy: false, ok: r.ok, msg: r.ok ? `Emailed to ${execTo.trim()}` : (r.error === "email_not_configured" ? "Email not set up — add RESEND_API_KEY, or use Gmail." : `Send failed (${r.error}). Test sender only reaches your own account email until the domain is verified — use Gmail for CXOs.`) });
+                  }}
+                  disabled={execSend.busy}
+                  style={execSend.busy ? btnDisabled : btnPrimary}
+                >
+                  {execSend.busy ? "Sending…" : "Send email"}
+                </button>
+                <button onClick={() => previewExecRollup(exec.data!)} style={btnGhost}>Preview full</button>
+                <button onClick={() => window.open(execGmailUrl(exec.data!), "_blank")} style={btnGhost}>Gmail draft</button>
               </div>
+              {execSend.msg && <div style={{ marginTop: 8, fontSize: 13, color: execSend.ok ? "#1e7e49" : "var(--ia-orange)" }}>{execSend.msg}</div>}
             </div>
           )}
         </div>
@@ -172,9 +211,10 @@ export function AdminView() {
                     {pr.status === "ready" && (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <button onClick={() => previewDigest(p, pr.fresh)} style={btnGhost}>Preview</button>
-                        <button onClick={() => send(i, p)} disabled={pr.fresh.length === 0} style={pr.fresh.length ? btnPrimary : btnDisabled}>
-                          {pr.sent ? "Re-open email" : "Send email"}
+                        <button onClick={() => send(i, p)} disabled={pr.fresh.length === 0 || pr.sending} style={pr.fresh.length && !pr.sending ? btnPrimary : btnDisabled}>
+                          {pr.sending ? "Sending…" : pr.sent ? "Re-send email" : "Send email"}
                         </button>
+                        <button onClick={() => sendGmail(i, p)} disabled={pr.fresh.length === 0} style={btnGhost}>Gmail draft</button>
                         <button onClick={() => prepare(i, p)} style={btnGhost}>Re-check</button>
                       </div>
                     )}
