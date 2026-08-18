@@ -1,9 +1,71 @@
+# Render Blueprint — one-click deploy of the IA Account Scanner.
+#
+# In Render:  New  >  Blueprint  >  pick this repo.  Render reads this file, builds
+# the Docker image (see ./Dockerfile), then prompts you to paste the three secret
+# values below. The secrets are entered in Render's GUI and are NEVER committed.
 services:
   - type: web
-    name: ia-slide-standardizer
+    name: ia-account-scanner
     runtime: docker
+    dockerfilePath: ./Dockerfile
+    branch: claude/edgar-techstack-news-scanner-3cb5jm
+    # "free" = $0/month, no card required. Sleeps after ~15 min idle and cold-starts
+    # (~30-60s) on the next request. Change to "starter" ($7/mo) for always-on.
     plan: free
-    healthCheckPath: /
+    healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
-      - key: PORT
-        value: 10000
+      # sync:false => Render prompts for the value on deploy and stores it server-side
+      # only. Paste each key into the GUI field (no terminal paste to corrupt).
+      - key: ANTHROPIC_API_KEY   # enables Claude web-search news + web-verified company facts
+        sync: false
+      - key: APOLLO_API_KEY      # enables Account info + Contacts
+        sync: false
+      - key: SERPAPI_KEY         # optional now: only used as fallback (or when NEWS_SOURCE=serp)
+        sync: false
+      # News backend: "auto" (default) prefers Claude web search when ANTHROPIC_API_KEY
+      # is set (0 SerpAPI credits/scan); "serp" forces SerpAPI; "anthropic" forces Claude.
+      # - key: NEWS_SOURCE
+      #   value: auto
+      # Max searches Claude runs per scan when using its own web search (cost vs coverage).
+      # Defaults to 4 in code; raise for deeper coverage at higher cost.
+      # - key: NEWS_WEB_SEARCH_MAX
+      #   value: "4"
+      # ── Google SSO (restricted to @impactanalytics.co) ──────────────────────
+      - key: GOOGLE_CLIENT_ID       # from your Google Cloud OAuth client
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET   # from your Google Cloud OAuth client
+        sync: false
+      - key: SESSION_SECRET         # Render auto-generates a strong random value
+        generateValue: true
+      # Who may sign in. Set ALLOWED_EMAILS to a comma-separated allowlist (any
+      # domain, e.g. your personal Gmail) and/or ALLOWED_EMAIL_DOMAIN for a whole
+      # domain. Access is granted if the email matches either.
+      - key: ALLOWED_EMAILS         # e.g. you@gmail.com,teammate@gmail.com
+        sync: false
+      # - key: ALLOWED_EMAIL_DOMAIN  # defaults to impactanalytics.co; set "" to disable
+      #   value: impactanalytics.co
+      # Admins see the Admin tab + can send team intelligence. Defaults in code to
+      # monica.a@, garvit.sindhwani@, marketing@impactanalytics.co. Override here:
+      # - key: ADMIN_EMAILS
+      #   value: monica.a@impactanalytics.co,garvit.sindhwani@impactanalytics.co,marketing@impactanalytics.co
+      # ── Formatted HTML digest email (Resend) ────────────────────────────────
+      # Set RESEND_API_KEY to send the admin top-accounts digest as styled HTML.
+      # RESEND_FROM must be a verified sender (verify impactanalytics.co in Resend);
+      # until then Resend's test sender only delivers to your own account email.
+      - key: RESEND_API_KEY   # from resend.com — enables "Send email" (HTML digest)
+        sync: false
+      # - key: RESEND_FROM
+      #   value: IAsense <intelligence@impactanalytics.co>
+      # ── My Dashboard: Salesforce accounts from a PRIVATE Google Sheet ────────
+      # Service-account auth. Share the sheet (Viewer) with GOOGLE_SA_EMAIL; the
+      # sheet is never made public. Get these from the service account's JSON key.
+      - key: GOOGLE_SHEET_ID        # the id in the sheet URL: /d/<THIS>/edit
+        sync: false
+      - key: GOOGLE_SA_EMAIL        # service account client_email
+        sync: false
+      - key: GOOGLE_SA_PRIVATE_KEY  # service account private_key (paste the whole -----BEGIN...----- block)
+        sync: false
+      # - key: GOOGLE_SHEET_RANGE   # optional; defaults to "A:Z" (or set a tab, e.g. "Accounts!A:Z")
+      #   value: A:Z
+      # The Dockerfile sets PORT=10000 and a writable SCAN_CACHE_DIR; no need to set them here.

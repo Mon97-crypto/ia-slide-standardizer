@@ -1,7 +1,17 @@
+# Python (legacy slide-standardizer)
 __pycache__/
 *.pyc
 uploads/
 outputs/
-.env
 *.pptx
 !brand_assets/
+
+# Node / scanner
+node_modules/
+dist/
+.data/
+.env
+*.local
+
+# Local preview screenshots (dev artifact)
+scripts/shots/
