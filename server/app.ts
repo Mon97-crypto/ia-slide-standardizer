@@ -26,6 +26,7 @@ import { accountsForUser, topAccountsForUser, accountByDomain, sheetsConfigured,
 import { personDigest, execRollup } from "../src/routes/api/public/providers/digest-provider";
 import { competitorFootprint } from "../src/routes/api/public/providers/competitor-provider";
 import { sendEmail, mailerConfigured } from "./mailer";
+import { dedup as digestDedup, recordSend as digestRecordSend, lastSendMany, history as digestHistory, type DigestItem as LogItem, type SendChannel } from "./digest-log";
 
 const now = () => Date.now();
 
@@ -268,6 +269,38 @@ app.post("/api/public/admin/person-digest", async (c) => {
   const accounts = (body.accounts ?? []).map((a) => ({ name: String(a.name ?? ""), domain: String(a.domain ?? "") }));
   const r = await personDigest(String(body.name ?? ""), accounts);
   return c.json({ ...r, generatedAt: now() });
+});
+
+// Admin: server-side digest log (shared by all admins).
+// De-dupe a fresh pull against what any admin has already sent to this person,
+// and return the last stored digest (so it can be re-sent even after dedup).
+app.post("/api/public/admin/digest-dedup", async (c) => {
+  if (!isAdminEmail(sessionEmail(c))) return c.json({ ok: false, error: "forbidden" }, 403);
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; items?: LogItem[] };
+  const email = String(body.email ?? "").trim();
+  if (!email) return c.json({ ok: false, error: "email required" });
+  const items = Array.isArray(body.items) ? body.items : [];
+  return c.json({ ok: true, ...digestDedup(email, items) });
+});
+
+// Record that a digest was sent (marks items sent + appends to the audit trail).
+app.post("/api/public/admin/digest-record", async (c) => {
+  if (!isAdminEmail(sessionEmail(c))) return c.json({ ok: false, error: "forbidden" }, 403);
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; items?: LogItem[]; channel?: string };
+  const email = String(body.email ?? "").trim();
+  if (!email) return c.json({ ok: false, error: "email required" });
+  const items = Array.isArray(body.items) ? body.items : [];
+  const channel: SendChannel = body.channel === "gmail" ? "gmail" : "email";
+  return c.json({ ok: true, record: digestRecordSend(email, items, channel) });
+});
+
+// Last-sent record for a set of people (for the admin list) or full history for one.
+app.post("/api/public/admin/digest-log", async (c) => {
+  if (!isAdminEmail(sessionEmail(c))) return c.json({ ok: false, error: "forbidden" }, 403);
+  const body = (await c.req.json().catch(() => ({}))) as { emails?: string[]; email?: string };
+  if (body.email) return c.json({ ok: true, history: digestHistory(String(body.email)) });
+  const emails = Array.isArray(body.emails) ? body.emails.map(String) : [];
+  return c.json({ ok: true, last: lastSendMany(emails) });
 });
 
 // Admin: send a rendered HTML digest email (Resend). Admin-only.

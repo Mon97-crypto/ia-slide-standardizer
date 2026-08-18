@@ -7,10 +7,10 @@
  */
 import { useEffect, useState } from "react";
 import {
-  fetchOwners, fetchPersonDigest, dedupItems, markSent, sendDigestEmail,
+  fetchOwners, fetchPersonDigest, dedupItems, sendDigestEmail,
   gmailComposeUrl, previewDigest,
   fetchExecRollup, previewExecRollup, execGmailUrl, sendExecEmail, type ExecRollup,
-  recordSend, lastSend, lastDigest, type SendRecord,
+  recordSend, fetchLastSends, type SendRecord,
   type AdminPerson, type DigestItem,
 } from "../lib/admin";
 
@@ -36,13 +36,14 @@ interface Prep {
   status: "idle" | "loading" | "ready" | "error";
   fresh: DigestItem[];
   all: DigestItem[];      // full pull (before cross-week dedup) — used for re-sends
+  last: DigestItem[];     // last digest stored on the server (re-send fallback)
   skipped: number;
   sending?: boolean;
   sent?: boolean;
   sendMsg?: string;
   error?: string;
 }
-const IDLE: Prep = { status: "idle", fresh: [], all: [], skipped: 0 };
+const IDLE: Prep = { status: "idle", fresh: [], all: [], last: [], skipped: 0 };
 
 export function AdminView() {
   const [people, setPeople] = useState<AdminPerson[]>([]);
@@ -54,28 +55,27 @@ export function AdminView() {
   const [execTo, setExecTo] = useState("");
   const [execSend, setExecSend] = useState<{ busy?: boolean; msg?: string; ok?: boolean }>({});
 
-  const refreshHistory = (ppl: AdminPerson[]) =>
-    setHistory(Object.fromEntries(ppl.map((p) => [p.email, lastSend(p.email)])));
-
   const load = () => {
     setState("loading"); setPrep({});
-    fetchOwners().then((r) => {
+    fetchOwners().then(async (r) => {
       if (r.error === "forbidden") { setState("forbidden"); return; }
       if (r.configured === false) { setState("unconfigured"); return; }
       if (!r.ok) { setError(r.error || "Could not load team data."); setState("error"); return; }
-      setPeople(r.people); refreshHistory(r.people); setState("ready");
+      setPeople(r.people); setState("ready");
+      setHistory(await fetchLastSends(r.people.map((p) => p.email)));
     });
   };
   useEffect(() => { load(); }, []);
 
-  const noteSent = (email: string) => setHistory((h) => ({ ...h, [email]: lastSend(email) }));
+  const noteSent = (email: string, rec: SendRecord | null) =>
+    setHistory((h) => ({ ...h, [email]: rec ?? h[email] ?? null }));
 
   const prepare = async (i: number, p: AdminPerson) => {
     setPrep((m) => ({ ...m, [i]: { ...IDLE, status: "loading" } }));
     const r = await fetchPersonDigest(p);
     if (!r.ok) { setPrep((m) => ({ ...m, [i]: { ...IDLE, status: "error", error: r.error || "Could not fetch." } })); return; }
-    const { fresh, skipped } = dedupItems(p.email, r.items);
-    setPrep((m) => ({ ...m, [i]: { status: "ready", fresh, all: r.items, skipped } }));
+    const { fresh, skipped, last } = await dedupItems(p.email, r.items);
+    setPrep((m) => ({ ...m, [i]: { status: "ready", fresh, all: r.items, last, skipped } }));
   };
 
   // Primary: send the styled HTML digest via Resend. Re-sendable any number of
@@ -86,9 +86,8 @@ export function AdminView() {
     setPrep((m) => ({ ...m, [i]: { ...cur, sending: true, sendMsg: undefined } }));
     const r = await sendDigestEmail(p, items);
     if (r.ok) {
-      markSent(p.email, items);
-      recordSend(p.email, items, "email");
-      noteSent(p.email);
+      const rec = await recordSend(p.email, items, "email");
+      noteSent(p.email, rec);
       setPrep((m) => ({ ...m, [i]: { ...cur, sending: false, sent: true, sendMsg: `Emailed to ${p.email}` } }));
     } else {
       const msg = r.error === "email_not_configured"
@@ -99,14 +98,13 @@ export function AdminView() {
   };
 
   // Secondary: open a prefilled Gmail draft (works for anyone). Re-openable.
-  const sendGmail = (i: number, p: AdminPerson, items: DigestItem[]) => {
+  const sendGmail = async (i: number, p: AdminPerson, items: DigestItem[]) => {
     const cur = prep[i];
     if (!cur || cur.status !== "ready" || items.length === 0) return;
     window.open(gmailComposeUrl(p, items), "_blank");
-    markSent(p.email, items);
-    recordSend(p.email, items, "gmail");
-    noteSent(p.email);
     setPrep((m) => ({ ...m, [i]: { ...cur, sent: true, sendMsg: `Gmail draft opened for ${p.email}` } }));
+    const rec = await recordSend(p.email, items, "gmail");
+    noteSent(p.email, rec);
   };
 
   const runExec = async () => {
@@ -249,7 +247,7 @@ export function AdminView() {
                       // Prefer new items; otherwise the full pull (all already sent,
                       // hidden by dedup); otherwise the last digest we stored. The
                       // admin can always re-send even after everything's been sent.
-                      const items = pr.fresh.length ? pr.fresh : (pr.all.length ? pr.all : lastDigest(p.email));
+                      const items = pr.fresh.length ? pr.fresh : (pr.all.length ? pr.all : pr.last);
                       const reusing = pr.fresh.length === 0 && items.length > 0;
                       const canSend = items.length > 0;
                       return (
@@ -267,7 +265,7 @@ export function AdminView() {
                   {pr.status === "ready" && (
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       {pr.fresh.length === 0 ? (() => {
-                        const resend = pr.all.length || lastDigest(p.email).length;
+                        const resend = pr.all.length || pr.last.length;
                         return (
                           <span className="secondary">
                             No new developments in the last 7 days{pr.skipped ? ` (${pr.skipped} already sent earlier, hidden)` : ""}.

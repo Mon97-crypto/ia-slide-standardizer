@@ -67,77 +67,62 @@ export async function fetchPersonDigest(person: AdminPerson): Promise<DigestResp
   }
 }
 
-// ── cross-week dedup (localStorage) ─────────────────────────────────────────
-const LOG_KEY = (email: string) => `ia-digest-log:v1:${email.toLowerCase()}`;
-function itemKey(it: DigestItem): string {
-  const acct = (it.domain || it.account).toLowerCase().replace(/[^a-z0-9]/g, "");
-  const head = it.headline.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 48);
-  return `${acct}|${head}`;
-}
-function loadLog(email: string): Record<string, string> {
-  try { return JSON.parse(localStorage.getItem(LOG_KEY(email)) || "{}") as Record<string, string>; } catch { return {}; }
-}
-/** Split a fresh pull into items not seen before vs. those already sent earlier. */
-export function dedupItems(email: string, items: DigestItem[]): { fresh: DigestItem[]; skipped: number } {
-  const log = loadLog(email);
-  const fresh: DigestItem[] = [];
-  const seenThisPull = new Set<string>();
-  let skipped = 0;
-  for (const it of items) {
-    const k = itemKey(it);
-    if (seenThisPull.has(k)) continue; // de-dupe within the pull too
-    seenThisPull.add(k);
-    if (log[k]) { skipped++; continue; }
-    fresh.push(it);
-  }
-  return { fresh, skipped };
-}
-/** Record items as sent so next week's digest excludes them. */
-export function markSent(email: string, items: DigestItem[]): void {
-  try {
-    const log = loadLog(email);
-    const stamp = new Date().toISOString().slice(0, 10);
-    for (const it of items) log[itemKey(it)] = stamp;
-    localStorage.setItem(LOG_KEY(email), JSON.stringify(log));
-  } catch { /* best-effort */ }
-}
-
-// ── send history (localStorage) ─────────────────────────────────────────────
-// A per-person audit trail of when a digest was last sent, and the exact items
-// of the last digest (so an admin can re-send it even after cross-week dedup has
-// hidden those items from the next "fresh" pull).
+// ── shared digest log (server-side, shared by all admins) ───────────────────
+// Dedup, send-history and last-digest all live on the server so BOTH admins see
+// one truth (a send by one admin is reflected for the other). See server/digest-log.ts.
 export type SendChannel = "email" | "gmail";
 export interface SendRecord { at: string; count: number; channel?: SendChannel; }
-const HIST_KEY = (email: string) => `ia-digest-hist:v1:${email.toLowerCase()}`;
-const LAST_KEY = (email: string) => `ia-digest-last:v1:${email.toLowerCase()}`;
 
-export function sendHistory(email: string): SendRecord[] {
-  try { return JSON.parse(localStorage.getItem(HIST_KEY(email)) || "[]") as SendRecord[]; } catch { return []; }
-}
-export function lastSend(email: string): SendRecord | null {
-  const h = sendHistory(email);
-  if (h.length) return h[0];
-  // Fallback: items were marked sent before the history log existed. Infer the
-  // last-sent date (and that day's count) from the cross-week dedup log.
+/** De-dupe a fresh pull against what any admin has already sent this person, and
+ * return the last stored digest (so it can be re-sent even after dedup). */
+export async function dedupItems(email: string, items: DigestItem[]): Promise<{ fresh: DigestItem[]; skipped: number; last: DigestItem[] }> {
   try {
-    const dates = Object.values(loadLog(email)).sort();
-    if (!dates.length) return null;
-    const at = dates[dates.length - 1];
-    return { at, count: dates.filter((d) => d === at).length };
+    const res = await fetch("/api/public/admin/digest-dedup", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, items }),
+    });
+    const d = (await res.json()) as { ok?: boolean; fresh?: DigestItem[]; skipped?: number; last?: DigestItem[] };
+    if (!d.ok) return { fresh: items, skipped: 0, last: [] };
+    return { fresh: d.fresh ?? [], skipped: d.skipped ?? 0, last: d.last ?? [] };
+  } catch {
+    return { fresh: items, skipped: 0, last: [] };
+  }
+}
+
+/** Record a send (marks items sent + appends to the shared audit trail). */
+export async function recordSend(email: string, items: DigestItem[], channel: SendChannel): Promise<SendRecord | null> {
+  try {
+    const res = await fetch("/api/public/admin/digest-record", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, items, channel }),
+    });
+    const d = (await res.json()) as { ok?: boolean; record?: SendRecord };
+    return d.ok ? (d.record ?? null) : null;
   } catch { return null; }
 }
-/** The exact items of the most recent digest sent to this person (for re-send). */
-export function lastDigest(email: string): DigestItem[] {
-  try { return JSON.parse(localStorage.getItem(LAST_KEY(email)) || "[]") as DigestItem[]; } catch { return []; }
-}
-/** Log a send: prepend to the history (newest first, capped) and stash the items. */
-export function recordSend(email: string, items: DigestItem[], channel: SendChannel): void {
+
+/** Last-sent record for many people at once (for the admin list). */
+export async function fetchLastSends(emails: string[]): Promise<Record<string, SendRecord | null>> {
   try {
-    const hist = sendHistory(email);
-    hist.unshift({ at: new Date().toISOString(), count: items.length, channel });
-    localStorage.setItem(HIST_KEY(email), JSON.stringify(hist.slice(0, 20)));
-    if (items.length) localStorage.setItem(LAST_KEY(email), JSON.stringify(items));
-  } catch { /* best-effort */ }
+    const res = await fetch("/api/public/admin/digest-log", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ emails }),
+    });
+    const d = (await res.json()) as { ok?: boolean; last?: Record<string, SendRecord | null> };
+    return d.ok ? (d.last ?? {}) : {};
+  } catch { return {}; }
+}
+
+/** Full send history for one person (newest first) — for an audit view. */
+export async function fetchHistory(email: string): Promise<SendRecord[]> {
+  try {
+    const res = await fetch("/api/public/admin/digest-log", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const d = (await res.json()) as { ok?: boolean; history?: SendRecord[] };
+    return d.ok ? (d.history ?? []) : [];
+  } catch { return []; }
 }
 
 // ── formatting ──────────────────────────────────────────────────────────────
