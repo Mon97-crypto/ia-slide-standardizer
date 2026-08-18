@@ -35,13 +35,14 @@ const exactWhen = (iso: string) => { try { return new Date(iso).toLocaleString("
 interface Prep {
   status: "idle" | "loading" | "ready" | "error";
   fresh: DigestItem[];
+  all: DigestItem[];      // full pull (before cross-week dedup) — used for re-sends
   skipped: number;
   sending?: boolean;
   sent?: boolean;
   sendMsg?: string;
   error?: string;
 }
-const IDLE: Prep = { status: "idle", fresh: [], skipped: 0 };
+const IDLE: Prep = { status: "idle", fresh: [], all: [], skipped: 0 };
 
 export function AdminView() {
   const [people, setPeople] = useState<AdminPerson[]>([]);
@@ -74,7 +75,7 @@ export function AdminView() {
     const r = await fetchPersonDigest(p);
     if (!r.ok) { setPrep((m) => ({ ...m, [i]: { ...IDLE, status: "error", error: r.error || "Could not fetch." } })); return; }
     const { fresh, skipped } = dedupItems(p.email, r.items);
-    setPrep((m) => ({ ...m, [i]: { status: "ready", fresh, skipped } }));
+    setPrep((m) => ({ ...m, [i]: { status: "ready", fresh, all: r.items, skipped } }));
   };
 
   // Primary: send the styled HTML digest via Resend. Re-sendable any number of
@@ -230,7 +231,7 @@ export function AdminView() {
                       {history[p.email] ? (
                         <div title={exactWhen(history[p.email]!.at)} style={{ fontSize: 12, marginTop: 4, color: "var(--ia-gray-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
                           <span aria-hidden style={{ display: "inline-block", width: 6, height: 6, borderRadius: 999, background: "#1e7e49" }} />
-                          Last sent {timeAgo(history[p.email]!.at)} · {history[p.email]!.count} item{history[p.email]!.count === 1 ? "" : "s"} via {history[p.email]!.channel === "email" ? "Email" : "Gmail draft"}
+                          Last sent {timeAgo(history[p.email]!.at)} · {history[p.email]!.count} item{history[p.email]!.count === 1 ? "" : "s"}{history[p.email]!.channel ? ` via ${history[p.email]!.channel === "email" ? "Email" : "Gmail draft"}` : ""}
                         </div>
                       ) : (
                         <div style={{ fontSize: 12, marginTop: 4, color: "var(--ia-gray-2)" }}>Never sent yet</div>
@@ -245,9 +246,10 @@ export function AdminView() {
                     )}
                     {pr.status === "error" && <button onClick={() => prepare(i, p)} style={{ ...btnGhost, color: "var(--ia-orange)", borderColor: "var(--ia-orange)" }}>Retry</button>}
                     {pr.status === "ready" && (() => {
-                      // Fresh items if any; otherwise fall back to the last digest so
-                      // the admin can always re-send even after dedup empties the pull.
-                      const items = pr.fresh.length ? pr.fresh : lastDigest(p.email);
+                      // Prefer new items; otherwise the full pull (all already sent,
+                      // hidden by dedup); otherwise the last digest we stored. The
+                      // admin can always re-send even after everything's been sent.
+                      const items = pr.fresh.length ? pr.fresh : (pr.all.length ? pr.all : lastDigest(p.email));
                       const reusing = pr.fresh.length === 0 && items.length > 0;
                       const canSend = items.length > 0;
                       return (
@@ -264,12 +266,15 @@ export function AdminView() {
                   </div>
                   {pr.status === "ready" && (
                     <div style={{ marginTop: 10, fontSize: 13 }}>
-                      {pr.fresh.length === 0 ? (
-                        <span className="secondary">
-                          No new developments in the last 7 days{pr.skipped ? ` (${pr.skipped} already sent earlier, hidden)` : ""}.
-                          {lastDigest(p.email).length > 0 ? <span> You can still re-send the last digest ({lastDigest(p.email).length} item{lastDigest(p.email).length === 1 ? "" : "s"}).</span> : null}
-                        </span>
-                      ) : (
+                      {pr.fresh.length === 0 ? (() => {
+                        const resend = pr.all.length || lastDigest(p.email).length;
+                        return (
+                          <span className="secondary">
+                            No new developments in the last 7 days{pr.skipped ? ` (${pr.skipped} already sent earlier, hidden)` : ""}.
+                            {resend > 0 ? <span> You can still re-send {resend} item{resend === 1 ? "" : "s"} from before.</span> : null}
+                          </span>
+                        );
+                      })() : (
                         <span>
                           <strong style={{ color: "var(--ia-blue)" }}>{pr.fresh.length}</strong> new item{pr.fresh.length === 1 ? "" : "s"} to send
                           {pr.skipped ? <span className="secondary"> · {pr.skipped} repeat{pr.skipped === 1 ? "" : "s"} hidden</span> : null}

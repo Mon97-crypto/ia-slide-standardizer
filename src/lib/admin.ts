@@ -107,7 +107,7 @@ export function markSent(email: string, items: DigestItem[]): void {
 // of the last digest (so an admin can re-send it even after cross-week dedup has
 // hidden those items from the next "fresh" pull).
 export type SendChannel = "email" | "gmail";
-export interface SendRecord { at: string; count: number; channel: SendChannel; }
+export interface SendRecord { at: string; count: number; channel?: SendChannel; }
 const HIST_KEY = (email: string) => `ia-digest-hist:v1:${email.toLowerCase()}`;
 const LAST_KEY = (email: string) => `ia-digest-last:v1:${email.toLowerCase()}`;
 
@@ -116,7 +116,15 @@ export function sendHistory(email: string): SendRecord[] {
 }
 export function lastSend(email: string): SendRecord | null {
   const h = sendHistory(email);
-  return h.length ? h[0] : null;
+  if (h.length) return h[0];
+  // Fallback: items were marked sent before the history log existed. Infer the
+  // last-sent date (and that day's count) from the cross-week dedup log.
+  try {
+    const dates = Object.values(loadLog(email)).sort();
+    if (!dates.length) return null;
+    const at = dates[dates.length - 1];
+    return { at, count: dates.filter((d) => d === at).length };
+  } catch { return null; }
 }
 /** The exact items of the most recent digest sent to this person (for re-send). */
 export function lastDigest(email: string): DigestItem[] {
