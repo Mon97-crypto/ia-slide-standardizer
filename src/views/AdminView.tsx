@@ -10,10 +10,27 @@ import {
   fetchOwners, fetchPersonDigest, dedupItems, markSent, sendDigestEmail,
   gmailComposeUrl, previewDigest,
   fetchExecRollup, previewExecRollup, execGmailUrl, sendExecEmail, type ExecRollup,
+  recordSend, lastSend, lastDigest, type SendRecord,
   type AdminPerson, type DigestItem,
 } from "../lib/admin";
 
 type State = "loading" | "ready" | "unconfigured" | "forbidden" | "error";
+
+/** "just now", "3h ago", "2d ago", or an absolute date for older sends. */
+function timeAgo(iso: string): string {
+  try {
+    const then = new Date(iso).getTime();
+    const mins = Math.round((Date.now() - then) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.round(hrs / 24);
+    if (days <= 7) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch { return ""; }
+}
+const exactWhen = (iso: string) => { try { return new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }); } catch { return iso; } };
 
 interface Prep {
   status: "idle" | "loading" | "ready" | "error";
@@ -31,9 +48,13 @@ export function AdminView() {
   const [state, setState] = useState<State>("loading");
   const [error, setError] = useState("");
   const [prep, setPrep] = useState<Record<number, Prep>>({});
+  const [history, setHistory] = useState<Record<string, SendRecord | null>>({});
   const [exec, setExec] = useState<{ status: "idle" | "loading" | "done" | "error"; data?: ExecRollup; error?: string }>({ status: "idle" });
   const [execTo, setExecTo] = useState("");
   const [execSend, setExecSend] = useState<{ busy?: boolean; msg?: string; ok?: boolean }>({});
+
+  const refreshHistory = (ppl: AdminPerson[]) =>
+    setHistory(Object.fromEntries(ppl.map((p) => [p.email, lastSend(p.email)])));
 
   const load = () => {
     setState("loading"); setPrep({});
@@ -41,10 +62,12 @@ export function AdminView() {
       if (r.error === "forbidden") { setState("forbidden"); return; }
       if (r.configured === false) { setState("unconfigured"); return; }
       if (!r.ok) { setError(r.error || "Could not load team data."); setState("error"); return; }
-      setPeople(r.people); setState("ready");
+      setPeople(r.people); refreshHistory(r.people); setState("ready");
     });
   };
   useEffect(() => { load(); }, []);
+
+  const noteSent = (email: string) => setHistory((h) => ({ ...h, [email]: lastSend(email) }));
 
   const prepare = async (i: number, p: AdminPerson) => {
     setPrep((m) => ({ ...m, [i]: { ...IDLE, status: "loading" } }));
@@ -54,14 +77,17 @@ export function AdminView() {
     setPrep((m) => ({ ...m, [i]: { status: "ready", fresh, skipped } }));
   };
 
-  // Primary: send the styled HTML digest via Resend, and mark items sent.
-  const send = async (i: number, p: AdminPerson) => {
+  // Primary: send the styled HTML digest via Resend. Re-sendable any number of
+  // times; `items` is passed explicitly so we can also re-send the last digest.
+  const send = async (i: number, p: AdminPerson, items: DigestItem[]) => {
     const cur = prep[i];
-    if (!cur || cur.status !== "ready" || cur.fresh.length === 0) return;
+    if (!cur || cur.status !== "ready" || items.length === 0) return;
     setPrep((m) => ({ ...m, [i]: { ...cur, sending: true, sendMsg: undefined } }));
-    const r = await sendDigestEmail(p, cur.fresh);
+    const r = await sendDigestEmail(p, items);
     if (r.ok) {
-      markSent(p.email, cur.fresh);
+      markSent(p.email, items);
+      recordSend(p.email, items, "email");
+      noteSent(p.email);
       setPrep((m) => ({ ...m, [i]: { ...cur, sending: false, sent: true, sendMsg: `Emailed to ${p.email}` } }));
     } else {
       const msg = r.error === "email_not_configured"
@@ -71,13 +97,15 @@ export function AdminView() {
     }
   };
 
-  // Secondary: open a prefilled Gmail draft (works for anyone), and mark sent.
-  const sendGmail = (i: number, p: AdminPerson) => {
+  // Secondary: open a prefilled Gmail draft (works for anyone). Re-openable.
+  const sendGmail = (i: number, p: AdminPerson, items: DigestItem[]) => {
     const cur = prep[i];
-    if (!cur || cur.status !== "ready" || cur.fresh.length === 0) return;
-    window.open(gmailComposeUrl(p, cur.fresh), "_blank");
-    markSent(p.email, cur.fresh);
-    setPrep((m) => ({ ...m, [i]: { ...cur, sent: true, sendMsg: `Gmail draft opened for ${p.email} & marked sent` } }));
+    if (!cur || cur.status !== "ready" || items.length === 0) return;
+    window.open(gmailComposeUrl(p, items), "_blank");
+    markSent(p.email, items);
+    recordSend(p.email, items, "gmail");
+    noteSent(p.email);
+    setPrep((m) => ({ ...m, [i]: { ...cur, sent: true, sendMsg: `Gmail draft opened for ${p.email}` } }));
   };
 
   const runExec = async () => {
@@ -199,6 +227,14 @@ export function AdminView() {
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontWeight: 600 }}>{p.name}</div>
                       <div className="secondary" style={{ fontSize: 13 }}>{p.email} · {p.accounts.length} top account{p.accounts.length === 1 ? "" : "s"}</div>
+                      {history[p.email] ? (
+                        <div title={exactWhen(history[p.email]!.at)} style={{ fontSize: 12, marginTop: 4, color: "var(--ia-gray-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <span aria-hidden style={{ display: "inline-block", width: 6, height: 6, borderRadius: 999, background: "#1e7e49" }} />
+                          Last sent {timeAgo(history[p.email]!.at)} · {history[p.email]!.count} item{history[p.email]!.count === 1 ? "" : "s"} via {history[p.email]!.channel === "email" ? "Email" : "Gmail draft"}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, marginTop: 4, color: "var(--ia-gray-2)" }}>Never sent yet</div>
+                      )}
                     </div>
                     {pr.status === "idle" && <button onClick={() => prepare(i, p)} style={btnPrimary}>Prepare digest</button>}
                     {pr.status === "loading" && (
@@ -208,28 +244,38 @@ export function AdminView() {
                       </span>
                     )}
                     {pr.status === "error" && <button onClick={() => prepare(i, p)} style={{ ...btnGhost, color: "var(--ia-orange)", borderColor: "var(--ia-orange)" }}>Retry</button>}
-                    {pr.status === "ready" && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <button onClick={() => previewDigest(p, pr.fresh)} style={btnGhost}>Preview</button>
-                        <button onClick={() => send(i, p)} disabled={pr.fresh.length === 0 || pr.sending} style={pr.fresh.length && !pr.sending ? btnPrimary : btnDisabled}>
-                          {pr.sending ? "Sending…" : pr.sent ? "Re-send email" : "Send email"}
-                        </button>
-                        <button onClick={() => sendGmail(i, p)} disabled={pr.fresh.length === 0} style={btnGhost}>Gmail draft</button>
-                        <button onClick={() => prepare(i, p)} style={btnGhost}>Re-check</button>
-                      </div>
-                    )}
+                    {pr.status === "ready" && (() => {
+                      // Fresh items if any; otherwise fall back to the last digest so
+                      // the admin can always re-send even after dedup empties the pull.
+                      const items = pr.fresh.length ? pr.fresh : lastDigest(p.email);
+                      const reusing = pr.fresh.length === 0 && items.length > 0;
+                      const canSend = items.length > 0;
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <button onClick={() => previewDigest(p, items)} disabled={!canSend} style={canSend ? btnGhost : btnDisabledGhost}>Preview</button>
+                          <button onClick={() => send(i, p, items)} disabled={!canSend || pr.sending} style={canSend && !pr.sending ? btnPrimary : btnDisabled}>
+                            {pr.sending ? "Sending…" : pr.sent ? "Send again" : reusing ? "Re-send last" : "Send email"}
+                          </button>
+                          <button onClick={() => sendGmail(i, p, items)} disabled={!canSend} style={canSend ? btnGhost : btnDisabledGhost}>Gmail draft</button>
+                          <button onClick={() => prepare(i, p)} style={btnGhost}>Re-check</button>
+                        </div>
+                      );
+                    })()}
                   </div>
                   {pr.status === "ready" && (
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       {pr.fresh.length === 0 ? (
-                        <span className="secondary">No new developments in the last 7 days{pr.skipped ? ` (${pr.skipped} already sent earlier, hidden)` : ""}.</span>
+                        <span className="secondary">
+                          No new developments in the last 7 days{pr.skipped ? ` (${pr.skipped} already sent earlier, hidden)` : ""}.
+                          {lastDigest(p.email).length > 0 ? <span> You can still re-send the last digest ({lastDigest(p.email).length} item{lastDigest(p.email).length === 1 ? "" : "s"}).</span> : null}
+                        </span>
                       ) : (
                         <span>
                           <strong style={{ color: "var(--ia-blue)" }}>{pr.fresh.length}</strong> new item{pr.fresh.length === 1 ? "" : "s"} to send
                           {pr.skipped ? <span className="secondary"> · {pr.skipped} repeat{pr.skipped === 1 ? "" : "s"} hidden</span> : null}
-                          {pr.sendMsg ? <span style={{ color: pr.sent ? "#1e7e49" : "var(--ia-orange)" }}> · {pr.sendMsg}</span> : null}
                         </span>
                       )}
+                      {pr.sendMsg ? <span style={{ color: pr.sent ? "#1e7e49" : "var(--ia-orange)" }}> · {pr.sendMsg}</span> : null}
                     </div>
                   )}
                   {pr.status === "error" && <div style={{ marginTop: 8, fontSize: 13, color: "var(--ia-orange)" }}>{pr.error}</div>}
@@ -252,3 +298,4 @@ const Card = ({ children, orange }: { children: React.ReactNode; orange?: boolea
 const btnGhost: React.CSSProperties = { height: 34, padding: "0 14px", borderRadius: 10, border: "1px solid var(--ia-gray-1)", background: "var(--ia-white)", color: "var(--ia-blue)", fontWeight: 600, fontSize: 13 };
 const btnPrimary: React.CSSProperties = { height: 34, padding: "0 14px", borderRadius: 10, border: "none", background: "var(--ia-blue)", color: "#fff", fontWeight: 600, fontSize: 13 };
 const btnDisabled: React.CSSProperties = { ...btnPrimary, background: "var(--ia-blue-light)" };
+const btnDisabledGhost: React.CSSProperties = { ...btnGhost, color: "var(--ia-gray-2)", borderColor: "var(--ia-gray-1)", opacity: 0.6 };

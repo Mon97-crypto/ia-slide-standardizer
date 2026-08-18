@@ -102,6 +102,36 @@ export function markSent(email: string, items: DigestItem[]): void {
   } catch { /* best-effort */ }
 }
 
+// ── send history (localStorage) ─────────────────────────────────────────────
+// A per-person audit trail of when a digest was last sent, and the exact items
+// of the last digest (so an admin can re-send it even after cross-week dedup has
+// hidden those items from the next "fresh" pull).
+export type SendChannel = "email" | "gmail";
+export interface SendRecord { at: string; count: number; channel: SendChannel; }
+const HIST_KEY = (email: string) => `ia-digest-hist:v1:${email.toLowerCase()}`;
+const LAST_KEY = (email: string) => `ia-digest-last:v1:${email.toLowerCase()}`;
+
+export function sendHistory(email: string): SendRecord[] {
+  try { return JSON.parse(localStorage.getItem(HIST_KEY(email)) || "[]") as SendRecord[]; } catch { return []; }
+}
+export function lastSend(email: string): SendRecord | null {
+  const h = sendHistory(email);
+  return h.length ? h[0] : null;
+}
+/** The exact items of the most recent digest sent to this person (for re-send). */
+export function lastDigest(email: string): DigestItem[] {
+  try { return JSON.parse(localStorage.getItem(LAST_KEY(email)) || "[]") as DigestItem[]; } catch { return []; }
+}
+/** Log a send: prepend to the history (newest first, capped) and stash the items. */
+export function recordSend(email: string, items: DigestItem[], channel: SendChannel): void {
+  try {
+    const hist = sendHistory(email);
+    hist.unshift({ at: new Date().toISOString(), count: items.length, channel });
+    localStorage.setItem(HIST_KEY(email), JSON.stringify(hist.slice(0, 20)));
+    if (items.length) localStorage.setItem(LAST_KEY(email), JSON.stringify(items));
+  } catch { /* best-effort */ }
+}
+
 // ── formatting ──────────────────────────────────────────────────────────────
 const today = () => { try { return new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }); } catch { return ""; } };
 const weekWindow = () => {
