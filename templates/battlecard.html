@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IA Battlecard Builder</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/ia_logo.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --impact-blue: #264CD7;
+            --off-white: #F4F4F6;
+            --black: #1C1B1B;
+            --white: #FFFFFF;
+            --orange: #FF6F1C;
+            --gray1: #E4E4E4;
+            --gray2: #D7D6D2;
+            --gray3: #B3B2AD;
+            --radius: 14px;
+            --radius-sm: 9px;
+            --shadow: 0 4px 20px rgba(38, 76, 215, 0.07);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter Tight', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--off-white);
+            color: var(--black);
+            font-size: 15px;
+        }
+        a { color: var(--impact-blue); }
+
+        .navbar {
+            background: var(--black); height: 62px; padding: 0 32px;
+            display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 60;
+        }
+        .navbar-brand { display: flex; align-items: center; gap: 14px; }
+        .navbar-brand img { height: 30px; }
+        .navbar-brand span { color: #fff; font-weight: 700; font-size: 17px; letter-spacing: -0.4px; }
+        .navbar-brand .badge {
+            background: var(--impact-blue); color: #fff; font-size: 10px; font-weight: 600;
+            padding: 3px 9px; border-radius: 20px; letter-spacing: 0.4px;
+        }
+        .navbar a.nav-link { color: var(--gray2); text-decoration: none; font-size: 14px; font-weight: 500; }
+        .navbar a.nav-link:hover { color: #fff; }
+
+        .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 22px 140px; }
+        .hero h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.8px; }
+        .hero h1 em { color: var(--impact-blue); font-style: normal; }
+        .hero p { color: #6b7280; margin-top: 6px; max-width: 720px; font-size: 15px; }
+
+        .card {
+            background: var(--white); border: 1px solid var(--gray1);
+            border-radius: var(--radius); box-shadow: var(--shadow); margin-top: 20px;
+        }
+        .card > header {
+            display: flex; align-items: center; justify-content: space-between; gap: 14px;
+            padding: 16px 20px; border-bottom: 1px solid var(--gray1); cursor: pointer;
+        }
+        .card > header h2 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .card > header .accent { width: 4px; height: 20px; border-radius: 3px; background: var(--impact-blue); }
+        .card > header .meta { color: var(--gray3); font-size: 12.5px; font-weight: 500; }
+        .card > .body { padding: 20px; }
+        .card.collapsed > .body { display: none; }
+        .card.collapsed > header { border-bottom: none; }
+        .chev { color: var(--gray3); transition: transform .15s; }
+        .card.collapsed .chev { transform: rotate(-90deg); }
+
+        label.field { display: block; margin-bottom: 12px; }
+        label.field > span {
+            display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+            text-transform: uppercase; color: var(--gray3); margin-bottom: 5px;
+        }
+        input[type=text], input[type=url], select, textarea {
+            width: 100%; padding: 9px 11px; border: 1px solid var(--gray1);
+            border-radius: var(--radius-sm); font-family: inherit; font-size: 14px;
+            color: var(--black); background: var(--white); resize: vertical;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none; border-color: var(--impact-blue); box-shadow: 0 0 0 3px rgba(38,76,215,.1);
+        }
+        textarea { min-height: 74px; line-height: 1.45; }
+        .grid { display: grid; gap: 14px; }
+        .g2 { grid-template-columns: 1fr 1fr; }
+        .g3 { grid-template-columns: repeat(3, 1fr); }
+        .g4 { grid-template-columns: repeat(4, 1fr); }
+        @media (max-width: 900px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+        .hint { font-size: 12.5px; color: var(--gray3); margin-bottom: 14px; line-height: 1.5; }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            border: none; border-radius: var(--radius-sm); padding: 10px 18px;
+            font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+        }
+        .btn-primary { background: var(--impact-blue); color: #fff; }
+        .btn-primary:hover { background: #1d3cb0; }
+        .btn-primary:disabled { background: var(--gray2); color: var(--gray3); cursor: not-allowed; }
+        .btn-ghost { background: var(--white); color: var(--black); border: 1px solid var(--gray1); }
+        .btn-ghost:hover { border-color: var(--impact-blue); color: var(--impact-blue); }
+        .btn-sm { padding: 7px 13px; font-size: 13px; }
+
+        .row-item {
+            border: 1px solid var(--gray1); border-radius: var(--radius-sm);
+            padding: 14px; margin-bottom: 12px; background: #fbfbfc; position: relative;
+        }
+        .row-item .row-head {
+            display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+        }
+        .row-item .row-num {
+            font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+            color: var(--impact-blue);
+        }
+        .icon-btn {
+            border: none; background: transparent; color: var(--gray3); cursor: pointer;
+            font-size: 14px; padding: 4px 7px; border-radius: 6px;
+        }
+        .icon-btn:hover { background: var(--gray1); color: var(--black); }
+
+        .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .pill {
+            border: 1px solid var(--gray1); background: var(--white); border-radius: 20px;
+            padding: 6px 14px; font-size: 13px; font-weight: 500; cursor: pointer; user-select: none;
+        }
+        .pill.on { background: var(--impact-blue); border-color: var(--impact-blue); color: #fff; }
+
+        .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
+
+        .notice { border-radius: var(--radius-sm); padding: 13px 15px; font-size: 13.5px; line-height: 1.55; margin-bottom: 12px; }
+        .notice.info { background: rgba(38,76,215,.06); border: 1px solid rgba(38,76,215,.18); }
+        .notice.warn { background: rgba(255,111,28,.07); border: 1px solid rgba(255,111,28,.25); }
+        .notice.bad { background: #fdeceb; border: 1px solid #f3b9b4; color: #922; }
+        .notice.good { background: rgba(61,212,153,.1); border: 1px solid rgba(61,212,153,.35); }
+        .notice ul { margin: 6px 0 0 18px; }
+        .notice li { margin-bottom: 3px; }
+
+        .actionbar {
+            position: fixed; left: 0; right: 0; bottom: 0; background: var(--white);
+            border-top: 1px solid var(--gray1); padding: 12px 22px; z-index: 50;
+            display: flex; align-items: center; justify-content: space-between; gap: 14px;
+            box-shadow: 0 -4px 20px rgba(28,27,27,.06);
+        }
+        .actionbar .status { font-size: 13px; color: var(--gray3); }
+        .actionbar .status strong { color: var(--black); }
+        .actionbar .group { display: flex; gap: 10px; align-items: center; }
+
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    </style>
+</head>
+<body>
+<nav class="navbar">
+    <div class="navbar-brand">
+        <img src="{{ url_for('static', filename='images/ia_logo.png') }}" alt="Impact Analytics">
+        <span>Battlecard Builder</span>
+        <span class="badge">PPTX</span>
+    </div>
+    <a class="nav-link" href="{{ url_for('index') }}"><i class="fas fa-arrow-left"></i> Slide Standardizer</a>
+</nav>
+
+<div class="wrap">
+    <div class="hero">
+        <h1>Build a competitive <em>battlecard</em></h1>
+        <p>Fill the sections, then export a branded PPTX. The deck follows the Impact Analytics
+           brand guide and opens unchanged in PowerPoint, Keynote and Google Slides.</p>
+    </div>
+
+    <!-- Setup -->
+    <section class="card" id="card-setup">
+        <header onclick="toggleCard('card-setup')">
+            <h2><i class="fas fa-id-card" style="color:var(--impact-blue)"></i> Card setup</h2>
+            <span class="meta"><span id="setupMeta"></span> <i class="fas fa-chevron-down chev"></i></span>
+        </header>
+        <div class="body">
+            <div class="grid g3">
+                <label class="field"><span>Competitor</span>
+                    <input type="text" id="f_competitor" list="competitorList" placeholder="Name the rival">
+                    <datalist id="competitorList"></datalist>
+                </label>
+                <label class="field"><span>Their category</span>
+                    <input type="text" id="f_category" placeholder="How they describe themselves">
+                </label>
+                <label class="field"><span>Impact Analytics product</span>
+                    <select id="f_product"></select>
+                </label>
+            </div>
+            <div class="grid g4">
+                <label class="field"><span>Solution colour</span>
+                    <select id="f_solution"></select>
+                </label>
+                <label class="field"><span>Card owner</span>
+                    <input type="text" id="f_owner" placeholder="Who keeps this current">
+                </label>
+                <label class="field"><span>Version</span>
+                    <input type="text" id="f_version" placeholder="v1.0">
+                </label>
+                <label class="field"><span>Confidentiality</span>
+                    <input type="text" id="f_confidentiality" placeholder="Internal use only">
+                </label>
+            </div>
+            <label class="field"><span>Cover headline</span>
+                <input type="text" id="f_headline" placeholder="One line that frames the fight">
+            </label>
+            <label class="field"><span>Win theme</span>
+                <textarea id="f_win_theme" placeholder="The single reason this buyer switches"></textarea>
+            </label>
+            <div class="notice info" id="solutionNote"></div>
+            <div class="pill-row">
+                <button class="btn btn-ghost btn-sm" onclick="loadStarter()">
+                    <i class="fas fa-wand-magic-sparkles"></i> Load starter card</button>
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()">
+                    <i class="fas fa-file-import"></i> Import JSON</button>
+                <button class="btn btn-ghost btn-sm" onclick="exportJson()">
+                    <i class="fas fa-file-export"></i> Export JSON</button>
+                <input type="file" id="importFile" accept=".json" class="sr" onchange="importJson(this)">
+            </div>
+        </div>
+    </section>
+
+    <!-- Slides to include -->
+    <section class="card" id="card-sections">
+        <header onclick="toggleCard('card-sections')">
+            <h2><span class="accent"></span> Slides to include</h2>
+            <span class="meta"><span id="sectionCount"></span> <i class="fas fa-chevron-down chev"></i></span>
+        </header>
+        <div class="body">
+            <p class="hint">Every selected section becomes one slide, or several when the content runs long.
+               The cover always ships.</p>
+            <div class="pill-row" id="sectionPills"></div>
+            <div class="grid g2" style="margin-top:18px">
+                <label class="field"><span>Speaker notes</span>
+                    <select id="f_notes"><option value="1">Include coaching notes</option>
+                        <option value="0">Leave notes empty</option></select>
+                </label>
+                <label class="field"><span>Brand copy rules</span>
+                    <select id="f_sanitize"><option value="1">Strip dashes the brand guide bans</option>
+                        <option value="0">Leave my text untouched</option></select>
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <div id="sectionCards"></div>
+</div>
+
+<div class="actionbar">
+    <div class="status" id="statusText">Fill the competitor name to start.</div>
+    <div class="group">
+        <button class="btn btn-ghost" onclick="runReview()"><i class="fas fa-list-check"></i> Review copy</button>
+        <button class="btn btn-primary" id="buildBtn" onclick="buildDeck()">
+            <i class="fas fa-file-powerpoint"></i> Build PPTX</button>
+    </div>
+</div>
+
+<script>
+const SOLUTION_SWATCH = {
+    inventory_replenishment: '#E3F576',
+    merchandising: '#BEA8EF',
+    pricing_promotions: '#3DD499',
+    data_intelligence: '#B3C9F7'
+};
+
+const RATINGS = [
+    ['unknown', 'Needs research'],
+    ['strong', 'Strong, ships today'],
+    ['partial', 'Partial coverage'],
+    ['none', 'Gap, not available']
+];
+
+// Section editors. `lines` sections take one item per line, `records` take rows.
+const SECTION_SPEC = {
+    how_to_use: { label: 'How to use this card', icon: 'fa-compass', kind: 'lines',
+        hint: 'Working rules for the seller who picks this card up cold.' },
+    snapshot: { label: 'Competitor snapshot', icon: 'fa-building', kind: 'snapshot',
+        hint: 'Facts only. Carry a dated source for every field.' },
+    positioning: { label: 'Positioning face off', icon: 'fa-quote-left', kind: 'positioning',
+        hint: 'Their claim in their words. Our claim in ours. Then the wedge between them.' },
+    strengths_weaknesses: { label: 'Where they win, where they fall short', icon: 'fa-scale-balanced',
+        kind: 'two_lines', hint: 'An honest read of their strengths buys credibility for the rest.',
+        a: ['their_strengths', 'Where they win'], b: ['their_weaknesses', 'Where they fall short'] },
+    why_we_win: { label: 'Why Impact Analytics wins', icon: 'fa-trophy', kind: 'records',
+        key: 'our_advantages', max: 6, hint: 'Three reasons beat seven. Attach proof to each one.',
+        fields: [ {k:'title', l:'Advantage'}, {k:'detail', l:'What it means for the buyer', ta:true},
+                  {k:'proof', l:'Proof'} ] },
+    comparison: { label: 'Head to head matrix', icon: 'fa-table-columns', kind: 'records',
+        key: 'comparison', max: 40, hint: 'Rate only rows you can defend with evidence.',
+        fields: [ {k:'capability', l:'Capability'}, {k:'ia', l:'Impact Analytics', type:'rating'},
+                  {k:'competitor', l:'Competitor', type:'rating'}, {k:'note', l:'What to say', ta:true} ] },
+    objections: { label: 'Objection handling', icon: 'fa-comments', kind: 'records',
+        key: 'objections', max: 12, hint: 'Answer once, then return to the outcome.',
+        fields: [ {k:'objection', l:'They say', ta:true}, {k:'response', l:'We say', ta:true},
+                  {k:'proof', l:'Proof', ta:true} ] },
+    landmines: { label: 'Landmines to set', icon: 'fa-bomb', kind: 'records',
+        key: 'landmines', max: 9, hint: 'One landmine per call. More than one sounds rehearsed.',
+        fields: [ {k:'question', l:'Ask this', ta:true}, {k:'why', l:'Why it lands', ta:true},
+                  {k:'listen_for', l:'Listen for', ta:true} ] },
+    discovery: { label: 'Discovery questions', icon: 'fa-magnifying-glass', kind: 'records',
+        key: 'discovery', max: 9, hint: 'Group questions by theme. Three themes fit one slide.',
+        fields: [ {k:'theme', l:'Theme'}, {k:'questions', l:'Questions, one per line', ta:true, lines:true} ] },
+    proof_points: { label: 'Proof points', icon: 'fa-chart-simple', kind: 'records',
+        key: 'proof_points', max: 8, hint: 'Use results from 2025 or later. Every stat carries a source link.',
+        fields: [ {k:'stat', l:'Headline number'}, {k:'label', l:'What it measures'},
+                  {k:'detail', l:'Customer situation', ta:true}, {k:'source', l:'Source link', url:true} ] },
+    talk_track: { label: 'Talk track', icon: 'fa-microphone-lines', kind: 'talk_track',
+        hint: 'Say it out loud twice. Cut any sentence that does not land.' },
+    dos_donts: { label: 'Do and do not', icon: 'fa-check-double', kind: 'two_lines',
+        hint: 'Rules that keep the conversation about value, not about the rival.',
+        a: ['dos', 'Do'], b: ['donts', 'Do not'] },
+    pricing: { label: 'Pricing and packaging', icon: 'fa-tags', kind: 'pricing',
+        hint: 'Record only what the buyer states or the vendor publishes.' },
+    next_steps: { label: 'Next steps and resources', icon: 'fa-flag-checkered', kind: 'next_steps',
+        hint: 'Name the step, the owner and the date.' }
+};
+
+let PRESETS = { products: [], competitors: [], sections: [], solutions: [], product_solutions: {} };
+let card = emptyCard();
+let openCards = {};
+
+function emptyCard() {
+    return {
+        meta: { competitor: '', competitor_category: '', ia_product: '', solution: '',
+                owner: '', version: 'v1.0', confidentiality: 'Internal use only',
+                headline: '', win_theme: '' },
+        how_to_use: [], snapshot: { recent_moves: [] },
+        positioning: { their_claim: '', our_claim: '', wedge: '' },
+        their_strengths: [], their_weaknesses: [], our_advantages: [], comparison: [],
+        objections: [], landmines: [], discovery: [], proof_points: [],
+        talk_track: { positioning: '', elevator: '', discovery_open: '', trap: '' },
+        dos: [], donts: [], pricing: { ia_model: '', competitor_model: '', notes: [] },
+        next_steps: [], resources: [],
+        sections: Object.keys(SECTION_SPEC).concat(['cover', 'one_pager']),
+        options: { serif_headings: false, include_notes: true, sanitize_copy: true }
+    };
+}
+
+// ── boot ────────────────────────────────────────────────────────────────────
+async function boot() {
+    const res = await fetch('/api/battlecard/presets');
+    PRESETS = await res.json();
+
+    document.getElementById('competitorList').innerHTML =
+        PRESETS.competitors.map(c => `<option value="${esc(c.name)}">${esc(c.category)}</option>`).join('');
+
+    document.getElementById('f_product').innerHTML =
+        '<option value="">Portfolio, no single product</option>' +
+        PRESETS.products.map(p => `<option value="${esc(p.name)}">${esc(p.name)} · ${esc(p.solution_label)}</option>`).join('');
+
+    document.getElementById('f_solution').innerHTML =
+        PRESETS.solutions.map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('');
+
+    bindSetup();
+    renderSectionPills();
+    renderSections();
+    syncForm();
+    updateStatus();
+}
+
+function bindSetup() {
+    const map = { f_competitor: 'competitor', f_category: 'competitor_category',
+                  f_owner: 'owner', f_version: 'version', f_confidentiality: 'confidentiality',
+                  f_headline: 'headline', f_win_theme: 'win_theme' };
+    Object.entries(map).forEach(([id, key]) => {
+        document.getElementById(id).addEventListener('input', e => {
+            card.meta[key] = e.target.value;
+            if (key === 'competitor') { renderSections(); updateStatus(); }
+        });
+    });
+    document.getElementById('f_competitor').addEventListener('change', e => {
+        const preset = PRESETS.competitors.find(c => c.name.toLowerCase() === e.target.value.trim().toLowerCase());
+        if (preset) {
+            if (!card.meta.competitor_category) card.meta.competitor_category = preset.category;
+            if (!card.meta.solution) card.meta.solution = preset.solution;
+            syncForm();
+        }
+    });
+    document.getElementById('f_product').addEventListener('change', e => {
+        card.meta.ia_product = e.target.value;
+        const solution = PRESETS.product_solutions[e.target.value];
+        if (solution) card.meta.solution = solution;
+        syncForm();
+    });
+    document.getElementById('f_solution').addEventListener('change', e => {
+        card.meta.solution = e.target.value; syncForm();
+    });
+    document.getElementById('f_notes').addEventListener('change', e => {
+        card.options.include_notes = e.target.value === '1';
+    });
+    document.getElementById('f_sanitize').addEventListener('change', e => {
+        card.options.sanitize_copy = e.target.value === '1';
+        card.sanitize_copy = card.options.sanitize_copy;
+    });
+}
+
+function syncForm() {
+    const m = card.meta;
+    setVal('f_competitor', m.competitor); setVal('f_category', m.competitor_category);
+    setVal('f_product', m.ia_product || ''); setVal('f_owner', m.owner);
+    setVal('f_version', m.version); setVal('f_confidentiality', m.confidentiality);
+    setVal('f_headline', m.headline); setVal('f_win_theme', m.win_theme);
+    setVal('f_solution', m.solution || 'data_intelligence');
+    setVal('f_notes', card.options.include_notes ? '1' : '0');
+    setVal('f_sanitize', card.options.sanitize_copy === false ? '0' : '1');
+
+    const key = m.solution || 'data_intelligence';
+    const label = (PRESETS.solutions.find(s => s.key === key) || {}).label || '';
+    document.getElementById('solutionNote').innerHTML =
+        `<span class="swatch" style="background:${SOLUTION_SWATCH[key] || '#B3C9F7'}"></span>` +
+        `Accent colour for this card: <strong>${esc(label)}</strong>. The brand guide allows one solution ` +
+        `colour per composition, so every slide uses this accent with Impact Blue.`;
+    document.getElementById('setupMeta').textContent = m.competitor || 'Unnamed';
+}
+
+function setVal(id, value) { const el = document.getElementById(id); if (el) el.value = value || ''; }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ── section pills ───────────────────────────────────────────────────────────
+function renderSectionPills() {
+    const chosen = new Set(card.sections);
+    document.getElementById('sectionPills').innerHTML = PRESETS.sections.map(s => {
+        const locked = s.key === 'cover';
+        return `<span class="pill ${chosen.has(s.key) ? 'on' : ''}" data-key="${s.key}"
+            onclick="${locked ? '' : `toggleSection('${s.key}')`}" title="${locked ? 'Always included' : ''}">
+            ${locked ? '<i class="fas fa-lock" style="font-size:10px;margin-right:5px"></i>' : ''}${esc(s.label)}</span>`;
+    }).join('');
+    document.getElementById('sectionCount').textContent = card.sections.length + ' of ' + PRESETS.sections.length;
+}
+
+function toggleSection(key) {
+    const index = card.sections.indexOf(key);
+    if (index >= 0) card.sections.splice(index, 1); else card.sections.push(key);
+    renderSectionPills(); renderSections(); updateStatus();
+}
+
+function toggleCard(id) { document.getElementById(id).classList.toggle('collapsed'); }
+
+// ── section editors ─────────────────────────────────────────────────────────
+function renderSections() {
+    const host = document.getElementById('sectionCards');
+    const chosen = new Set(card.sections);
+    host.innerHTML = Object.entries(SECTION_SPEC)
+        .filter(([key]) => chosen.has(key))
+        .map(([key, spec]) => sectionCard(key, spec)).join('');
+    Object.entries(SECTION_SPEC).forEach(([key, spec]) => {
+        if (chosen.has(key)) renderBody(key, spec);
+    });
+}
+
+function sectionCard(key, spec) {
+    const collapsed = openCards[key] === false ? 'collapsed' : '';
+    return `<section class="card ${collapsed}" id="sec-${key}">
+        <header onclick="toggleSectionCard('${key}')">
+            <h2><i class="fas ${spec.icon}" style="color:var(--impact-blue)"></i> ${esc(spec.label)}</h2>
+            <span class="meta"><span id="count-${key}"></span> <i class="fas fa-chevron-down chev"></i></span>
+        </header>
+        <div class="body"><p class="hint">${esc(spec.hint)}</p><div id="body-${key}"></div></div>
+    </section>`;
+}
+
+function toggleSectionCard(key) {
+    const el = document.getElementById('sec-' + key);
+    el.classList.toggle('collapsed');
+    openCards[key] = !el.classList.contains('collapsed');
+}
+
+function renderBody(key, spec) {
+    const host = document.getElementById('body-' + key);
+    if (!host) return;
+    if (spec.kind === 'lines') host.innerHTML = linesEditor(key, spec.label);
+    else if (spec.kind === 'two_lines')
+        host.innerHTML = `<div class="grid g2">
+            <div>${linesEditor(spec.a[0], spec.a[1])}</div>
+            <div>${linesEditor(spec.b[0], spec.b[1])}</div></div>`;
+    else if (spec.kind === 'snapshot') host.innerHTML = snapshotEditor();
+    else if (spec.kind === 'positioning') host.innerHTML = positioningEditor();
+    else if (spec.kind === 'talk_track') host.innerHTML = talkTrackEditor();
+    else if (spec.kind === 'pricing') host.innerHTML = pricingEditor();
+    else if (spec.kind === 'next_steps') host.innerHTML = nextStepsEditor();
+    else if (spec.kind === 'records') host.innerHTML = recordsEditor(key, spec);
+    updateCount(key, spec);
+}
+
+function updateCount(key, spec) {
+    const el = document.getElementById('count-' + key);
+    if (!el) return;
+    if (spec.kind === 'records') el.textContent = (card[spec.key] || []).length + ' rows';
+    else if (spec.kind === 'lines') el.textContent = (card[key] || []).length + ' points';
+    else if (spec.kind === 'two_lines')
+        el.textContent = ((card[spec.a[0]] || []).length + (card[spec.b[0]] || []).length) + ' points';
+    else el.textContent = '';
+}
+
+function linesEditor(key, label) {
+    return `<label class="field"><span>${esc(label)}, one per line</span>
+        <textarea style="min-height:150px" oninput="setLines('${key}', this.value)"
+        >${esc((card[key] || []).join('\n'))}</textarea></label>`;
+}
+
+function toLines(value) {
+    return value.split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+function setLines(key, value) {
+    card[key] = toLines(value);
+    Object.entries(SECTION_SPEC).forEach(([k, spec]) => {
+        if (k === key || (spec.a && (spec.a[0] === key || spec.b[0] === key))) updateCount(k, spec);
+    });
+    updateStatus();
+}
+
+function snapshotEditor() {
+    const s = card.snapshot || (card.snapshot = {});
+    const f = (k, l) => `<label class="field"><span>${l}</span>
+        <input type="text" value="${esc(s[k])}" oninput="card.snapshot['${k}']=this.value"></label>`;
+    return `<div class="grid g4">${f('headquarters','Headquarters')}${f('founded','Founded')}
+        ${f('employees','Employees')}${f('ownership','Ownership')}</div>
+        <div class="grid g4">${f('funding','Funding')}${f('target_segment','Target segment')}
+        ${f('go_to_market','Go to market')}${f('deployment','Deployment')}</div>
+        <label class="field"><span>Named customers</span>
+        <input type="text" value="${esc(s.notable_customers)}" oninput="card.snapshot.notable_customers=this.value"></label>
+        <label class="field"><span>Recent moves, one per line</span>
+        <textarea oninput="card.snapshot.recent_moves = toLines(this.value)"
+        >${esc((s.recent_moves || []).join('\n'))}</textarea></label>`;
+}
+
+function positioningEditor() {
+    const p = card.positioning || (card.positioning = {});
+    const f = (k, l, ph) => `<label class="field"><span>${l}</span>
+        <textarea placeholder="${ph}" oninput="card.positioning['${k}']=this.value">${esc(p[k])}</textarea></label>`;
+    return `<div class="grid g2">
+        ${f('their_claim','They say','Paste the line from their own site')}
+        ${f('our_claim','We say','The Impact Analytics line')}</div>
+        ${f('wedge','The wedge','The gap this buyer feels every week')}`;
+}
+
+function talkTrackEditor() {
+    const t = card.talk_track || (card.talk_track = {});
+    const f = (k, l, ph) => `<label class="field"><span>${l}</span>
+        <textarea placeholder="${ph}" oninput="card.talk_track['${k}']=this.value">${esc(t[k])}</textarea></label>`;
+    return `<div class="grid g2">
+        ${f('positioning','Positioning statement','For retailers who ..., Impact Analytics delivers ...')}
+        ${f('elevator','Thirty second pitch','Outcome first, product second, proof third')}
+        ${f('discovery_open','Discovery opener','The question that exposes the gap')}
+        ${f('trap','The trap question','One question the incumbent answers badly')}</div>`;
+}
+
+function pricingEditor() {
+    const p = card.pricing || (card.pricing = { notes: [] });
+    return `<div class="grid g2">
+        <label class="field"><span>Impact Analytics model</span>
+        <textarea oninput="card.pricing.ia_model=this.value">${esc(p.ia_model)}</textarea></label>
+        <label class="field"><span>Their model</span>
+        <textarea oninput="card.pricing.competitor_model=this.value">${esc(p.competitor_model)}</textarea></label></div>
+        <label class="field"><span>Ground rules, one per line</span>
+        <textarea oninput="card.pricing.notes = toLines(this.value)"
+        >${esc((p.notes || []).join('\n'))}</textarea></label>`;
+}
+
+function nextStepsEditor() {
+    return `<div class="grid g2">
+        <div>${linesEditor('next_steps', 'Next steps')}</div>
+        <div>${recordsEditor('resources', { key: 'resources', max: 8,
+            fields: [ {k:'label', l:'Label'}, {k:'url', l:'Link', url:true} ] })}</div></div>`;
+}
+
+function recordsEditor(key, spec) {
+    const rows = card[spec.key] || (card[spec.key] = []);
+    const body = rows.map((row, index) => `<div class="row-item">
+        <div class="row-head"><span class="row-num">${esc(spec.key.replace(/_/g,' '))} ${index + 1}</span>
+            <span>
+              <button class="icon-btn" onclick="moveRow('${spec.key}','${key}',${index},-1)" title="Move up">
+                <i class="fas fa-arrow-up"></i></button>
+              <button class="icon-btn" onclick="moveRow('${spec.key}','${key}',${index},1)" title="Move down">
+                <i class="fas fa-arrow-down"></i></button>
+              <button class="icon-btn" onclick="removeRow('${spec.key}','${key}',${index})" title="Remove">
+                <i class="fas fa-trash"></i></button>
+            </span></div>
+        <div class="grid ${spec.fields.length > 3 ? 'g2' : 'g' + Math.min(3, spec.fields.length)}">
+            ${spec.fields.map(field => fieldInput(spec.key, index, field)).join('')}
+        </div></div>`).join('');
+    const disabled = rows.length >= (spec.max || 20) ? 'disabled' : '';
+    return body + `<button class="btn btn-ghost btn-sm" ${disabled}
+        onclick="addRow('${spec.key}','${key}')"><i class="fas fa-plus"></i> Add row</button>`;
+}
+
+function fieldInput(collection, index, field) {
+    const row = card[collection][index];
+    const value = field.lines ? (row[field.k] || []).join('\n') : (row[field.k] || '');
+    const setter = field.lines
+        ? `card['${collection}'][${index}]['${field.k}'] = this.value.split('\\n').map(s=>s.trim()).filter(Boolean)`
+        : `card['${collection}'][${index}]['${field.k}'] = this.value`;
+    if (field.type === 'rating') {
+        return `<label class="field"><span>${esc(field.l)}</span><select onchange="${setter}">${
+            RATINGS.map(([v, l]) => `<option value="${v}" ${value === v ? 'selected' : ''}>${l}</option>`).join('')
+        }</select></label>`;
+    }
+    if (field.ta) {
+        return `<label class="field"><span>${esc(field.l)}</span>
+            <textarea oninput="${setter}">${esc(value)}</textarea></label>`;
+    }
+    return `<label class="field"><span>${esc(field.l)}</span>
+        <input type="${field.url ? 'url' : 'text'}" value="${esc(value)}" oninput="${setter}"></label>`;
+}
+
+function addRow(collection, sectionKey) {
+    card[collection] = card[collection] || [];
+    card[collection].push({});
+    refreshSection(sectionKey);
+}
+function removeRow(collection, sectionKey, index) {
+    card[collection].splice(index, 1);
+    refreshSection(sectionKey);
+}
+function moveRow(collection, sectionKey, index, delta) {
+    const target = index + delta;
+    const rows = card[collection];
+    if (target < 0 || target >= rows.length) return;
+    [rows[index], rows[target]] = [rows[target], rows[index]];
+    refreshSection(sectionKey);
+}
+function refreshSection(sectionKey) {
+    const spec = SECTION_SPEC[sectionKey];
+    if (spec) { renderBody(sectionKey, spec); updateStatus(); }
+    else renderSections();
+}
+
+// ── payload, review, build ──────────────────────────────────────────────────
+function payload() {
+    const out = JSON.parse(JSON.stringify(card));
+    out.sanitize_copy = card.options.sanitize_copy !== false;
+    return out;
+}
+
+function updateStatus() {
+    const filled = ['their_strengths','their_weaknesses','our_advantages','comparison',
+                    'objections','proof_points'].filter(k => (card[k] || []).length).length;
+    const ready = card.meta.competitor.trim() && filled;
+    document.getElementById('buildBtn').disabled = !ready;
+    document.getElementById('statusText').innerHTML = ready
+        ? `Ready to build. <strong>${esc(card.meta.competitor)}</strong> · ${card.sections.length} sections · ${filled} of 6 core sections filled.`
+        : 'Name the competitor and fill at least one core section.';
+}
+
+async function runReview() {
+    const res = await fetch('/api/battlecard/validate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload()) });
+    const data = await res.json();
+    showReport(data.errors, data.warnings, null);
+}
+
+async function buildDeck() {
+    const btn = document.getElementById('buildBtn');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch spin"></i> Building';
+    try {
+        const res = await fetch('/api/battlecard/build', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload()) });
+        const data = await res.json();
+        if (!res.ok) { showReport([data.error || 'Build failed'], [], null); return; }
+        showReport([], data.warnings || [], data);
+        window.location = data.download_url;
+    } catch (err) {
+        showReport([String(err)], [], null);
+    } finally {
+        btn.innerHTML = original; btn.disabled = false; updateStatus();
+    }
+}
+
+function showReport(errors, warnings, build) {
+    let host = document.getElementById('reportCard');
+    if (!host) {
+        host = document.createElement('section');
+        host.className = 'card'; host.id = 'reportCard';
+        document.querySelector('.wrap').insertBefore(host, document.getElementById('sectionCards'));
+    }
+    let html = '<header><h2><i class="fas fa-clipboard-check" style="color:var(--impact-blue)"></i> Build report</h2></header><div class="body">';
+    if (build) {
+        const compat = build.compatibility || {};
+        html += `<div class="notice good"><strong>${esc(build.filename)}</strong> is ready.
+            ${build.slide_count} slides. <a href="${esc(build.download_url)}">Download again</a>.
+            <br>Google Slides check: <strong>${compat.ok ? 'passed' : 'needs attention'}</strong>.
+            Upload the file to Google Drive, then open it with Google Slides.</div>`;
+        const items = (compat.findings || []);
+        if (items.length) html += '<div class="notice warn"><strong>Compatibility notes</strong><ul>' +
+            items.map(f => `<li>${esc(f.message)}</li>`).join('') + '</ul></div>';
+    }
+    if (errors && errors.length) html += '<div class="notice bad"><strong>Fix before building</strong><ul>' +
+        errors.map(e => `<li>${esc(e)}</li>`).join('') + '</ul></div>';
+    if (warnings && warnings.length) html += '<div class="notice warn"><strong>Brand voice notes</strong><ul>' +
+        warnings.map(w => `<li>${esc(w.where)}: ${esc(w.message)}</li>`).join('') + '</ul></div>';
+    if (!errors.length && !(warnings || []).length && !build)
+        html += '<div class="notice good">No brand issues found. The copy is ready.</div>';
+    host.innerHTML = html + '</div>';
+    host.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function loadStarter() {
+    const res = await fetch('/api/battlecard/scaffold', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ competitor: card.meta.competitor,
+                               ia_product: card.meta.ia_product, solution: card.meta.solution }) });
+    const data = await res.json();
+    const sections = card.sections;
+    card = Object.assign(emptyCard(), data);
+    card.sections = sections;
+    card.options = Object.assign({ include_notes: true, sanitize_copy: true }, data.options || {});
+    syncForm(); renderSections(); updateStatus();
+}
+
+function exportJson() {
+    const blob = new Blob([JSON.stringify(payload(), null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = (card.meta.competitor || 'battlecard').replace(/\W+/g, '_') + '_battlecard.json';
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function importJson(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const data = JSON.parse(reader.result);
+            card = Object.assign(emptyCard(), data);
+            card.meta = Object.assign(emptyCard().meta, data.meta || {});
+            card.sections = data.sections || card.sections;
+            card.options = Object.assign({ include_notes: true, sanitize_copy: true }, data.options || {});
+            syncForm(); renderSectionPills(); renderSections(); updateStatus();
+        } catch (err) {
+            showReport(['That file is not valid battlecard JSON.'], [], null);
+        }
+    };
+    reader.readAsText(file);
+    input.value = '';
+}
+
+boot();
+</script>
+</body>
+</html>

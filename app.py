@@ -14,6 +14,8 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.ns import qn
 
+from battlecards import service as battlecard_service
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -845,6 +847,65 @@ def build_custom():
         'download_url': f'/download/{output_name}',
         'slide_count': len(output.slides)
     })
+
+
+# ─── Battlecard Builder Routes ──────────────────────────────────────────────────
+
+@app.route('/battlecard')
+def battlecard_page():
+    """Serve the battlecard builder UI."""
+    return render_template('battlecard.html')
+
+
+@app.route('/api/battlecard/presets')
+def battlecard_presets():
+    """Products, solutions, competitor presets and the section list."""
+    return jsonify(battlecard_service.presets())
+
+
+@app.route('/api/battlecard/scaffold', methods=['POST'])
+def battlecard_scaffold():
+    """Return a prefilled battlecard the user can edit."""
+    data = request.get_json(silent=True) or {}
+    return jsonify(battlecard_service.starter(
+        data.get('competitor', ''), data.get('ia_product', ''), data.get('solution', '')))
+
+
+@app.route('/api/battlecard/validate', methods=['POST'])
+def battlecard_validate():
+    """Check a payload against the brand writing rules without building a file."""
+    data = request.get_json(silent=True) or {}
+    return jsonify(battlecard_service.review(data))
+
+
+@app.route('/api/battlecard/build', methods=['POST'])
+def battlecard_build():
+    """Build the deck and return a download link plus the compatibility report."""
+    data = request.get_json(silent=True) or {}
+    try:
+        result = battlecard_service.build(data, app.config['OUTPUT_FOLDER'])
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:  # pragma: no cover - surfaced to the UI
+        import traceback
+        return jsonify({'error': str(exc), 'traceback': traceback.format_exc()}), 500
+
+    return jsonify({
+        'success': True,
+        'filename': result['filename'],
+        'download_url': url_for('download', filename=result['filename']),
+        'slide_count': result['slide_count'],
+        'warnings': result['warnings'],
+        'compatibility': result['compatibility'],
+    })
+
+
+@app.route('/api/battlecard/export', methods=['POST'])
+def battlecard_export():
+    """Return the normalised battlecard as JSON so a team can version it."""
+    data = request.get_json(silent=True) or {}
+    payload = battlecard_service.export_json(data)
+    return app.response_class(payload, mimetype='application/json')
 
 
 if __name__ == '__main__':

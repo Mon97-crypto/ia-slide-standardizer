@@ -5,3 +5,8 @@ outputs/
 .env
 *.pptx
 !brand_assets/
+
+# Derived brand assets, regenerated on first run
+static/images/generated/
+static/images/ia_logo_white.png
+.pytest_cache/
