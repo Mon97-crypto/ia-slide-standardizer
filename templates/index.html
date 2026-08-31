@@ -1,976 +1,637 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IA Slide Standardizer</title>
-    <link rel="icon" href="{{ url_for('static', filename='images/ia_logo.png') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
-    <style>
-        :root {
-            --primary: #264CD7;
-            --primary-light: #3A5EE3;
-            --accent-green: #3DD499;
-            --dark: #1C1B1B;
-            --dark-navy: #17375E;
-            --bg-light: #F4F4F6;
-            --bg-white: #FFFFFF;
-            --text-dark: #1C1B1B;
-            --text-muted: #6B7280;
-            --border: #E5E7EB;
-            --shadow: 0 4px 24px rgba(38, 76, 215, 0.08);
-            --shadow-lg: 0 12px 48px rgba(38, 76, 215, 0.12);
-            --radius: 16px;
-            --radius-sm: 10px;
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Competitor Intelligence · Impact Analytics</title>
+<link rel="icon" href="{{ url_for('static', filename='img/ia-mark.png') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;1,300&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --blue:#264CD7; --blue-bright:#3A5EE3; --blue-deep:#16267A;
+  --off-white:#F4F4F6; --white:#fff; --black:#1C1B1B;
+  --g1:#E4E4E4; --g2:#D7D6D2; --g3:#B3B2AD;
+  --orange:#FF6F1C; --green:#3DD499; --purple:#BEA8EF; --yellow:#E3F576;
+  --sh-sm:0 1px 3px rgba(28,27,27,.06),0 1px 2px rgba(28,27,27,.04);
+  --sh-md:0 4px 16px rgba(22,38,122,.08),0 2px 6px rgba(22,38,122,.04);
+  --sh-lg:0 24px 64px rgba(22,38,122,.14),0 8px 24px rgba(22,38,122,.08);
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+body{font-family:"Inter Tight",-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--off-white);color:var(--black);line-height:1.6;overflow-x:hidden}
+::selection{background:var(--blue);color:#fff}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px}
+h1,h2,h3,.serif{font-family:Spectral,Georgia,serif;font-weight:300;letter-spacing:-.01em}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--blue)}
 
-            /* Product colors */
-            --plan-purple: #C4B5E3;
-            --inventory-yellow: #D4E157;
-            --price-teal: #00D1B2;
-            --monday-blue: #264CD7;
-        }
+/* nav */
+nav{position:sticky;top:0;z-index:100;background:rgba(244,244,246,.82);
+  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-bottom:1px solid rgba(228,228,228,.7)}
+.nav-inner{max-width:1240px;margin:0 auto;padding:13px 32px;display:flex;align-items:center;
+  justify-content:space-between;gap:16px}
+.nav-left{display:flex;align-items:center;gap:18px;min-width:0}
+.nav-logo{height:28px;width:auto;display:block}
+.nav-div{width:1px;height:22px;background:var(--g2);flex:none}
+.nav-label{font-size:15px;font-weight:600;color:var(--blue);white-space:nowrap}
+.nav-right{display:flex;align-items:center;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:7px 15px;border-radius:100px;
+  background:rgba(38,76,215,.06);color:var(--blue);font-size:13px;font-weight:600;
+  cursor:pointer;border:1px solid transparent;transition:all .2s var(--ease);white-space:nowrap}
+.pill:hover{background:rgba(38,76,215,.11);border-color:rgba(38,76,215,.2)}
+.pill.warn{background:rgba(255,111,28,.08);color:#b34a10}
+.pill.ok{background:rgba(61,212,153,.13);color:#0d7a53}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+/* hero */
+.hero{position:relative;padding:74px 0 34px;overflow:hidden}
+.hero-grid{position:absolute;inset:0;opacity:.5;
+  background-image:linear-gradient(rgba(38,76,215,.06) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(38,76,215,.06) 1px,transparent 1px);
+  background-size:56px 56px;mask-image:radial-gradient(ellipse 70% 60% at 50% 40%,#000,transparent)}
+.hero-glow{position:absolute;border-radius:50%;filter:blur(90px);opacity:.3;pointer-events:none}
+.hero-glow.a{width:520px;height:520px;background:var(--blue);top:-260px;left:-130px}
+.hero-glow.b{width:400px;height:400px;background:var(--purple);top:-190px;right:-110px}
+.hero-content{position:relative}
+.eyebrow{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--blue);margin-bottom:18px}
+.hero h1{font-size:clamp(40px,6vw,68px);line-height:1.04;margin-bottom:20px}
+.hero h1 em{font-style:italic;color:var(--blue)}
+.hero-sub{font-size:19px;color:#55534f;max-width:620px}
+.hero-sub code{background:rgba(38,76,215,.09);color:var(--blue-deep);padding:2px 8px;
+  border-radius:6px;font-size:15px;font-weight:600;font-family:inherit}
 
-        body {
-            font-family: 'Inter Tight', -apple-system, sans-serif;
-            background: var(--bg-light);
-            color: var(--text-dark);
-            min-height: 100vh;
-        }
+/* console */
+.console{max-width:1240px;margin:0 auto 46px;padding:0 32px}
+.console-card{background:var(--white);border:1px solid var(--g1);border-radius:20px;
+  box-shadow:var(--sh-lg);overflow:hidden}
+.console-top{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:18px 26px;border-bottom:1px solid var(--g1);flex-wrap:wrap}
+.console-top h2{font-size:19px;display:flex;align-items:center;gap:11px;font-weight:400}
+.ico{width:32px;height:32px;border-radius:9px;background:rgba(38,76,215,.09);color:var(--blue);
+  display:grid;place-items:center;flex:none}
+.ico svg{width:17px;height:17px}
+.seg{display:flex;gap:3px;background:var(--off-white);padding:3px;border-radius:11px}
+.seg button{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border:0;
+  border-radius:8px;background:transparent;font-size:13px;font-weight:600;color:#6c6a66;
+  cursor:pointer;transition:all .18s var(--ease)}
+.seg button svg{width:15px;height:15px}
+.seg button.on{background:var(--white);color:var(--blue);box-shadow:var(--sh-sm)}
+.console-body{padding:26px}
 
-        /* ── Navbar ─────────────────────────────────── */
-        .navbar {
-            background: var(--dark);
-            padding: 0 40px;
-            height: 64px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.2);
-        }
-        .navbar-brand {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-        .navbar-brand img {
-            height: 32px;
-        }
-        .navbar-brand span {
-            color: white;
-            font-weight: 700;
-            font-size: 18px;
-            letter-spacing: -0.5px;
-        }
-        .navbar-brand .badge {
-            background: var(--primary);
-            color: white;
-            font-size: 10px;
-            font-weight: 600;
-            padding: 3px 8px;
-            border-radius: 20px;
-            letter-spacing: 0.5px;
-        }
-        .navbar-actions {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        }
-        .navbar-actions .status {
-            color: var(--accent-green);
-            font-size: 13px;
-            font-weight: 500;
-        }
+.big-search{display:flex;align-items:center;gap:13px;padding:15px 20px;border:2px solid var(--g1);
+  border-radius:14px;transition:all .2s var(--ease);background:var(--white)}
+.big-search:focus-within{border-color:var(--blue);box-shadow:0 0 0 4px rgba(38,76,215,.1)}
+.big-search svg{width:20px;height:20px;color:var(--g3);flex:none}
+.big-search input{flex:1;border:0;outline:0;font-size:17px;background:transparent}
+.hint{margin-top:11px;font-size:13px;color:#6c6a66;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.hint b{font-weight:600;color:var(--black)}
+.chip-ex{background:var(--white);border:1px solid var(--g1);border-radius:100px;padding:3px 11px;
+  font-size:12px;font-weight:500;cursor:pointer;transition:all .18s var(--ease)}
+.chip-ex:hover{border-color:var(--blue);color:var(--blue)}
 
-        /* ── Main Layout ────────────────────────────── */
-        .main-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 32px 24px;
-        }
+.type-label{display:block;font-size:12px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--g3);margin:22px 0 11px}
+.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px}
+.type{text-align:left;padding:13px 15px;border:1.5px solid var(--g1);border-radius:12px;
+  background:var(--white);cursor:pointer;transition:all .18s var(--ease)}
+.type:hover{border-color:var(--g3)}
+.type.on{border-color:var(--blue);background:rgba(38,76,215,.04)}
+.tn{display:block;font-size:14px;font-weight:600}
+.td{display:block;font-size:12px;color:#6c6a66;margin-top:2px}
 
-        .hero {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-        .hero h1 {
-            font-size: 32px;
-            font-weight: 800;
-            color: var(--dark);
-            margin-bottom: 8px;
-            letter-spacing: -1px;
-        }
-        .hero h1 span { color: var(--primary); }
-        .hero p {
-            color: var(--text-muted);
-            font-size: 15px;
-            max-width: 520px;
-            margin: 0 auto;
-        }
+/* form */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field.full{grid-column:1/-1}
+label{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--g3)}
+input[type=text],input[type=url],input[type=password],select,textarea{
+  padding:11px 14px;border:1.5px solid var(--g1);border-radius:10px;background:var(--white);
+  outline:0;font-size:14px;transition:all .18s var(--ease);width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(38,76,215,.09)}
+textarea{resize:vertical;min-height:82px}
+.drop{border:1.5px dashed var(--g2);border-radius:10px;padding:18px;text-align:center;
+  cursor:pointer;transition:all .18s var(--ease);background:var(--off-white)}
+.drop:hover{border-color:var(--blue);background:rgba(38,76,215,.03)}
+.drop b{color:var(--blue)}
+.drop small{display:block;color:#6c6a66;margin-top:3px;font-size:12px}
+.df{font-size:13px;color:var(--blue);font-weight:600;margin-top:7px}
 
-        /* ── Cards Grid ─────────────────────────────── */
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            margin-bottom: 32px;
-        }
-        @media (max-width: 768px) {
-            .grid-2 { grid-template-columns: 1fr; }
-        }
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 22px;
+  border:0;border-radius:11px;background:var(--blue);color:#fff;font-size:14px;font-weight:600;
+  cursor:pointer;transition:all .2s var(--ease)}
+.btn:hover:not(:disabled){background:var(--blue-bright);transform:translateY(-1px);
+  box-shadow:0 10px 24px rgba(38,76,215,.26)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn svg{width:16px;height:16px}
+.btn.ghost{background:var(--white);color:var(--black);border:1.5px solid var(--g1)}
+.btn.ghost:hover:not(:disabled){background:var(--off-white);border-color:var(--g3);box-shadow:none}
+.btn.sm{padding:8px 15px;font-size:13px;border-radius:9px}
+.btn.danger{background:#d93636}
+.btn.danger:hover:not(:disabled){background:#c22d2d;box-shadow:0 10px 24px rgba(217,54,54,.26)}
+.actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
 
-        .card {
-            background: var(--bg-white);
-            border-radius: var(--radius);
-            padding: 28px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border);
-            transition: all 0.2s ease;
-        }
-        .card:hover {
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-2px);
-        }
-        .card-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        .card-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            color: white;
-        }
-        .card-icon.blue { background: var(--primary); }
-        .card-icon.green { background: var(--accent-green); }
-        .card-icon.purple { background: #7C3AED; }
-        .card-icon.navy { background: var(--dark-navy); }
+/* results */
+.results{max-width:1240px;margin:0 auto;padding:0 32px 60px}
+.res-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.res-head h3{font-size:23px;font-weight:400}
+.count{font-size:13px;color:#6c6a66;font-weight:500}
+.intent{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
+.tag{display:inline-flex;align-items:center;gap:6px;background:rgba(38,76,215,.07);
+  color:var(--blue-deep);border-radius:100px;padding:5px 13px;font-size:12.5px;font-weight:600}
+.tag.muted{background:var(--white);border:1px solid var(--g1);color:#6c6a66}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(370px,1fr));gap:18px}
+.card{background:var(--white);border:1px solid var(--g1);border-radius:16px;padding:20px;
+  box-shadow:var(--sh-sm);transition:all .22s var(--ease);display:flex;flex-direction:column}
+.card:hover{box-shadow:var(--sh-md);border-color:var(--g2);transform:translateY(-2px)}
+.card-top{display:flex;gap:13px;margin-bottom:12px}
+.card-ico{width:38px;height:38px;border-radius:10px;background:rgba(38,76,215,.09);color:var(--blue);
+  display:grid;place-items:center;flex:none}
+.card-ico svg{width:18px;height:18px}
+.card-ico.green{background:rgba(61,212,153,.16);color:#0d7a53}
+.card-ico.orange{background:rgba(255,111,28,.12);color:#b34a10}
+.card-ico.purple{background:rgba(190,168,239,.24);color:#5b3fa8}
+.card-title{font-size:15.5px;font-weight:600;line-height:1.34}
+.card-meta{display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap}
+.badge{font-size:11px;font-weight:600;background:var(--off-white);border:1px solid var(--g1);
+  border-radius:100px;padding:2px 9px;color:#55534f}
+.vs{font-size:12.5px;color:#6c6a66;font-weight:500}
+.card-note{font-size:13.5px;color:#55534f;margin-bottom:13px;line-height:1.55}
+.why{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:13px}
+.why span{font-size:11px;background:rgba(61,212,153,.13);color:#0d7a53;border-radius:100px;
+  padding:2px 9px;font-weight:600}
+.card-foot{display:flex;gap:14px;flex-wrap:wrap;margin-top:auto;padding-top:13px;
+  border-top:1px solid var(--g1)}
+.link{display:inline-flex;align-items:center;gap:6px;background:0;border:0;padding:0;
+  color:var(--blue);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none}
+.link:hover{text-decoration:underline}
+.link svg{width:14px;height:14px}
+.link.muted{color:var(--g3)}
+.link.muted:hover{color:#d93636}
 
-        .card-title {
-            font-size: 17px;
-            font-weight: 700;
-            letter-spacing: -0.3px;
-        }
-        .card-subtitle {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
+/* analysis */
+.analysis{margin-top:16px;padding-top:16px;border-top:1px solid var(--g1)}
+.a-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--blue);margin:15px 0 8px}
+.a-label:first-child{margin-top:0}
+.a-label svg{width:13px;height:13px}
+.a-summary{font-size:13.5px;line-height:1.62;color:#3a3937}
+.a-item{display:flex;gap:10px;font-size:13px;line-height:1.55;margin-bottom:7px;color:#3a3937}
+.a-item .n{width:19px;height:19px;border-radius:50%;background:rgba(38,76,215,.1);color:var(--blue);
+  font-size:11px;font-weight:700;display:grid;place-items:center;flex:none;margin-top:2px}
+.a-item .b{color:var(--blue);flex:none}
+.prods{display:flex;gap:6px;flex-wrap:wrap}
+.prod{font-size:11.5px;font-weight:600;background:rgba(190,168,239,.22);color:#5b3fa8;
+  border-radius:100px;padding:3px 10px}
+.qa{display:flex;gap:8px;margin-top:16px}
+.qa input{flex:1}
+.qa-ans{margin-top:12px;background:var(--off-white);border-radius:11px;padding:14px 16px;
+  font-size:13.5px;line-height:1.62;white-space:pre-wrap}
+.cites{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.cite{font-size:11px;background:var(--white);border:1px solid var(--g1);border-radius:100px;
+  padding:3px 10px;font-weight:600;color:#55534f}
+.a-loading{display:flex;align-items:center;gap:10px;font-size:13px;color:#6c6a66;padding:6px 0}
+.spin{width:14px;height:14px;border:2px solid var(--g1);border-top-color:var(--blue);
+  border-radius:50%;animation:sp .7s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+.a-error{background:rgba(217,54,54,.06);border:1px solid rgba(217,54,54,.2);color:#a52a2a;
+  border-radius:10px;padding:12px 14px;font-size:13px;margin-top:12px}
+.a-info{background:rgba(255,111,28,.07);border:1px solid rgba(255,111,28,.22);color:#8a3d0d;
+  border-radius:10px;padding:12px 14px;font-size:13px;margin-top:12px}
 
-        /* ── Upload Area ────────────────────────────── */
-        .upload-zone {
-            border: 2px dashed var(--border);
-            border-radius: var(--radius-sm);
-            padding: 40px 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            background: var(--bg-light);
-            position: relative;
-        }
-        .upload-zone:hover, .upload-zone.drag-over {
-            border-color: var(--primary);
-            background: rgba(38, 76, 215, 0.04);
-        }
-        .upload-zone i {
-            font-size: 36px;
-            color: var(--primary);
-            margin-bottom: 12px;
-        }
-        .upload-zone h3 {
-            font-size: 15px;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        .upload-zone p {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-        .upload-zone input[type="file"] {
-            position: absolute;
-            inset: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
+.empty{grid-column:1/-1;text-align:center;padding:64px 24px;background:var(--white);
+  border:1px dashed var(--g2);border-radius:16px}
+.empty .ei{width:52px;height:52px;border-radius:14px;background:var(--off-white);color:var(--g3);
+  display:grid;place-items:center;margin:0 auto 16px}
+.empty .ei svg{width:24px;height:24px}
+.empty h4{font-size:17px;font-weight:600;margin-bottom:6px}
+.empty p{font-size:14px;color:#6c6a66;max-width:420px;margin:0 auto}
 
-        .file-info {
-            display: none;
-            align-items: center;
-            gap: 12px;
-            padding: 14px 16px;
-            background: rgba(38, 76, 215, 0.06);
-            border-radius: var(--radius-sm);
-            margin-top: 16px;
-        }
-        .file-info.visible { display: flex; }
-        .file-info i { color: var(--primary); font-size: 20px; }
-        .file-info .name { font-weight: 600; font-size: 13px; flex: 1; }
-        .file-info .size { font-size: 11px; color: var(--text-muted); }
-        .file-info .remove {
-            background: none;
-            border: none;
-            color: #EF4444;
-            cursor: pointer;
-            font-size: 14px;
-        }
+/* battlecard + admin */
+section.panel{max-width:1240px;margin:0 auto 46px;padding:0 32px}
+.panel-card{background:var(--white);border:1px solid var(--g1);border-radius:18px;padding:26px;
+  box-shadow:var(--sh-sm)}
+.panel-card h3{font-size:20px;font-weight:400;margin-bottom:6px}
+.panel-card>p{font-size:14px;color:#6c6a66;margin-bottom:18px;max-width:640px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row input,.row select{max-width:300px}
+.bc-out{margin-top:20px;background:var(--off-white);border-radius:12px;padding:20px 22px;
+  font-size:14px;line-height:1.7;white-space:pre-wrap;max-height:620px;overflow:auto}
+.bc-out h2,.bc-out h3{font-family:"Inter Tight",sans-serif;font-weight:700;font-size:14px;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--blue);margin:18px 0 7px}
+.bc-out h2:first-child,.bc-out h3:first-child{margin-top:0}
 
-        /* ── Controls ───────────────────────────────── */
-        .control-group {
-            margin-bottom: 18px;
-        }
-        .control-group label {
-            display: block;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
-        }
+footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
+  font-size:13px;color:var(--g3)}
 
-        select, input[type="text"] {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            font-family: 'Inter Tight', sans-serif;
-            font-size: 14px;
-            background: white;
-            transition: border-color 0.2s;
-        }
-        select:focus, input[type="text"]:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(38, 76, 215, 0.1);
-        }
-
-        /* ── Template Buttons ───────────────────────── */
-        .template-buttons {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-        .template-btn {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 14px;
-            border: 2px solid var(--border);
-            border-radius: var(--radius-sm);
-            background: white;
-            cursor: pointer;
-            transition: all 0.15s ease;
-            font-family: 'Inter Tight', sans-serif;
-            font-size: 13px;
-            font-weight: 500;
-        }
-        .template-btn:hover {
-            border-color: var(--primary);
-            background: rgba(38, 76, 215, 0.03);
-        }
-        .template-btn.active {
-            border-color: var(--primary);
-            background: rgba(38, 76, 215, 0.06);
-            color: var(--primary);
-            font-weight: 600;
-        }
-        .template-btn .icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            flex-shrink: 0;
-        }
-        .template-btn .icon.i1 { background: #EEF2FF; color: var(--primary); }
-        .template-btn .icon.i2 { background: #F0FDF4; color: #16A34A; }
-        .template-btn .icon.i3 { background: #FFF7ED; color: #EA580C; }
-        .template-btn .icon.i4 { background: #FDF2F8; color: #DB2777; }
-        .template-btn .icon.i5 { background: #F5F3FF; color: #7C3AED; }
-        .template-btn .icon.i6 { background: #ECFEFF; color: #0891B2; }
-
-        /* ── Product Selector ───────────────────────── */
-        .product-pills {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .product-pill {
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            border: 2px solid var(--border);
-            background: white;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-        .product-pill:hover { transform: scale(1.03); }
-        .product-pill.active { border-color: currentColor; }
-        .product-pill[data-color="purple"] { color: #7C3AED; }
-        .product-pill[data-color="yellow"] { color: #9E9D24; }
-        .product-pill[data-color="teal"] { color: #00897B; }
-        .product-pill[data-color="blue"] { color: #264CD7; }
-
-        /* ── Action Buttons ─────────────────────────── */
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 12px 24px;
-            border-radius: var(--radius-sm);
-            font-family: 'Inter Tight', sans-serif;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s;
-            width: 100%;
-        }
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-        .btn-primary:hover {
-            background: var(--primary-light);
-            box-shadow: 0 4px 16px rgba(38, 76, 215, 0.3);
-        }
-        .btn-primary:disabled {
-            background: #9CA3AF;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
-        .btn-secondary {
-            background: white;
-            color: var(--primary);
-            border: 2px solid var(--primary);
-        }
-        .btn-secondary:hover {
-            background: rgba(38, 76, 215, 0.04);
-        }
-        .btn-success {
-            background: var(--accent-green);
-            color: white;
-        }
-        .btn-success:hover {
-            background: #2BC584;
-        }
-
-        /* ── Progress / Status ──────────────────────── */
-        .progress-bar {
-            display: none;
-            margin-top: 16px;
-        }
-        .progress-bar.visible { display: block; }
-        .progress-track {
-            height: 6px;
-            background: var(--bg-light);
-            border-radius: 3px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--accent-green));
-            border-radius: 3px;
-            width: 0%;
-            transition: width 0.5s ease;
-            animation: shimmer 1.5s infinite;
-        }
-        @keyframes shimmer {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        .progress-text {
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-top: 6px;
-            text-align: center;
-        }
-
-        .result-panel {
-            display: none;
-            margin-top: 20px;
-            padding: 20px;
-            background: rgba(61, 212, 153, 0.08);
-            border: 1px solid rgba(61, 212, 153, 0.3);
-            border-radius: var(--radius-sm);
-        }
-        .result-panel.visible { display: block; }
-        .result-panel h4 {
-            color: #059669;
-            font-size: 15px;
-            margin-bottom: 8px;
-        }
-        .result-panel p {
-            font-size: 13px;
-            color: var(--text-muted);
-            margin-bottom: 12px;
-        }
-
-        .error-panel {
-            display: none;
-            margin-top: 20px;
-            padding: 20px;
-            background: rgba(239, 68, 68, 0.08);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            border-radius: var(--radius-sm);
-        }
-        .error-panel.visible { display: block; }
-        .error-panel h4 { color: #DC2626; font-size: 15px; margin-bottom: 8px; }
-        .error-panel pre {
-            font-size: 11px;
-            color: #666;
-            white-space: pre-wrap;
-            max-height: 120px;
-            overflow-y: auto;
-        }
-
-        /* ── Custom Builder ─────────────────────────── */
-        .builder-section {
-            background: var(--bg-white);
-            border-radius: var(--radius);
-            padding: 28px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border);
-            margin-bottom: 32px;
-        }
-        .builder-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-        .builder-header h2 {
-            font-size: 20px;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .slide-entry {
-            padding: 16px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            margin-bottom: 12px;
-            background: var(--bg-light);
-            position: relative;
-        }
-        .slide-entry .slide-num {
-            position: absolute;
-            top: -10px;
-            left: 16px;
-            background: var(--primary);
-            color: white;
-            font-size: 11px;
-            font-weight: 700;
-            padding: 2px 10px;
-            border-radius: 10px;
-        }
-        .slide-entry .remove-slide {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: none;
-            border: none;
-            color: #EF4444;
-            cursor: pointer;
-            font-size: 16px;
-            padding: 4px;
-        }
-        .slide-fields {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-top: 8px;
-        }
-        .slide-fields.full { grid-template-columns: 1fr; }
-
-        textarea {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            font-family: 'Inter Tight', sans-serif;
-            font-size: 13px;
-            resize: vertical;
-            min-height: 60px;
-        }
-        textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        /* ── Footer ─────────────────────────────────── */
-        .footer {
-            text-align: center;
-            padding: 32px 24px;
-            color: var(--text-muted);
-            font-size: 12px;
-        }
-        .footer a { color: var(--primary); text-decoration: none; }
-
-        /* ── Animations ─────────────────────────────── */
-        .fade-in {
-            animation: fadeIn 0.3s ease;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
+.toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,90px);background:var(--black);
+  color:#fff;padding:13px 22px;border-radius:12px;font-size:14px;font-weight:500;z-index:300;
+  display:flex;align-items:center;gap:10px;box-shadow:var(--sh-lg);opacity:0;
+  transition:all .34s var(--ease);pointer-events:none}
+.toast.show{transform:translate(-50%,0);opacity:1}
+.toast svg{width:17px;height:17px;color:var(--green)}
+.hidden{display:none !important}
+@media(max-width:820px){
+  .wrap,.console,.results,section.panel{padding-left:20px;padding-right:20px}
+  .nav-inner{padding:12px 20px}
+  .form-grid{grid-template-columns:1fr}
+  .grid{grid-template-columns:1fr}
+  .hero{padding:48px 0 26px}
+}
+</style>
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar">
-        <div class="navbar-brand">
-            <img src="{{ url_for('static', filename='images/ia_logo.png') }}" alt="Impact Analytics">
-            <span>Slide Standardizer</span>
-            <span class="badge">BETA</span>
-        </div>
-        <div class="navbar-actions">
-            <span class="status"><i class="fas fa-circle" style="font-size:8px;margin-right:4px"></i> Ready</span>
-        </div>
-    </nav>
 
-    <div class="main-container">
-        <!-- Hero -->
-        <div class="hero fade-in">
-            <h1>Transform Any Deck Into <span>Brand-Perfect</span> Slides</h1>
-            <p>Upload a PPTX or screenshot — get a clean, on-brand Impact Analytics presentation instantly.</p>
-        </div>
+<nav>
+  <div class="nav-inner">
+    <div class="nav-left">
+      <img class="nav-logo" src="{{ url_for('static', filename='img/ia-logo.png') }}" alt="Impact Analytics">
+      <div class="nav-div"></div>
+      <span class="nav-label">Competitor Intelligence</span>
+    </div>
+    <div class="nav-right">
+      {% if ai_enabled %}
+        <span class="pill ok" title="ANTHROPIC_API_KEY is set on the server"><span class="dot"></span> AI ready</span>
+      {% else %}
+        <span class="pill warn" title="Set ANTHROPIC_API_KEY to enable Analyze, Ask and battlecards"><span class="dot"></span> AI off</span>
+      {% endif %}
+      <button class="pill" onclick="document.getElementById('admin').scrollIntoView({behavior:'smooth'})">Admin</button>
+    </div>
+  </div>
+</nav>
 
-        <!-- Main Grid -->
-        <div class="grid-2">
-            <!-- Left: Upload & Process -->
-            <div class="card fade-in">
-                <div class="card-header">
-                    <div class="card-icon blue"><i class="fas fa-cloud-arrow-up"></i></div>
-                    <div>
-                        <div class="card-title">Upload & Convert</div>
-                        <div class="card-subtitle">PPTX or Screenshot → Standardized Deck</div>
-                    </div>
-                </div>
+<section class="hero">
+  <div class="hero-grid"></div><div class="hero-glow a"></div><div class="hero-glow b"></div>
+  <div class="wrap hero-content">
+    <div class="eyebrow">Impact Analytics · Market Intelligence</div>
+    <h1>Every competitor.<br><em>One</em> search.</h1>
+    <p class="hero-sub">One shared library for the whole team. Search a company and what you need, like <code>o9 battlecard</code>, and the workspace surfaces the right file in seconds.</p>
+  </div>
+</section>
 
-                <div class="upload-zone" id="uploadZone">
-                    <input type="file" id="fileInput" accept=".pptx,.png,.jpg,.jpeg,.bmp,.tiff,.webp">
-                    <i class="fas fa-file-powerpoint"></i>
-                    <h3>Drop your file here</h3>
-                    <p>.pptx, .png, .jpg — up to 100 MB</p>
-                </div>
-
-                <div class="file-info" id="fileInfo">
-                    <i class="fas fa-file-powerpoint"></i>
-                    <span class="name" id="fileName"></span>
-                    <span class="size" id="fileSize"></span>
-                    <button class="remove" onclick="clearFile()"><i class="fas fa-times"></i></button>
-                </div>
-
-                <div class="control-group" style="margin-top: 18px">
-                    <label>Slide Detection Mode</label>
-                    <select id="templateType">
-                        <option value="auto">🤖 Auto-Detect (Recommended)</option>
-                        <option value="intro">🎯 Force: Intro Slide</option>
-                        <option value="content">📝 Force: Content Slide</option>
-                        <option value="case_study">📊 Force: Case Study</option>
-                        <option value="content_image">🖼️ Force: Content + Image</option>
-                        <option value="section_divider">📌 Force: Section Divider</option>
-                    </select>
-                </div>
-
-                <div class="control-group">
-                    <label>Product (for accent color)</label>
-                    <div class="product-pills">
-                        <span class="product-pill active" data-color="blue" data-product="" onclick="selectProduct(this)">Auto</span>
-                        <span class="product-pill" data-color="purple" data-product="PlanSmart" onclick="selectProduct(this)">PlanSmart</span>
-                        <span class="product-pill" data-color="yellow" data-product="InventorySmart" onclick="selectProduct(this)">Inventory</span>
-                        <span class="product-pill" data-color="teal" data-product="PriceSmart" onclick="selectProduct(this)">PriceSmart</span>
-                        <span class="product-pill" data-color="blue" data-product="MondaySmart" onclick="selectProduct(this)">Monday</span>
-                    </div>
-                </div>
-
-                <button class="btn btn-primary" id="processBtn" onclick="processFile()" disabled>
-                    <i class="fas fa-wand-magic-sparkles"></i> Standardize Now
-                </button>
-
-                <div class="progress-bar" id="progressBar">
-                    <div class="progress-track">
-                        <div class="progress-fill" id="progressFill"></div>
-                    </div>
-                    <div class="progress-text" id="progressText">Processing slides...</div>
-                </div>
-
-                <div class="result-panel" id="resultPanel">
-                    <h4><i class="fas fa-check-circle"></i> Standardization Complete!</h4>
-                    <p id="resultInfo"></p>
-                    <a id="downloadLink" href="#" class="btn btn-success">
-                        <i class="fas fa-download"></i> Download PPTX
-                    </a>
-                </div>
-
-                <div class="error-panel" id="errorPanel">
-                    <h4><i class="fas fa-exclamation-triangle"></i> Processing Error</h4>
-                    <pre id="errorText"></pre>
-                </div>
-            </div>
-
-            <!-- Right: Template Gallery -->
-            <div class="card fade-in">
-                <div class="card-header">
-                    <div class="card-icon purple"><i class="fas fa-palette"></i></div>
-                    <div>
-                        <div class="card-title">Template Gallery</div>
-                        <div class="card-subtitle">Choose slide types for your deck</div>
-                    </div>
-                </div>
-
-                <div class="template-buttons">
-                    <button class="template-btn" onclick="addSlideToBuilder('intro')">
-                        <div class="icon i1"><i class="fas fa-flag"></i></div>
-                        <div>
-                            <div style="font-weight:600">Intro Slide</div>
-                            <div style="font-size:11px;color:var(--text-muted)">Title + logo + date</div>
-                        </div>
-                    </button>
-                    <button class="template-btn" onclick="addSlideToBuilder('content')">
-                        <div class="icon i2"><i class="fas fa-align-left"></i></div>
-                        <div>
-                            <div style="font-weight:600">Content Slide</div>
-                            <div style="font-size:11px;color:var(--text-muted)">Title + bullets</div>
-                        </div>
-                    </button>
-                    <button class="template-btn" onclick="addSlideToBuilder('case_study')">
-                        <div class="icon i3"><i class="fas fa-chart-bar"></i></div>
-                        <div>
-                            <div style="font-weight:600">Case Study</div>
-                            <div style="font-size:11px;color:var(--text-muted)">3-column layout</div>
-                        </div>
-                    </button>
-                    <button class="template-btn" onclick="addSlideToBuilder('content_image')">
-                        <div class="icon i4"><i class="fas fa-image"></i></div>
-                        <div>
-                            <div style="font-weight:600">Content + Image</div>
-                            <div style="font-size:11px;color:var(--text-muted)">Text left, image right</div>
-                        </div>
-                    </button>
-                    <button class="template-btn" onclick="addSlideToBuilder('section_divider')">
-                        <div class="icon i5"><i class="fas fa-layer-group"></i></div>
-                        <div>
-                            <div style="font-weight:600">Section Divider</div>
-                            <div style="font-size:11px;color:var(--text-muted)">Full-color divider</div>
-                        </div>
-                    </button>
-                    <button class="template-btn" onclick="addSlideToBuilder('blank')">
-                        <div class="icon i6"><i class="fas fa-plus"></i></div>
-                        <div>
-                            <div style="font-weight:600">Blank Slide</div>
-                            <div style="font-size:11px;color:var(--text-muted)">Logo + footer only</div>
-                        </div>
-                    </button>
-                </div>
-
-                <div style="margin-top: 20px; padding: 16px; background: var(--bg-light); border-radius: var(--radius-sm)">
-                    <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--dark-navy)">
-                        <i class="fas fa-info-circle" style="color:var(--primary)"></i> Brand Specs Applied
-                    </h4>
-                    <ul style="font-size: 12px; color: var(--text-muted); list-style: none; line-height: 1.8">
-                        <li>✦ Font: Inter Tight (24pt headings)</li>
-                        <li>✦ Colors: #264CD7 primary, product-specific accents</li>
-                        <li>✦ Widescreen 16:9 (13.33" × 7.50")</li>
-                        <li>✦ IA logo auto-placed on every slide</li>
-                        <li>✦ Product color-coding from brand guidelines</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-
-        <!-- Custom Builder -->
-        <div class="builder-section fade-in">
-            <div class="builder-header">
-                <h2><i class="fas fa-hammer" style="color:var(--primary)"></i> Custom Deck Builder</h2>
-                <div style="display:flex;gap:10px">
-                    <button class="btn btn-secondary" style="width:auto;padding:8px 16px;font-size:13px" onclick="clearBuilder()">
-                        <i class="fas fa-trash"></i> Clear All
-                    </button>
-                    <button class="btn btn-primary" style="width:auto;padding:8px 20px;font-size:13px" onclick="buildCustomDeck()" id="buildBtn" disabled>
-                        <i class="fas fa-download"></i> Build & Download
-                    </button>
-                </div>
-            </div>
-
-            <div id="slideEntries">
-                <div style="text-align:center;padding:40px;color:var(--text-muted);font-size:14px">
-                    <i class="fas fa-arrow-up" style="font-size:24px;display:block;margin-bottom:8px;color:var(--border)"></i>
-                    Click a template above to start building your deck
-                </div>
-            </div>
-
-            <div class="result-panel" id="buildResult">
-                <h4><i class="fas fa-check-circle"></i> Custom Deck Ready!</h4>
-                <p id="buildResultInfo"></p>
-                <a id="buildDownloadLink" href="#" class="btn btn-success">
-                    <i class="fas fa-download"></i> Download Custom PPTX
-                </a>
-            </div>
-        </div>
+<div class="console">
+  <div class="console-card">
+    <div class="console-top">
+      <h2><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span> Intelligence Console</h2>
+      <div class="seg">
+        <button class="on" id="segSearch" onclick="setMode('search')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg> Search</button>
+        <button id="segAdd" onclick="setMode('add')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add file</button>
+      </div>
     </div>
 
-    <footer class="footer">
-        <p>Impact Analytics Slide Standardizer — Built for the IA Design Team</p>
-        <p style="margin-top:4px">Brand font: Inter Tight · Primary: #264CD7 · Template: Case Studies Library format</p>
-    </footer>
+    <div class="console-body">
+      <div id="searchMode">
+        <div class="big-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="q" placeholder="Search a competitor, like o9 battlecard or blue yonder pricing..." autocomplete="off">
+        </div>
+        <div class="hint">
+          <b>Try:</b>
+          <button class="chip-ex" onclick="runExample('o9 battlecard')">o9 battlecard</button>
+          <button class="chip-ex" onclick="runExample('jda client list')">jda client list</button>
+          <button class="chip-ex" onclick="runExample('relex pricing')">relex pricing</button>
+        </div>
+        <span class="type-label">Filter by type</span>
+        <div class="types" id="typeFilters">
+          <button class="type on" data-t="all"><span class="tn">All files</span><span class="td">Everything in the library</span></button>
+          <button class="type" data-t="battlecard"><span class="tn">Battlecard</span><span class="td">Head-to-head positioning</span></button>
+          <button class="type" data-t="client_list"><span class="tn">Client list</span><span class="td">Logos and references</span></button>
+          <button class="type" data-t="master_sheet"><span class="tn">Master sheet</span><span class="td">Consolidated view</span></button>
+          <button class="type" data-t="information"><span class="tn">Research</span><span class="td">Notes and analysis</span></button>
+        </div>
+      </div>
 
-    <script>
-        let selectedProduct = '';
-        let slideEntries = [];
+      <div id="addMode" class="hidden">
+        <form id="addForm" onsubmit="return false">
+          <div class="form-grid">
+            <div class="field"><label for="fComp">Competitor</label>
+              <input type="text" id="fComp" list="knownComps" placeholder="o9 Solutions" required>
+              <datalist id="knownComps">{% for c in competitors %}<option value="{{ c }}">{% endfor %}</datalist>
+            </div>
+            <div class="field"><label for="fTitle">File title</label>
+              <input type="text" id="fTitle" placeholder="Q2 2026 Battlecard" required></div>
+            <div class="field"><label for="fCat">Category</label>
+              <select id="fCat">{% for key, label in categories.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+            <div class="field"><label for="fLovable">Project link (optional)</label>
+              <input type="url" id="fLovable" placeholder="https://lovable.dev/projects/..."></div>
+            <div class="field"><label>Upload a document</label>
+              <div class="drop" onclick="document.getElementById('fFile').click()">
+                <b>Choose a file</b>
+                <small>PDF, DOCX, PPTX, XLSX, CSV, TXT or MD</small>
+              </div>
+              <div class="df" id="fName"></div>
+              <input type="file" id="fFile" class="hidden" accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.tsv,.txt,.md,.json">
+            </div>
+            <div class="field"><label for="fUrl">Or paste a share link</label>
+              <input type="url" id="fUrl" placeholder="https://docs.google.com/document/d/...">
+              <small style="font-size:12px;color:#6c6a66">Google Docs, Sheets, Slides, Drive or Dropbox. Fetched by the server, not your browser.</small></div>
+            <div class="field full"><label for="fNote">Note</label>
+              <textarea id="fNote" placeholder="Key findings, positioning, context..."></textarea></div>
+          </div>
+          <div class="actions">
+            <button class="btn" id="saveBtn" onclick="saveEntry()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add to library</button>
+            <button class="btn ghost" onclick="resetForm()">Clear</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
 
-        // ── File Upload ────────────────────────
-        const fileInput = document.getElementById('fileInput');
-        const uploadZone = document.getElementById('uploadZone');
+<section class="results">
+  <div class="res-head"><h3 id="resTitle">Shared library</h3><span class="count" id="resCount"></span></div>
+  <div class="intent" id="intentRow"></div>
+  <div class="grid" id="grid"></div>
+</section>
 
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length) handleFile(e.target.files[0]);
-        });
+<section class="panel">
+  <div class="panel-card">
+    <h3>Battlecard generator</h3>
+    <p>Draft a battlecard from everything the library holds on one competitor. It reads across every document, not just one file, and cites what it used.</p>
+    <div class="row">
+      <input type="text" id="bcComp" list="knownComps" placeholder="Blue Yonder">
+      <button class="btn" id="bcBtn" onclick="genBattlecard()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2 19 6.5 8.5 17 4 18l1-4.5L14.5 2z"/></svg> Generate</button>
+    </div>
+    <div id="bcOut"></div>
+  </div>
+</section>
 
-        uploadZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZone.classList.add('drag-over');
-        });
-        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-        uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('drag-over');
-            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-        });
+<section class="panel" id="admin">
+  <div class="panel-card">
+    <h3>Admin</h3>
+    <p>Export the library as JSON, import an existing library file, or clear everything. The passcode is checked on the server.</p>
+    <div class="row" id="lockRow">
+      <input type="password" id="adminPass" placeholder="Enter passcode" onkeydown="if(event.key==='Enter')unlock()">
+      <button class="btn sm" onclick="unlock()">Unlock</button>
+    </div>
+    <div class="row hidden" id="adminTools">
+      <button class="btn sm ghost" onclick="exportLib()">Export JSON</button>
+      <button class="btn sm ghost" onclick="document.getElementById('jsonIn').click()">Import JSON</button>
+      <button class="btn sm danger" onclick="clearLib()">Clear all</button>
+      <button class="btn sm ghost" onclick="lock()">Lock</button>
+    </div>
+    <input type="file" id="jsonIn" accept=".json" class="hidden">
+  </div>
+</section>
 
-        function handleFile(file) {
-            document.getElementById('fileName').textContent = file.name;
-            document.getElementById('fileSize').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
-            document.getElementById('fileInfo').classList.add('visible');
-            document.getElementById('processBtn').disabled = false;
-        }
+<footer>Impact Analytics · Competitor Intelligence</footer>
+<div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg><span id="toastMsg"></span></div>
 
-        function clearFile() {
-            fileInput.value = '';
-            document.getElementById('fileInfo').classList.remove('visible');
-            document.getElementById('processBtn').disabled = true;
-            document.getElementById('resultPanel').classList.remove('visible');
-            document.getElementById('errorPanel').classList.remove('visible');
-        }
+<script>
+const $ = id => document.getElementById(id);
+const AI_ENABLED = {{ 'true' if ai_enabled else 'false' }};
+let filter = 'all', searchTimer = null, lastResults = [];
 
-        function selectProduct(el) {
-            document.querySelectorAll('.product-pill').forEach(p => p.classList.remove('active'));
-            el.classList.add('active');
-            selectedProduct = el.dataset.product;
-        }
+const ICONS = {
+  battlecard:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2 19 6.5 8.5 17 4 18l1-4.5L14.5 2z"/><path d="M14.5 2 19 6.5"/></svg>',
+  client_list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>',
+  master_sheet:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>',
+  information:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>'
+};
+const ICO_CLASS = {battlecard:'', client_list:'green', master_sheet:'purple', information:'orange'};
+const CAT_LABEL = {battlecard:'Battlecard', client_list:'Client list', master_sheet:'Master sheet', information:'Research'};
+const esc = s => { const d=document.createElement('div'); d.textContent = s==null?'':s; return d.innerHTML; };
 
-        // ── Process Upload ─────────────────────
-        async function processFile() {
-            const file = fileInput.files[0];
-            if (!file) return;
+let toastTimer;
+function toast(msg){ $('toastMsg').textContent=msg; $('toast').classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('toast').classList.remove('show'),2900); }
 
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('template_type', document.getElementById('templateType').value);
-            formData.append('product_name', selectedProduct);
+function setMode(m){
+  $('searchMode').classList.toggle('hidden', m!=='search');
+  $('addMode').classList.toggle('hidden', m!=='add');
+  $('segSearch').classList.toggle('on', m==='search');
+  $('segAdd').classList.toggle('on', m==='add');
+}
+function runExample(q){ setMode('search'); $('q').value=q; doSearch(); }
 
-            const btn = document.getElementById('processBtn');
-            const progress = document.getElementById('progressBar');
-            const progressFill = document.getElementById('progressFill');
-            const progressText = document.getElementById('progressText');
+/* ---------- search ---------- */
+$('q').addEventListener('input', ()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,180); });
+document.querySelectorAll('#typeFilters .type').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('#typeFilters .type').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); filter=b.dataset.t; doSearch();
+  });
+});
 
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            progress.classList.add('visible');
-            document.getElementById('resultPanel').classList.remove('visible');
-            document.getElementById('errorPanel').classList.remove('visible');
+async function doSearch(){
+  const q = $('q').value.trim();
+  const url = `/api/search?q=${encodeURIComponent(q)}&category=${encodeURIComponent(filter)}`;
+  try{
+    const res = await fetch(url); const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Search failed');
+    lastResults = data.results;
+    renderIntent(data.intent, data.effective_category, q);
+    render(data.results, q);
+    $('resTitle').textContent = q ? 'Results' : 'Shared library';
+    $('resCount').textContent = data.total ? data.total + (data.total===1?' file':' files') : '';
+  }catch(err){ toast(err.message); }
+}
 
-            // Animate progress
-            let pct = 0;
-            const interval = setInterval(() => {
-                pct = Math.min(pct + Math.random() * 15, 90);
-                progressFill.style.width = pct + '%';
-                const msgs = ['Extracting content...', 'Applying template...', 'Standardizing fonts...', 'Placing logo...', 'Finalizing deck...'];
-                progressText.textContent = msgs[Math.floor(pct / 20)] || msgs[0];
-            }, 400);
+function renderIntent(intent, cat, q){
+  const row = $('intentRow');
+  if(!q){ row.innerHTML=''; return; }
+  const tags=[];
+  if(intent.competitor){
+    const fuzzy = intent.competitor_confidence < 1;
+    tags.push(`<span class="tag">Competitor: ${esc(intent.competitor)}${fuzzy?' · closest match':''}</span>`);
+  }
+  if(cat) tags.push(`<span class="tag">Type: ${esc(CAT_LABEL[cat]||cat)}</span>`);
+  if(intent.terms && intent.terms.length) tags.push(`<span class="tag muted">Text: ${esc(intent.terms.join(', '))}</span>`);
+  if(!tags.length) tags.push('<span class="tag muted">No competitor or type recognised, matching on text</span>');
+  row.innerHTML = tags.join('');
+}
 
-            try {
-                const res = await fetch('/process', { method: 'POST', body: formData });
-                const data = await res.json();
-                clearInterval(interval);
+function render(list, q){
+  const grid = $('grid');
+  if(!list.length){
+    grid.innerHTML = `<div class="empty"><div class="ei"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div>
+      <h4>${q?'No matches':'The library is empty'}</h4>
+      <p>${q?'Try another competitor name, or switch the type filter.':'Switch to Add file above to upload your first competitor document.'}</p></div>`;
+    return;
+  }
+  grid.innerHTML = list.map(e=>{
+    const canAnalyze = AI_ENABLED && e.content_chars > 40;
+    const why = (e.why||[]).map(w=>`<span>${esc(w)}</span>`).join('');
+    return `<div class="card" id="card-${e.id}">
+      <div class="card-top">
+        <div class="card-ico ${ICO_CLASS[e.category]||''}">${ICONS[e.category]||ICONS.information}</div>
+        <div style="min-width:0">
+          <div class="card-title">${esc(e.title)}</div>
+          <div class="card-meta"><span class="badge">${esc(CAT_LABEL[e.category]||'File')}</span>
+            ${e.competitor?`<span class="vs">vs ${esc(e.competitor)}</span>`:''}
+            ${e.content_chars?`<span class="vs">· ${e.content_chars.toLocaleString()} chars indexed</span>`:''}
+          </div>
+        </div>
+      </div>
+      ${e.note?`<div class="card-note">${esc(e.note)}</div>`:''}
+      ${why?`<div class="why">${why}</div>`:''}
+      <div class="card-foot">
+        ${canAnalyze?`<button class="link" onclick="analyze('${e.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0-6 6c0 1.7.7 3.2 1.8 4.3.7.7 1.2 1.6 1.2 2.7v1h6v-1c0-1.1.5-2 1.2-2.7A6 6 0 0 0 12 3z"/><path d="M9 21h6"/></svg>${e.analysis?'View analysis':'Analyze'}</button>`:''}
+        ${e.file_url?`<a class="link" href="${esc(e.file_url)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>Open file</a>`:''}
+        ${e.lovable_url?`<a class="link" href="${esc(e.lovable_url)}" target="_blank" rel="noopener">Project</a>`:''}
+        <button class="link muted" onclick="del('${e.id}')">Delete</button>
+      </div>
+      <div id="an-${e.id}"></div>
+    </div>`;
+  }).join('');
+}
 
-                if (data.success) {
-                    progressFill.style.width = '100%';
-                    progressText.textContent = 'Done!';
-                    setTimeout(() => {
-                        progress.classList.remove('visible');
-                        const result = document.getElementById('resultPanel');
-                        result.classList.add('visible');
-                        document.getElementById('resultInfo').textContent =
-                            `Generated ${data.slide_count} slides · ${data.filename}`;
-                        document.getElementById('downloadLink').href = data.download_url;
-                    }, 500);
-                } else {
-                    throw new Error(data.error || 'Unknown error');
-                }
-            } catch (err) {
-                clearInterval(interval);
-                progress.classList.remove('visible');
-                document.getElementById('errorPanel').classList.add('visible');
-                document.getElementById('errorText').textContent = err.message;
-            }
+/* ---------- add ---------- */
+$('fFile').addEventListener('change', e=>{
+  const n = e.target.files[0]?.name || '';
+  $('fName').textContent = n ? 'Selected: ' + n : '';
+});
+function resetForm(){
+  ['fComp','fTitle','fLovable','fUrl','fNote'].forEach(id=>$(id).value='');
+  $('fCat').value='battlecard'; $('fFile').value=''; $('fName').textContent='';
+}
+async function saveEntry(){
+  const fd = new FormData();
+  fd.append('competitor', $('fComp').value.trim());
+  fd.append('title', $('fTitle').value.trim());
+  fd.append('category', $('fCat').value);
+  fd.append('note', $('fNote').value.trim());
+  fd.append('file_url', $('fUrl').value.trim());
+  fd.append('lovable_url', $('fLovable').value.trim());
+  if($('fFile').files[0]) fd.append('file', $('fFile').files[0]);
 
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Standardize Now';
-        }
+  if(!$('fComp').value.trim()) return toast('Add a competitor name');
+  if(!$('fTitle').value.trim()) return toast('Add a file title');
 
-        // ── Custom Builder ─────────────────────
-        function addSlideToBuilder(type) {
-            slideEntries.push({ type, title: '', subtitle: '', points: '', challenge: '', solution: '',
-                               impact_stat: '', impact_label: '', body: '', number: '', tag: '', date: '' });
-            renderSlides();
-        }
+  const btn = $('saveBtn'); btn.disabled = true; btn.textContent = 'Adding...';
+  try{
+    const res = await fetch('/api/entries', {method:'POST', body:fd});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Could not save');
+    toast(data.status || 'Added to the library');
+    resetForm(); setMode('search'); $('q').value=''; doSearch();
+  }catch(err){ toast(err.message); }
+  finally{ btn.disabled=false; btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add to library'; }
+}
+async function del(id){
+  if(!confirm('Delete this entry?')) return;
+  const res = await fetch('/api/entries/'+id, {method:'DELETE'});
+  const data = await res.json();
+  if(data.ok){ toast('Deleted'); doSearch(); } else toast(data.error||'Could not delete');
+}
 
-        function removeSlide(idx) {
-            slideEntries.splice(idx, 1);
-            renderSlides();
-        }
+/* ---------- analyze ---------- */
+async function analyze(id){
+  const box = $('an-'+id);
+  box.innerHTML = '<div class="analysis"><div class="a-loading"><span class="spin"></span> Reading the document and pulling out the signal...</div></div>';
+  try{
+    const res = await fetch(`/api/entries/${id}/analyze`, {method:'POST'});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Analysis failed');
+    box.innerHTML = renderAnalysis(id, data.analysis, data.cached);
+  }catch(err){ box.innerHTML = `<div class="a-error"><strong>Analysis failed.</strong> ${esc(err.message)}</div>`; }
+}
 
-        function clearBuilder() {
-            slideEntries = [];
-            renderSlides();
-            document.getElementById('buildResult').classList.remove('visible');
-        }
+function listBlock(label, items, bullet){
+  if(!items || !items.length) return '';
+  return `<div class="a-label">${esc(label)}</div>` + items.map((t,i)=>
+    `<div class="a-item">${bullet==='n'?`<span class="n">${i+1}</span>`:'<span class="b">&bull;</span>'}<span>${esc(t)}</span></div>`).join('');
+}
 
-        function renderSlides() {
-            const container = document.getElementById('slideEntries');
-            document.getElementById('buildBtn').disabled = slideEntries.length === 0;
+function renderAnalysis(id, a, cached){
+  let html = '<div class="analysis">';
+  html += `<div class="a-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3a6 6 0 0 0-6 6c0 1.7.7 3.2 1.8 4.3.7.7 1.2 1.6 1.2 2.7v1h6v-1c0-1.1.5-2 1.2-2.7A6 6 0 0 0 12 3z"/></svg> Executive summary${cached?' · saved':''}</div>`;
+  html += `<div class="a-summary">${esc(a.summary||'')}</div>`;
+  html += listBlock('Key insights', a.insights, 'n');
+  html += listBlock('Where they are weak', a.weaknesses);
+  html += listBlock('How we win', a.how_to_win);
+  html += listBlock('Where they win', a.strengths);
+  if(a.threatened_products && a.threatened_products.length){
+    html += '<div class="a-label">IA products most exposed</div><div class="prods">' +
+      a.threatened_products.map(p=>`<span class="prod">${esc(p)}</span>`).join('') + '</div>';
+  }
+  html += `<div class="qa"><input type="text" id="q-${id}" placeholder="Ask anything about this competitor..." onkeydown="if(event.key==='Enter')ask('${id}')"><button class="btn sm" onclick="ask('${id}')">Ask</button></div><div id="qa-${id}"></div>`;
+  html += '</div>';
+  return html;
+}
 
-            if (slideEntries.length === 0) {
-                container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:14px">
-                    <i class="fas fa-arrow-up" style="font-size:24px;display:block;margin-bottom:8px;color:var(--border)"></i>
-                    Click a template above to start building your deck</div>`;
-                return;
-            }
+async function ask(id){
+  const input = $('q-'+id); const q = input.value.trim();
+  if(!q) return;
+  const box = $('qa-'+id);
+  box.innerHTML = '<div class="a-loading"><span class="spin"></span> Searching the library and answering...</div>';
+  try{
+    const res = await fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question:q, entry_id:id})});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Could not answer');
+    let html = `<div class="qa-ans">${esc(data.answer)}</div>`;
+    if(data.citations && data.citations.length){
+      html += '<div class="cites">' + data.citations.map(c=>`<span class="cite">[${c.n}] ${esc(c.title)}</span>`).join('') + '</div>';
+    }
+    box.innerHTML = html; input.value='';
+  }catch(err){ box.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
+}
 
-            const labels = { intro: '🎯 Intro', content: '📝 Content', case_study: '📊 Case Study',
-                           content_image: '🖼️ Content+Image', section_divider: '📌 Divider', blank: '⬜ Blank' };
+/* ---------- battlecard ---------- */
+async function genBattlecard(){
+  const comp = $('bcComp').value.trim();
+  if(!comp) return toast('Name a competitor');
+  const out = $('bcOut'); const btn = $('bcBtn');
+  btn.disabled = true;
+  out.innerHTML = '<div class="a-loading"><span class="spin"></span> Reading everything on ' + esc(comp) + '...</div>';
+  try{
+    const res = await fetch('/api/battlecard', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({competitor:comp})});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Could not generate');
+    let html = '<div class="bc-out">' + mdToHtml(data.battlecard) + '</div>';
+    if(data.sources && data.sources.length){
+      html += '<div class="cites">' + data.sources.map(s=>`<span class="cite">${esc(s)}</span>`).join('') + '</div>';
+    }
+    out.innerHTML = html;
+  }catch(err){ out.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
+  finally{ btn.disabled=false; }
+}
+function mdToHtml(md){
+  return esc(md)
+    .replace(/^### (.*)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.*)$/gm,'<h2>$1</h2>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+}
 
-            container.innerHTML = slideEntries.map((s, i) => {
-                let fields = '';
-                switch(s.type) {
-                    case 'intro':
-                        fields = `
-                            <div class="slide-fields">
-                                <div><label>Title</label><input type="text" placeholder="Presentation title" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
-                                <div><label>Subtitle</label><input type="text" placeholder="Subtitle" onchange="slideEntries[${i}].subtitle=this.value" value="${esc(s.subtitle)}"></div>
-                                <div><label>Date</label><input type="text" placeholder="March 2026" onchange="slideEntries[${i}].date=this.value" value="${esc(s.date)}"></div>
-                            </div>`;
-                        break;
-                    case 'section_divider':
-                        fields = `
-                            <div class="slide-fields">
-                                <div><label>Section Title</label><input type="text" placeholder="Section name" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
-                                <div><label>Number</label><input type="text" placeholder="01" onchange="slideEntries[${i}].number=this.value" value="${esc(s.number)}"></div>
-                            </div>`;
-                        break;
-                    case 'content':
-                        fields = `
-                            <div class="slide-fields full">
-                                <div><label>Title</label><input type="text" placeholder="Slide title" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
-                                <div><label>Bullet Points (one per line)</label><textarea placeholder="Point 1\nPoint 2\nPoint 3" onchange="slideEntries[${i}].points=this.value">${esc(s.points)}</textarea></div>
-                            </div>`;
-                        break;
-                    case 'case_study':
-                        fields = `
-                            <div class="slide-fields full">
-                                <div><label>Title</label><input type="text" placeholder="Case study headline" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
-                            </div>
-                            <div class="slide-fields">
-                                <div><label>Challenge</label><textarea placeholder="Challenge details" onchange="slideEntries[${i}].challenge=this.value">${esc(s.challenge)}</textarea></div>
-                                <div><label>Solution</label><textarea placeholder="Solution details" onchange="slideEntries[${i}].solution=this.value">${esc(s.solution)}</textarea></div>
-                            </div>
-                            <div class="slide-fields">
-                                <div><label>Impact Stat</label><input type="text" placeholder="~5%" onchange="slideEntries[${i}].impact_stat=this.value" value="${esc(s.impact_stat)}"></div>
-                                <div><label>Impact Label</label><input type="text" placeholder="Margin Improvement" onchange="slideEntries[${i}].impact_label=this.value" value="${esc(s.impact_label)}"></div>
-                            </div>
-                            <div class="slide-fields full">
-                                <div><label>Tag</label><input type="text" placeholder="SKU Rationalization" onchange="slideEntries[${i}].tag=this.value" value="${esc(s.tag)}"></div>
-                            </div>`;
-                        break;
-                    case 'content_image':
-                        fields = `
-                            <div class="slide-fields full">
-                                <div><label>Title</label><input type="text" placeholder="Slide title" onchange="slideEntries[${i}].title=this.value" value="${esc(s.title)}"></div>
-                                <div><label>Body Text</label><textarea placeholder="Text content (left side)" onchange="slideEntries[${i}].body=this.value">${esc(s.body)}</textarea></div>
-                            </div>`;
-                        break;
-                }
-                return `<div class="slide-entry fade-in">
-                    <span class="slide-num">Slide ${i+1} · ${labels[s.type] || s.type}</span>
-                    <button class="remove-slide" onclick="removeSlide(${i})"><i class="fas fa-times"></i></button>
-                    ${fields}
-                </div>`;
-            }).join('');
-        }
+/* ---------- admin ---------- */
+async function unlock(){
+  const res = await fetch('/api/admin/login', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({passcode: $('adminPass').value})});
+  const data = await res.json();
+  if(data.ok){ $('lockRow').classList.add('hidden'); $('adminTools').classList.remove('hidden');
+    $('adminPass').value=''; toast('Admin unlocked'); }
+  else { toast(data.error||'Wrong passcode'); $('adminPass').value=''; }
+}
+async function lock(){
+  await fetch('/api/admin/logout', {method:'POST'});
+  $('lockRow').classList.remove('hidden'); $('adminTools').classList.add('hidden'); toast('Locked');
+}
+function exportLib(){ window.location = '/api/admin/export'; }
+$('jsonIn').addEventListener('change', async e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const fd = new FormData(); fd.append('file', file);
+  const res = await fetch('/api/admin/import', {method:'POST', body:fd});
+  const data = await res.json();
+  if(data.ok){ toast(`Imported ${data.imported} entries`); doSearch(); }
+  else toast(data.error||'Import failed');
+  e.target.value='';
+});
+async function clearLib(){
+  if(!confirm('Delete every entry? This cannot be undone.')) return;
+  const res = await fetch('/api/admin/clear', {method:'POST'});
+  const data = await res.json();
+  if(data.ok){ toast(`Cleared ${data.deleted} entries`); doSearch(); }
+  else toast(data.error||'Could not clear');
+}
 
-        function esc(str) { return (str||'').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
-
-        async function buildCustomDeck() {
-            const btn = document.getElementById('buildBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
-
-            const slides = slideEntries.map(s => {
-                const obj = { type: s.type, title: s.title };
-                if (s.type === 'intro') { obj.subtitle = s.subtitle; obj.date = s.date; }
-                if (s.type === 'section_divider') { obj.number = s.number; }
-                if (s.type === 'content') { obj.points = (s.points||'').split('\n').filter(l => l.trim()); }
-                if (s.type === 'case_study') {
-                    obj.challenge = s.challenge; obj.solution = s.solution;
-                    obj.impact_stat = s.impact_stat; obj.impact_label = s.impact_label;
-                    obj.tag = s.tag; obj.extra_impacts = [];
-                }
-                if (s.type === 'content_image') { obj.body = s.body; }
-                return obj;
-            });
-
-            try {
-                const res = await fetch('/build-custom', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ slides, product_name: selectedProduct })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    const result = document.getElementById('buildResult');
-                    result.classList.add('visible');
-                    document.getElementById('buildResultInfo').textContent =
-                        `Generated ${data.slide_count} slides · ${data.filename}`;
-                    document.getElementById('buildDownloadLink').href = data.download_url;
-                } else {
-                    alert('Error: ' + (data.error || 'Unknown'));
-                }
-            } catch (err) {
-                alert('Network error: ' + err.message);
-            }
-
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-download"></i> Build & Download';
-        }
-    </script>
+doSearch();
+</script>
 </body>
 </html>

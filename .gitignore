@@ -1,7 +1,10 @@
-__pycache__/
-*.pyc
-uploads/
-outputs/
-.env
-*.pptx
 !brand_assets/
+*.pptx
+*.pyc
+.env
+.pytest_cache/
+.venv/
+__pycache__/
+data/
+outputs/
+uploads/

@@ -1,9 +1,22 @@
 services:
   - type: web
-    name: ia-slide-standardizer
+    name: ia-competitor-intelligence
     runtime: docker
-    plan: free
-    healthCheckPath: /
+    plan: starter          # a disk cannot be attached on the free plan
+    healthCheckPath: /healthz
+    disk:
+      # Without this the SQLite library is wiped on every deploy.
+      name: ciq-data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: PORT
         value: 10000
+      - key: CIQ_DB_PATH
+        value: /data/library.db
+      - key: ANTHROPIC_API_KEY
+        sync: false        # set in the Render dashboard, never in git
+      - key: CIQ_ADMIN_PASSCODE
+        sync: false
+      - key: CIQ_SECRET_KEY
+        generateValue: true

@@ -1,5 +1,6 @@
 """Runtime configuration, read once from the environment."""
 import os
+import secrets
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,6 +35,40 @@ class Config:
     @classmethod
     def ai_enabled(cls) -> bool:
         return bool(cls.ANTHROPIC_API_KEY)
+
+    @classmethod
+    def secret_key(cls) -> bytes:
+        """A signing key every worker agrees on.
+
+        Generating one per process silently breaks admin sessions as soon as
+        the server runs more than one worker, because a cookie signed by one
+        worker fails to verify in the next. Prefer the configured value, then
+        a key persisted beside the database, and only then a fresh one.
+        """
+        if cls.SECRET_KEY:
+            return cls.SECRET_KEY.encode()
+
+        key_path = Path(cls.DB_PATH).with_name(".secret_key")
+        try:
+            key_path.parent.mkdir(parents=True, exist_ok=True)
+            if key_path.exists():
+                stored = key_path.read_bytes().strip()
+                if stored:
+                    return stored
+            generated = secrets.token_hex(32).encode()
+            # Exclusive create so two workers starting together cannot each
+            # write a different key.
+            try:
+                with open(key_path, "xb") as handle:
+                    handle.write(generated)
+                os.chmod(key_path, 0o600)
+                return generated
+            except FileExistsError:
+                return key_path.read_bytes().strip() or generated
+        except OSError:
+            # Read-only disk. Sessions will not survive a restart, which is
+            # acceptable; losing the service is not.
+            return secrets.token_hex(32).encode()
 
 
 CATEGORIES = {

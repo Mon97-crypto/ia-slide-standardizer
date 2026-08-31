@@ -1,9 +1,8 @@
 FROM python:3.11-slim
 
-# Install tesseract for OCR
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
@@ -12,8 +11,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p uploads outputs
+# Default location of the SQLite library. Mount a Render disk here so the
+# library survives deploys; without a disk the container filesystem is
+# ephemeral and every deploy starts empty.
+ENV CIQ_DB_PATH=/data/library.db
+RUN mkdir -p /data
 
 EXPOSE 10000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--timeout", "120", "--workers", "2", "app:app"]
+# --preload shares the loaded app across workers and surfaces import errors at
+# boot rather than on the first request.
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "2", \
+     "--threads", "4", "--timeout", "180", "--preload", "app:app"]
