@@ -19,7 +19,9 @@ RUN mkdir -p /data
 
 EXPOSE 10000
 
+# Shell form so $PORT expands. Render injects PORT and routes to it, so a
+# hardcoded bind means the health check never passes.
 # --preload shares the loaded app across workers and surfaces import errors at
 # boot rather than on the first request.
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "2", \
-     "--threads", "4", "--timeout", "180", "--preload", "app:app"]
+CMD gunicorn --bind "0.0.0.0:${PORT:-10000}" --workers 2 --threads 4 \
+    --timeout 180 --preload app:app
