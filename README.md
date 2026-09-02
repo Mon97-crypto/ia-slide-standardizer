@@ -63,29 +63,34 @@ Run the tests with `python -m pytest tests/ -q`.
 
 ## Deploying on Render
 
-### 1. Create a free Postgres
+### 1. Give it a database
 
-Render's filesystem is ephemeral. Without an external database the library is
-wiped on every deploy, so create the database first.
+**Easiest, nothing to copy.** Deploy with the `render.yaml` blueprint as it
+ships. It provisions a Render Postgres and fills `DATABASE_URL` in
+automatically, so there is no connection string to paste, no password to encode
+and nothing to mistype. Render's free Postgres expires after 30 days, so
+upgrade the database to keep it.
 
-Any managed Postgres works. Free options that do not expire:
+**Bringing your own (Supabase, Neon).** Delete the `databases` block and the
+`fromDatabase` lines from `render.yaml`, then set the credentials as separate
+variables rather than assembling a URL:
 
-- **Supabase** at supabase.com, then Connect, and take a **pooler** connection
-  string rather than the direct one. Direct connections are IPv6 only on newer
-  projects, which many hosts cannot reach.
-- **Neon** at neon.tech, create a project, copy the connection string.
+| Variable | Example |
+|---|---|
+| `CIQ_DB_HOST` | `aws-0-ap-southeast-1.pooler.supabase.com` |
+| `CIQ_DB_USER` | `postgres.yourprojectref` |
+| `CIQ_DB_PASSWORD` | the password, exactly as it is |
+| `CIQ_DB_NAME` | `postgres` |
+| `CIQ_DB_PORT` | `5432` |
 
-Render's own Postgres also works, but its free tier expires after 30 days.
+Supplied separately the password needs no percent-encoding, so a character such
+as `@`, `/`, `#` or `?` cannot truncate a URL and push the wrong text into the
+host position. `DATABASE_URL` still works and takes precedence when set;
+surrounding quotes and whitespace on it are stripped.
 
-The string looks like `postgresql://user:password@host:5432/postgres`. Replace
-any password placeholder with the real password, and percent-encode it if it
-contains `@`, `:`, `/`, `?`, `#` or `&`. Append `?sslmode=require` if the string
-does not already carry it.
-
-All three of Supabase's connection modes work here. Prepared statements are
-disabled on connect, which is what a transaction-mode pooler requires, and a
-connection dropped by the provider is reestablished on the next query rather
-than failing every request until the worker restarts.
+On a pooled connection the username must carry the project reference, as
+`postgres.<project-ref>`. A bare `postgres` is rejected as a password failure
+even when the password is right.
 
 ### 2. Create the web service
 

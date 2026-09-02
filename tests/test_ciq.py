@@ -679,3 +679,49 @@ def test_a_bare_postgres_user_on_a_direct_host_is_not_flagged():
     d = db.describe_target(
         "postgresql://postgres:Secret1@db.qwertyuiop.supabase.co:5432/postgres")
     assert d["issues"] == []
+
+
+# ─── credentials supplied as separate parts ────────────────────────────────
+
+def test_separate_parts_build_a_valid_url_from_a_hostile_password(monkeypatch):
+    """Hand assembling a URL is where this breaks: a reserved character in the
+    password truncates it. Supplied separately, the password is encoded here."""
+    from ciq.config import Config
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("CIQ_DB_HOST", "aws-0-ap-southeast-1.pooler.supabase.com")
+    monkeypatch.setenv("CIQ_DB_USER", "postgres.abcdefgh")
+    monkeypatch.setenv("CIQ_DB_PASSWORD", "p@ss/w#rd?x&y:z")
+    monkeypatch.setenv("CIQ_DB_NAME", "postgres")
+    monkeypatch.setenv("CIQ_DB_PORT", "5432")
+
+    detail = db.describe_target(Config.database_url())
+    assert detail["issues"] == []
+    assert detail["host"] == "aws-0-ap-southeast-1.pooler.supabase.com"
+    assert detail["user"] == "postgres.abcdefgh"
+    assert detail["port"] == 5432
+    assert detail["database"] == "postgres"
+
+
+def test_a_full_url_takes_precedence_over_the_parts(monkeypatch):
+    from ciq.config import Config
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@explicit.example.com:5432/db")
+    monkeypatch.setenv("CIQ_DB_HOST", "ignored.example.com")
+    assert db.describe_target(Config.database_url())["host"] == "explicit.example.com"
+
+
+def test_quotes_and_whitespace_around_the_url_are_tolerated(monkeypatch):
+    """Pasting a value with quotes is a slip, not an intent."""
+    from ciq.config import Config
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        '  "postgresql://postgres.abc:pw@host.pooler.supabase.com:5432/postgres"  ')
+    detail = db.describe_target(Config.database_url())
+    assert detail["issues"] == []
+    assert detail["host"] == "host.pooler.supabase.com"
+
+
+def test_no_configuration_means_no_url(monkeypatch):
+    from ciq.config import Config
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("CIQ_DB_HOST", raising=False)
+    assert Config.database_url() == ""

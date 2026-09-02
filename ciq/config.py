@@ -23,9 +23,35 @@ class Config:
 
     @classmethod
     def database_url(cls) -> str:
-        # Read on demand rather than captured at import, for the same reason as
-        # the API key: presence should not depend on when this module loaded.
-        return os.environ.get("DATABASE_URL", "").strip()
+        """Build the connection target, on demand.
+
+        DATABASE_URL wins when set. Surrounding quotes and whitespace are
+        stripped, because a value pasted with either is a configuration slip
+        rather than an intent.
+
+        Otherwise the connection is assembled from separate parts. Hand
+        assembling a URL is where this goes wrong: a password containing a
+        reserved character silently truncates the string, and the resulting
+        failure names neither the character nor the field. Supplied as its own
+        variable, a password needs no encoding and can contain anything.
+        """
+        url = os.environ.get("DATABASE_URL", "").strip().strip('"\'')
+        if url:
+            return url
+
+        host = os.environ.get("CIQ_DB_HOST", "").strip().strip('"\'')
+        if not host:
+            return ""
+
+        from urllib.parse import quote
+        user = os.environ.get("CIQ_DB_USER", "postgres").strip().strip('"\'')
+        password = os.environ.get("CIQ_DB_PASSWORD", "").strip('"\'')
+        port = os.environ.get("CIQ_DB_PORT", "5432").strip() or "5432"
+        name = os.environ.get("CIQ_DB_NAME", "postgres").strip() or "postgres"
+        # safe="" so every reserved character is encoded, which is the whole
+        # point of accepting the parts separately.
+        return (f"postgresql://{quote(user, safe='')}:{quote(password, safe='')}"
+                f"@{host}:{port}/{name}")
 
     @classmethod
     def store_target(cls) -> str:
