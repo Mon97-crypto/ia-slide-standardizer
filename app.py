@@ -14,6 +14,7 @@ from functools import wraps
 
 from flask import (Flask, jsonify, render_template, request, send_file,
                    session)
+from werkzeug.exceptions import HTTPException
 
 from ciq import db, ingest, llm
 from ciq.competitors import canonical_name, known_names, threatened_products
@@ -388,6 +389,38 @@ def api_stats():
 def too_large(_):
     limit = Config.MAX_UPLOAD_BYTES // (1024 * 1024)
     return fail(f"That upload is over the {limit} MB limit.", 413)
+
+
+def _wants_json() -> bool:
+    return request.path.startswith("/api/") or request.path == "/healthz"
+
+
+@app.errorhandler(HTTPException)
+def handle_http_error(exc: HTTPException):
+    """Answer API routes in JSON even for 404, 405 and the rest."""
+    if not _wants_json():
+        return exc
+    return jsonify({"ok": False, "error": exc.description,
+                    "status": exc.code}), exc.code
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(exc: Exception):
+    """Never answer an API route with an HTML error page.
+
+    The browser parses every API response as JSON, so Flask's default HTML
+    error page surfaced as "Unexpected token '<'" and hid the real fault,
+    which is usually the database being unreachable.
+    """
+    app.logger.exception("Unhandled error on %s", request.path)
+    if not _wants_json():
+        raise exc
+    message = f"{type(exc).__name__}: {exc}"
+    storage = Config.storage_info()
+    if not storage.get("durable") or "connect" in str(exc).lower():
+        message += (" The database may be unreachable. Check DATABASE_URL "
+                    "and the service logs.")
+    return jsonify({"ok": False, "error": message}), 500
 
 
 if __name__ == "__main__":

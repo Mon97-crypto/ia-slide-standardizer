@@ -335,6 +335,8 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
   transition:all .34s var(--ease);pointer-events:none}
 .toast.show{transform:translate(-50%,0);opacity:1}
 .toast svg{width:17px;height:17px;color:var(--green)}
+.toast.bad svg{display:none}
+.toast.bad{background:#8c2323;max-width:min(560px,calc(100vw - 44px));line-height:1.5}
 .hidden{display:none !important}
 /* Ephemeral storage has to be unmissable. A quiet field on a health endpoint
    is not a warning; it is a warning nobody reads until the data is gone. */
@@ -526,9 +528,41 @@ const ICO_CLASS = {battlecard:'', client_list:'green', master_sheet:'purple', in
 const CAT_LABEL = {battlecard:'Battlecard', client_list:'Client list', master_sheet:'Master sheet', information:'Research'};
 const esc = s => { const d=document.createElement('div'); d.textContent = s==null?'':s; return d.innerHTML; };
 
+/* Every response is parsed through here. Calling res.json() directly turned a
+   server error page into "Unexpected token '<'", which hid the real fault. */
+async function api(url, opts){
+  let res;
+  try{ res = await fetch(url, opts); }
+  catch(netErr){ throw new Error('Could not reach the server. ' + netErr.message); }
+
+  const type = res.headers.get('content-type') || '';
+  if(type.includes('application/json')){
+    let data;
+    try{ data = await res.json(); }
+    catch(parseErr){ throw new Error(`Server sent malformed data (${res.status}).`); }
+    if(data && data.ok === false) throw new Error(data.error || `Request failed (${res.status}).`);
+    if(!res.ok) throw new Error((data && data.error) || `Request failed (${res.status}).`);
+    return data;
+  }
+
+  const body = (await res.text().catch(()=>'')).trim();
+  const isPage = /^<!doctype|^<html/i.test(body);
+  throw new Error(
+    `Server returned ${res.status}${res.statusText ? ' ' + res.statusText : ''}. ` +
+    (isPage ? 'It sent a web page instead of data, which usually means the app crashed. Check the Render logs.'
+            : (body.slice(0,160) || 'Empty response.')));
+}
+
 let toastTimer;
-function toast(msg){ $('toastMsg').textContent=msg; $('toast').classList.add('show');
-  clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('toast').classList.remove('show'),2900); }
+function toast(msg, kind){
+  $('toastMsg').textContent = msg;
+  const el = $('toast');
+  el.classList.toggle('bad', kind === 'error');
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), kind === 'error' ? 6000 : 2900);
+}
+const toastError = msg => toast(msg, 'error');
 
 function setMode(m){
   $('searchMode').classList.toggle('hidden', m!=='search');
@@ -551,14 +585,13 @@ async function doSearch(){
   const q = $('q').value.trim();
   const url = `/api/search?q=${encodeURIComponent(q)}&category=${encodeURIComponent(filter)}`;
   try{
-    const res = await fetch(url); const data = await res.json();
-    if(!data.ok) throw new Error(data.error||'Search failed');
+    const data = await api(url);
     lastResults = data.results;
     renderIntent(data.intent, data.effective_category, q);
     render(data.results, q);
     $('resTitle').textContent = q ? 'Results' : 'Shared library';
     $('resCount').textContent = data.total ? data.total + (data.total===1?' file':' files') : '';
-  }catch(err){ toast(err.message); }
+  }catch(err){ toastError(err.message); }
 }
 
 function renderIntent(intent, cat, q){
@@ -634,19 +667,16 @@ async function saveEntry(){
 
   const btn = $('saveBtn'); btn.disabled = true; btn.textContent = 'Adding...';
   try{
-    const res = await fetch('/api/entries', {method:'POST', body:fd});
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error||'Could not save');
+    const data = await api('/api/entries', {method:'POST', body:fd});
     toast(data.status || 'Added to the library');
     resetForm(); setMode('search'); $('q').value=''; doSearch();
-  }catch(err){ toast(err.message); }
+  }catch(err){ toastError(err.message); }
   finally{ btn.disabled=false; btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add to library'; }
 }
 async function del(id){
   if(!confirm('Delete this entry?')) return;
-  const res = await fetch('/api/entries/'+id, {method:'DELETE'});
-  const data = await res.json();
-  if(data.ok){ toast('Deleted'); doSearch(); } else toast(data.error||'Could not delete');
+  try{ await api('/api/entries/'+id, {method:'DELETE'}); toast('Deleted'); doSearch(); }
+  catch(err){ toastError(err.message); }
 }
 
 /* ---------- analyze ---------- */
@@ -654,9 +684,7 @@ async function analyze(id){
   const box = $('an-'+id);
   box.innerHTML = '<div class="analysis"><div class="a-loading"><span class="spin"></span> Reading the document and pulling out the signal...</div></div>';
   try{
-    const res = await fetch(`/api/entries/${id}/analyze`, {method:'POST'});
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error||'Analysis failed');
+    const data = await api(`/api/entries/${id}/analyze`, {method:'POST'});
     box.innerHTML = renderAnalysis(id, data.analysis, data.cached);
   }catch(err){ box.innerHTML = `<div class="a-error"><strong>Analysis failed.</strong> ${esc(err.message)}</div>`; }
 }
@@ -690,10 +718,8 @@ async function ask(id){
   const box = $('qa-'+id);
   box.innerHTML = '<div class="a-loading"><span class="spin"></span> Searching the library and answering...</div>';
   try{
-    const res = await fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+    const data = await api('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({question:q, entry_id:id})});
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error||'Could not answer');
     let html = `<div class="qa-ans">${esc(data.answer)}</div>`;
     if(data.citations && data.citations.length){
       html += '<div class="cites">' + data.citations.map(c=>`<span class="cite">[${c.n}] ${esc(c.title)}</span>`).join('') + '</div>';
@@ -714,10 +740,8 @@ async function genBattlecard(){
                     : 'Reading everything the library holds on ' + esc(comp) + '...')
     + '</div>';
   try{
-    const res = await fetch('/api/battlecard', {method:'POST', headers:{'Content-Type':'application/json'},
+    const data = await api('/api/battlecard', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({competitor:comp, research:withResearch})});
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error||'Could not generate');
     out.innerHTML = renderBattlecard(data);
   }catch(err){ out.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
   finally{ btn.disabled=false; }
@@ -838,12 +862,12 @@ function renderBattlecard(data){
 
 /* ---------- admin ---------- */
 async function unlock(){
-  const res = await fetch('/api/admin/login', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({passcode: $('adminPass').value})});
-  const data = await res.json();
-  if(data.ok){ $('lockRow').classList.add('hidden'); $('adminTools').classList.remove('hidden');
-    $('adminPass').value=''; toast('Admin unlocked'); }
-  else { toast(data.error||'Wrong passcode'); $('adminPass').value=''; }
+  try{
+    await api('/api/admin/login', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({passcode: $('adminPass').value})});
+    $('lockRow').classList.add('hidden'); $('adminTools').classList.remove('hidden');
+    $('adminPass').value=''; toast('Admin unlocked');
+  }catch(err){ toastError(err.message); $('adminPass').value=''; }
 }
 async function lock(){
   await fetch('/api/admin/logout', {method:'POST'});
@@ -853,9 +877,7 @@ async function keyCheck(){
   const out = $('selfTestOut');
   out.innerHTML = '<div class="a-loading"><span class="spin"></span> Checking configuration...</div>';
   try{
-    const res = await fetch('/api/admin/keycheck');
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error||'Check failed');
+    const data = await api('/api/admin/keycheck');
     const d = data.diagnostics;
     const found = d.source !== 'missing';
     let h = '<div class="analysis"><div class="a-label">Anthropic key configuration</div>';
@@ -879,9 +901,7 @@ async function selfTest(){
   const out = $('selfTestOut');
   out.innerHTML = '<div class="a-loading"><span class="spin"></span> Calling the Anthropic API...</div>';
   try{
-    const res = await fetch('/api/admin/selftest', {method:'POST'});
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error||'Self test failed to run');
+    const data = await api('/api/admin/selftest', {method:'POST'});
     const r = data.report;
     let h = `<div class="analysis"><div class="a-label">AI self test &middot; model ${esc(r.model)}</div>`;
     r.checks.forEach(c=>{
@@ -900,18 +920,18 @@ function exportLib(){ window.location = '/api/admin/export'; }
 $('jsonIn').addEventListener('change', async e=>{
   const file = e.target.files[0]; if(!file) return;
   const fd = new FormData(); fd.append('file', file);
-  const res = await fetch('/api/admin/import', {method:'POST', body:fd});
-  const data = await res.json();
-  if(data.ok){ toast(`Imported ${data.imported} entries`); doSearch(); }
-  else toast(data.error||'Import failed');
+  try{
+    const data = await api('/api/admin/import', {method:'POST', body:fd});
+    toast(`Imported ${data.imported} entries`); doSearch();
+  }catch(err){ toastError(err.message); }
   e.target.value='';
 });
 async function clearLib(){
   if(!confirm('Delete every entry? This cannot be undone.')) return;
-  const res = await fetch('/api/admin/clear', {method:'POST'});
-  const data = await res.json();
-  if(data.ok){ toast(`Cleared ${data.deleted} entries`); doSearch(); }
-  else toast(data.error||'Could not clear');
+  try{
+    const data = await api('/api/admin/clear', {method:'POST'});
+    toast(`Cleared ${data.deleted} entries`); doSearch();
+  }catch(err){ toastError(err.message); }
 }
 
 /* Storage durability is checked on every page load. If uploads will not
@@ -920,7 +940,18 @@ async function checkStorage(){
   const box = $('storageWarn');
   let h;
   try{
+    // Read directly rather than through api(), because a failing health check
+    // returns ok:false on purpose and its body is exactly what must be shown.
     const res = await fetch('/healthz');
+    const type = res.headers.get('content-type') || '';
+    if(!type.includes('application/json')){
+      box.innerHTML = `<div class="storage-warn broken">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+        <div class="body"><b>The app is not healthy.</b> The health check returned
+        ${res.status} and a web page rather than data, which usually means the service
+        failed to start. Check the Render logs.</div></div>`;
+      return;
+    }
     const d = await res.json();
     const st = d.storage || {};
     if(st.configured && st.reachable === false){
@@ -940,7 +971,12 @@ async function checkStorage(){
     } else {
       h = '';
     }
-  }catch(err){ h = ''; }
+  }catch(err){
+    // A health check that cannot even be reached is itself worth reporting.
+    h = `<div class="storage-warn broken">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+      <div class="body"><b>Cannot reach the server.</b> ${esc(err.message)}</div></div>`;
+  }
   box.innerHTML = h;
 }
 

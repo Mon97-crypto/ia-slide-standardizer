@@ -285,3 +285,41 @@ def test_an_unreachable_database_never_falls_back_to_a_file(monkeypatch):
     assert body["storage"]["reachable"] is False
     # It must not claim to be durable while being unusable.
     assert "not reachable" in body["error"]
+
+
+# ─── API routes must never answer with HTML ────────────────────────────────
+
+def test_a_crashing_api_route_returns_json_not_an_html_page(client, monkeypatch):
+    """An HTML error page reached the browser as "Unexpected token '<'", which
+    hid the real fault instead of reporting it."""
+    import app as application
+    monkeypatch.setattr(application, "search",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            RuntimeError("connection to server failed")))
+    application.app.config["PROPAGATE_EXCEPTIONS"] = False
+    response = client.get("/api/search?q=o9")
+    assert response.status_code == 500
+    assert response.mimetype == "application/json"
+    body = response.get_json()
+    assert body["ok"] is False
+    assert "connection to server failed" in body["error"]
+    # The hint must point at the likely cause.
+    assert "DATABASE_URL" in body["error"]
+
+
+def test_an_unknown_api_route_returns_json(client):
+    response = client.get("/api/does-not-exist")
+    assert response.status_code == 404
+    assert response.mimetype == "application/json"
+    assert response.get_json()["ok"] is False
+
+
+def test_a_wrong_method_returns_json(client):
+    response = client.delete("/api/search")
+    assert response.status_code == 405
+    assert response.mimetype == "application/json"
+    assert response.get_json()["ok"] is False
+
+
+def test_the_page_itself_is_still_html(client):
+    assert client.get("/").mimetype == "text/html"
