@@ -70,14 +70,22 @@ wiped on every deploy, so create the database first.
 
 Any managed Postgres works. Free options that do not expire:
 
+- **Supabase** at supabase.com, then Connect, and take a **pooler** connection
+  string rather than the direct one. Direct connections are IPv6 only on newer
+  projects, which many hosts cannot reach.
 - **Neon** at neon.tech, create a project, copy the connection string.
-- **Supabase** at supabase.com, Project Settings, Database, copy the URI.
 
 Render's own Postgres also works, but its free tier expires after 30 days.
 
-Copy the connection string. It looks like
-`postgresql://user:password@host/dbname`. Neon and Supabase require TLS, so
-append `?sslmode=require` if the string does not already carry it.
+The string looks like `postgresql://user:password@host:5432/postgres`. Replace
+any password placeholder with the real password, and percent-encode it if it
+contains `@`, `:`, `/`, `?`, `#` or `&`. Append `?sslmode=require` if the string
+does not already carry it.
+
+All three of Supabase's connection modes work here. Prepared statements are
+disabled on connect, which is what a transaction-mode pooler requires, and a
+connection dropped by the provider is reestablished on the next query rather
+than failing every request until the worker restarts.
 
 ### 2. Create the web service
 

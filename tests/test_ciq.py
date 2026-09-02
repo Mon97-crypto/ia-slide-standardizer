@@ -542,3 +542,42 @@ def test_sanitiser_leaves_a_valid_schema_alone():
     schema = {"type": "object", "properties": {"a": {"type": "string"}},
               "required": ["a"], "additionalProperties": False}
     assert sanitise_schema(schema) == schema
+
+
+# ─── managed database resilience ───────────────────────────────────────────
+
+@pytest.mark.skipif(not os.environ.get("CIQ_TEST_DATABASE_URL"),
+                    reason="needs a Postgres to terminate connections against")
+def test_a_dropped_connection_is_reestablished():
+    """Managed databases close idle connections. A cached connection that died
+    would otherwise fail every later request until the worker restarted."""
+    import psycopg
+    url = os.environ["CIQ_TEST_DATABASE_URL"]
+    store = db.connect(url)
+    db.clear_all(store)
+    db.create_entry(store, {"competitor": "o9 Solutions", "title": "Survivor",
+                            "category": "battlecard", "content": "text"},
+                    chunks=["text"])
+
+    admin = psycopg.connect(url)
+    with admin.cursor() as cur:
+        cur.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
+                    " WHERE datname = current_database()"
+                    " AND pid <> pg_backend_pid()")
+    admin.close()
+
+    # The next call must transparently reconnect and still see the data.
+    assert db.stats(store)["entries"] == 1
+    assert [e["title"] for e in db.list_entries(store)] == ["Survivor"]
+    db.clear_all(store)
+    store.close()
+    db._local.store = db._local.target = None
+
+
+def test_postgres_connections_disable_prepared_statements():
+    """A transaction-mode pooler, which several managed providers hand out by
+    default, cannot keep the session a prepared statement belongs to."""
+    import inspect
+    source = inspect.getsource(db._open_postgres)
+    assert "prepare_threshold=None" in source
+    assert "connect_timeout" in source

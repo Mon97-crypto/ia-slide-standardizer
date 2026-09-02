@@ -137,21 +137,49 @@ def _now() -> str:
 class Store:
     """A database connection plus the dialect needed to talk to it."""
 
-    def __init__(self, conn, dialect: str):
+    def __init__(self, conn, dialect: str, target: str = ""):
         self.conn = conn
         self.dialect = dialect
+        self.target = target
 
     @property
     def is_postgres(self) -> bool:
         return self.dialect == "postgres"
 
+    def alive(self) -> bool:
+        if not self.is_postgres:
+            return True
+        return not (getattr(self.conn, "closed", False)
+                    or getattr(self.conn, "broken", False))
+
+    def _reconnect(self) -> None:
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+        self.conn = _open_postgres(self.target)
+
     def execute(self, sql: str, params: Iterable[Any] = ()):
-        """Run a statement, translating '?' placeholders for Postgres."""
+        """Run a statement, translating '?' placeholders for Postgres.
+
+        A managed database drops idle connections, and a cached connection that
+        died would otherwise fail every later request until the worker
+        restarted. A dropped connection has already rolled back whatever it was
+        doing, so reconnecting and retrying once is safe.
+        """
         if self.is_postgres:
             sql = sql.replace("?", "%s")
-        cur = self.conn.cursor()
-        cur.execute(sql, tuple(params))
-        return cur
+        try:
+            cur = self.conn.cursor()
+            cur.execute(sql, tuple(params))
+            return cur
+        except Exception as exc:
+            if not (self.is_postgres and _is_connection_error(exc)):
+                raise
+            self._reconnect()
+            cur = self.conn.cursor()
+            cur.execute(sql, tuple(params))
+            return cur
 
     def commit(self) -> None:
         self.conn.commit()
@@ -167,6 +195,37 @@ def _is_postgres_url(url: str) -> bool:
     return urlparse(url).scheme in ("postgres", "postgresql")
 
 
+def _is_connection_error(exc: Exception) -> bool:
+    """True when the failure is the connection itself, not the statement."""
+    try:
+        import psycopg
+    except ImportError:  # pragma: no cover
+        return False
+    return isinstance(exc, (psycopg.OperationalError, psycopg.InterfaceError))
+
+
+def _open_postgres(target: str):
+    """Open a Postgres connection tuned for a managed, pooled database.
+
+    prepare_threshold is disabled because a transaction-mode pooler, which is
+    what several managed providers hand out by default, does not keep the
+    session that a server-side prepared statement belongs to. Leaving psycopg
+    to prepare statements automatically fails there with "prepared statement
+    already exists". The queries here are not hot enough for the loss to
+    matter.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    return psycopg.connect(
+        target,
+        row_factory=dict_row,
+        autocommit=False,
+        prepare_threshold=None,
+        connect_timeout=15,
+    )
+
+
 def connect(target: str) -> Store:
     """Open (or reuse) a per-thread connection.
 
@@ -176,14 +235,14 @@ def connect(target: str) -> Store:
     """
     cached = getattr(_local, "store", None)
     if cached is not None and getattr(_local, "target", None) == target:
-        return cached
+        if cached.alive():
+            return cached
+        cached.close()
+        _local.store = _local.target = None
 
     if _is_postgres_url(target):
-        import psycopg
-        from psycopg.rows import dict_row
-
-        conn = psycopg.connect(target, row_factory=dict_row, autocommit=False)
-        store = Store(conn, "postgres")
+        conn = _open_postgres(target)
+        store = Store(conn, "postgres", target)
         with conn.cursor() as cur:
             cur.execute(POSTGRES_SCHEMA)
         conn.commit()
@@ -195,7 +254,7 @@ def connect(target: str) -> Store:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.executescript(SQLITE_SCHEMA)
         conn.commit()
-        store = Store(conn, "sqlite")
+        store = Store(conn, "sqlite", target)
 
     _local.store, _local.target = store, target
     return store
