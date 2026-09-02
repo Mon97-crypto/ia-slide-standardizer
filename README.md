@@ -22,11 +22,20 @@ a PDF, not just a title.
 
 **Grounded answers with citations.** Analyze extracts a structured competitor
 profile. Ask answers questions from passages retrieved out of the library rather
-than from a truncated prefix of one file, and cites the entries it used. The
-battlecard generator reads across every document held on a competitor.
+than from a truncated prefix of one file, and cites the entries it used.
 
-**One shared library.** Everything lives in SQLite on the server, so the whole
-team sees the same library.
+**Battlecards built from the whole library.** The generator sweeps the library
+once per theme, covering positioning, pricing, implementation, customers,
+product gaps and technology posture, then attributes each passage to the theme
+that scores it best. The result is a structured card with plays, discovery
+questions, objection handling, landmines, proof points and an explicit list of
+what the library does not yet cover, alongside a confidence rating so a thin
+card announces itself rather than reading like a thorough one.
+
+**One shared library that persists.** Everything lives in a server-side
+database, so the whole team sees the same data. Point `DATABASE_URL` at a
+managed Postgres and the library survives deploys and restarts; without it the
+app falls back to local SQLite, which is fine for development.
 
 ## Running locally
 
@@ -41,23 +50,43 @@ Run the tests with `python -m pytest tests/ -q`.
 
 ## Deploying on Render
 
-The repository ships a `render.yaml` blueprint. Point Render at this repo and it
-builds the Dockerfile.
+### 1. Create a free Postgres
 
-Set these in the Render dashboard, not in git:
+Render's filesystem is ephemeral. Without an external database the library is
+wiped on every deploy, so create the database first.
+
+Any managed Postgres works. Free options that do not expire:
+
+- **Neon** at neon.tech, create a project, copy the connection string.
+- **Supabase** at supabase.com, Project Settings, Database, copy the URI.
+
+Render's own Postgres also works, but its free tier expires after 30 days.
+
+Copy the connection string. It looks like
+`postgresql://user:password@host/dbname`. Neon and Supabase require TLS, so
+append `?sslmode=require` if the string does not already carry it.
+
+### 2. Create the web service
+
+Point Render at this repo. The `render.yaml` blueprint builds the Dockerfile on
+the free plan. Set these in the dashboard, not in git:
 
 | Variable | Purpose |
 |---|---|
+| `DATABASE_URL` | The Postgres connection string from step 1. This is what makes the library permanent. |
 | `ANTHROPIC_API_KEY` | Enables Analyze, Ask and battlecards. Everything else works without it. |
 | `CIQ_ADMIN_PASSCODE` | Admin passcode. Change it from the default. |
 | `CIQ_SECRET_KEY` | Signs admin sessions. `render.yaml` generates one. |
 
-**Attach the disk.** The blueprint mounts a 1 GB disk at `/data` and points
-`CIQ_DB_PATH` at it. Without a disk, Render's filesystem is ephemeral and the
-library is wiped on every deploy. A disk requires a paid instance type, so the
-blueprint uses `starter` rather than `free`. To trial it on the free plan, drop
-the `disk` block and treat the library as disposable, exporting from the Admin
-panel before each deploy.
+The schema is created automatically on first boot, so there is no migration
+step. `/healthz` reports which backend is live:
+
+```json
+{"ok": true, "backend": "postgres", "ai_enabled": true, "entries": 0}
+```
+
+If `backend` says `sqlite`, `DATABASE_URL` did not reach the service and your
+data will not survive the next deploy.
 
 ## Configuration
 

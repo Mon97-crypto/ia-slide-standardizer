@@ -14,9 +14,17 @@ def _bool(name: str, default: bool = False) -> bool:
 
 
 class Config:
-    # Where the shared library lives. A real path means every teammate hitting
-    # this server sees the same library, which localStorage could never do.
+    # Where the shared library lives. A real server-side store means every
+    # teammate sees the same library, which localStorage could never do.
+    #
+    # DATABASE_URL wins when set: a managed Postgres survives deploys and
+    # restarts, which a container-local SQLite file does not.
+    DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
     DB_PATH = os.environ.get("CIQ_DB_PATH", str(BASE_DIR / "data" / "library.db"))
+
+    @classmethod
+    def store_target(cls) -> str:
+        return cls.DATABASE_URL or cls.DB_PATH
 
     # Anthropic. The key stays server side and is never sent to the browser.
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()

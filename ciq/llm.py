@@ -57,6 +57,103 @@ ANALYSIS_SCHEMA = {
     "additionalProperties": False,
 }
 
+# A battlecard is only useful if a seller can act on it in a live call, so the
+# shape is fixed rather than left to prose. Every section is a field the UI can
+# render on its own.
+BATTLECARD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "headline": {
+            "type": "string",
+            "description": "One sentence a seller could say out loud to frame the matchup.",
+        },
+        "who_they_are": {
+            "type": "string",
+            "description": "Two or three sentences: what they sell and who buys it.",
+        },
+        "where_they_win": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Three to five honest strengths. Do not soften them.",
+        },
+        "where_they_are_weak": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Three to five soft spots grounded in the source material.",
+        },
+        "how_we_win": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "play": {"type": "string", "description": "The move to make."},
+                    "why_it_works": {"type": "string"},
+                },
+                "required": ["play", "why_it_works"],
+                "additionalProperties": False,
+            },
+            "description": "Three to five concrete plays, not slogans.",
+        },
+        "discovery_questions": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Questions that surface this competitor's weakness in the buyer's own words.",
+        },
+        "objection_handling": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "objection": {"type": "string", "description": "What the buyer says."},
+                    "response": {"type": "string", "description": "How to answer it."},
+                },
+                "required": ["objection", "response"],
+                "additionalProperties": False,
+            },
+        },
+        "landmines": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Ground to avoid, where this competitor is genuinely stronger.",
+        },
+        "pricing_and_deployment": {
+            "type": "string",
+            "description": "What the material says about their commercial and implementation posture. Say so if it says nothing.",
+        },
+        "proof_points": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Named customers, metrics or references found in the material.",
+        },
+        "threatened_products": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Impact Analytics products most exposed.",
+        },
+        "intel_gaps": {
+            "type": "array", "items": {"type": "string"},
+            "description": "What the library does not cover and should. Be specific.",
+        },
+        "confidence": {
+            "type": "string", "enum": ["high", "medium", "low"],
+            "description": "How well the source material supports this battlecard.",
+        },
+    },
+    "required": [
+        "headline", "who_they_are", "where_they_win", "where_they_are_weak",
+        "how_we_win", "discovery_questions", "objection_handling", "landmines",
+        "pricing_and_deployment", "intel_gaps", "confidence",
+    ],
+    "additionalProperties": False,
+}
+
+# A single query retrieves a single theme. A battlecard needs several, so the
+# library is swept once per theme and the results merged.
+BATTLECARD_THEMES = {
+    "positioning": "positioning differentiation value proposition market category",
+    "strengths": "strengths advantages leader capabilities best in class",
+    "weaknesses": "weaknesses gaps limitations criticism complaints problems",
+    "pricing": "pricing cost licence total cost of ownership budget expensive",
+    "deployment": "implementation deployment timeline onboarding integration migration",
+    "customers": "customers clients references logos case study retailers wins losses",
+    "product": "forecasting assortment allocation replenishment markdown promotion planning",
+    "technology": "AI machine learning agentic architecture cloud platform data model",
+}
+
 ANALYST_SYSTEM = (
     "You are a competitive intelligence analyst at Impact Analytics, a retail "
     "AI company. Its products are ItemSmart, PlanSmart, AssortSmart, "
@@ -229,25 +326,43 @@ def answer_question(question: str, passages: list[dict[str, Any]]) -> dict[str, 
     }
 
 
-def build_battlecard(competitor: str, passages: list[dict[str, Any]]) -> str:
+def build_battlecard(competitor: str,
+                     passages: list[dict[str, Any]]) -> dict[str, Any]:
     """Draft a battlecard from everything the library holds on a competitor."""
     if not Config.ai_enabled():
         raise LLMUnavailable(
             "AI features are off because ANTHROPIC_API_KEY is not set on the "
             "server. Search, upload and the library all work without it.")
     if not passages:
-        raise LLMUnavailable(f"The library holds nothing on {competitor} yet.")
+        raise LLMUnavailable(
+            f"The library holds nothing on {competitor} yet. Add a document "
+            "for them first.")
 
     products = ", ".join(threatened_products(competitor)) or "the IA portfolio"
+    sources = sorted({p["title"] for p in passages})
     prompt = (
-        f"SOURCE MATERIAL ON {competitor}:\n\n{_format_passages(passages)}\n\n"
-        f"Write a sales battlecard for Impact Analytics against {competitor}. "
+        f"SOURCE MATERIAL ON {competitor}, drawn from "
+        f"{len(sources)} documents in the library:\n\n"
+        f"{_format_passages(passages)}\n\n"
+        f"Build a sales battlecard for Impact Analytics against {competitor}. "
         f"The IA products most exposed are: {products}.\n\n"
-        "Use these sections, as markdown headings:\n"
-        "## Who they are\n## Where they win\n## Where they are weak\n"
-        "## How we win\n## Questions that expose the gap\n## Landmines to avoid\n\n"
-        "Keep every point specific and grounded in the source material. Cite "
-        "passages with bracketed numbers. Where the material is thin, say so "
-        "under a final '## Gaps in our intel' heading."
+        "Rules:\n"
+        "- Ground every claim in the passages above. Cite them inline with "
+        "bracketed numbers such as [1].\n"
+        "- Be honest about where the competitor is strong. A battlecard that "
+        "only flatters us loses deals.\n"
+        "- Discovery questions must be open questions a buyer would answer, "
+        "not leading questions that name the competitor's flaw.\n"
+        "- Where the material is thin, say so in intel_gaps and lower the "
+        "confidence rather than inventing detail."
     )
-    return _call(ANALYST_SYSTEM, prompt, max_tokens=4000)
+    card = _call(ANALYST_SYSTEM, prompt, max_tokens=8000,
+                 schema=BATTLECARD_SCHEMA)
+
+    if not card.get("threatened_products"):
+        mapped = threatened_products(competitor)
+        if mapped:
+            card["threatened_products"] = mapped
+    card["competitor"] = competitor
+    card["sources"] = sources
+    return card

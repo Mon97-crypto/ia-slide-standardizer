@@ -123,3 +123,15 @@ def test_import_accepts_the_prototype_export_format(client):
     # The base64 body must be indexed, not just stored.
     found = client.get("/api/search?q=legacy architecture").get_json()
     assert found["total"] == 1
+
+
+def test_battlecard_requires_a_competitor(client):
+    assert client.post("/api/battlecard", json={"competitor": ""}).status_code == 400
+
+
+def test_battlecard_reports_unavailable_without_a_key(client):
+    add(client, note="Blue Yonder has legacy architecture and long timelines.",
+        competitor="Blue Yonder", title="BY notes", category="information")
+    response = client.post("/api/battlecard", json={"competitor": "jda"})
+    assert response.status_code == 503
+    assert "ANTHROPIC_API_KEY" in response.get_json()["error"]

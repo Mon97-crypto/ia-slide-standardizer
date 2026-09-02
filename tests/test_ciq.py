@@ -18,14 +18,34 @@ from ciq.fetchers import direct_url  # noqa: E402
 from ciq.search import parse_query, retrieve_passages, search  # noqa: E402
 
 
-@pytest.fixture()
-def conn():
+# Both backends run the same suite. Set CIQ_TEST_DATABASE_URL to a scratch
+# Postgres to include it; without it the Postgres runs are skipped rather than
+# silently passing.
+BACKENDS = ["sqlite"]
+if os.environ.get("CIQ_TEST_DATABASE_URL"):
+    BACKENDS.append("postgres")
+
+
+@pytest.fixture(params=BACKENDS)
+def conn(request):
+    if request.param == "postgres":
+        store = db.connect(os.environ["CIQ_TEST_DATABASE_URL"])
+        db.clear_all(store)
+        yield store
+        db.clear_all(store)
+        store.close()
+        db._local.store = None
+        db._local.target = None
+        return
+
     handle, path = tempfile.mkstemp(suffix=".db")
     os.close(handle)
     os.unlink(path)
-    connection = db.connect(path)
-    yield connection
-    connection.close()
+    store = db.connect(path)
+    yield store
+    store.close()
+    db._local.store = None
+    db._local.target = None
     for suffix in ("", "-wal", "-shm"):
         try:
             os.unlink(path + suffix)
@@ -260,3 +280,88 @@ def test_delete_removes_the_entry_and_its_index(conn):
     assert db.delete_entry(conn, entry["id"]) is True
     assert search(conn, "uniquetoken")["total"] == 0
     assert db.stats(conn)["chunks"] == 0
+
+
+# ─── themed retrieval for battlecards ──────────────────────────────────────
+
+def test_themed_sweep_spans_a_long_document(conn):
+    """One query surfaces one theme. A battlecard needs several, so the sweep
+    must reach parts of a document a single query would miss."""
+    from ciq import ingest, llm
+    from ciq.search import gather_passages
+
+    doc = (
+        "PRICING. Deals land between one and four million dollars annually. "
+        + "Budget scrutiny is heavy late in the cycle. " * 20
+        + "IMPLEMENTATION. Rollouts run nine to eighteen months. "
+        + "Time to value is a recurring friction point. " * 20
+        + "PRODUCT. Assortment and size planning are comparatively thin. "
+        + "Merchandising depth is the clearest gap. " * 20
+    )
+    db.create_entry(conn, {
+        "competitor": "Blue Yonder", "title": "Dossier",
+        "category": "information", "content": doc,
+    }, chunks=ingest.chunk_text(doc))
+
+    passages = gather_passages(conn, llm.BATTLECARD_THEMES, "Blue Yonder")
+    assert len(passages) > 1
+    # What matters is reach: the sweep must surface material from later in the
+    # document, which a single positioning query would never return.
+    joined = " ".join(p["text"] for p in passages)
+    assert "Merchandising" in joined or "Rollouts" in joined
+    assert "PRICING" in joined or "Budget" in joined
+
+
+def test_passages_are_attributed_to_their_best_scoring_theme(conn):
+    """A broad theme running first must not claim passages a narrower theme
+    describes better."""
+    from ciq import ingest, llm
+    from ciq.search import gather_passages
+
+    doc = ("Pricing runs into seven figures annually and budget scrutiny is "
+           "heavy. " * 25
+           + "Implementation and deployment timelines run eighteen months "
+             "with integration partners. " * 25)
+    db.create_entry(conn, {"competitor": "Blue Yonder", "title": "D",
+                           "category": "information", "content": doc},
+                    chunks=ingest.chunk_text(doc))
+    passages = gather_passages(conn, llm.BATTLECARD_THEMES, "Blue Yonder")
+    assert len({p["theme"] for p in passages}) > 1
+
+
+def test_themed_sweep_deduplicates(conn):
+    from ciq import llm
+    from ciq.search import gather_passages
+
+    db.create_entry(conn, {
+        "competitor": "o9 Solutions", "title": "Short note",
+        "category": "battlecard", "content": "o9 pricing is high.",
+    }, chunks=["o9 pricing is high."])
+    passages = gather_passages(conn, llm.BATTLECARD_THEMES, "o9 Solutions")
+    texts = [p["text"] for p in passages]
+    assert len(texts) == len(set(texts))
+
+
+def test_themed_sweep_is_scoped_to_the_competitor(conn):
+    from ciq import llm
+    from ciq.search import gather_passages
+
+    db.create_entry(conn, {"competitor": "o9 Solutions", "title": "A",
+                           "category": "battlecard", "content": "o9 pricing detail."},
+                    chunks=["o9 pricing detail."])
+    db.create_entry(conn, {"competitor": "Relex Solutions", "title": "B",
+                           "category": "battlecard", "content": "Relex pricing detail."},
+                    chunks=["Relex pricing detail."])
+    passages = gather_passages(conn, llm.BATTLECARD_THEMES, "o9 Solutions")
+    assert passages
+    assert all(p["competitor"] == "o9 Solutions" for p in passages)
+
+
+def test_unknown_competitor_yields_no_passages(conn):
+    from ciq import llm
+    from ciq.search import gather_passages
+    assert gather_passages(conn, llm.BATTLECARD_THEMES, "Nobody Inc") == []
+
+
+def test_backend_is_reported_in_stats(conn):
+    assert db.stats(conn)["backend"] in ("sqlite", "postgres")

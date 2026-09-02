@@ -1,28 +1,47 @@
-"""SQLite store for the shared competitor library.
+"""Store for the shared competitor library.
 
-One database file, one source of truth. Every teammate hitting this server sees
-the same library, which is the whole point: a browser-local library is not a
-shared library.
+Two backends, one API:
 
-Two FTS5 indexes are maintained alongside the tables:
-  entries_fts  ranks whole entries for the search box
-  chunks_fts   retrieves passages for grounded question answering
+  SQLite    default, zero setup, good for local work. Full text via FTS5.
+  Postgres  set DATABASE_URL. Full text via tsvector with weighted ts_rank_cd.
+
+Postgres is what makes the library permanent on a host with an ephemeral
+filesystem. A managed database survives deploys, restarts and instance moves,
+none of which a container-local SQLite file does.
+
+Ranking is deliberately equivalent across both: the competitor and title fields
+outrank the note, which outranks the document body, so a passing mention in a
+long PDF never beats a real title match.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from .competitors import canonical_name, competitor_key
 
 _local = threading.local()
 
-SCHEMA = """
+ENTRY_FIELDS = (
+    "id", "competitor", "competitor_key", "title", "category", "note",
+    "lovable_url", "file_url", "file_name", "source_kind", "content",
+    "content_chars", "extract_status", "analysis_json", "analyzed_at",
+    "created_at", "updated_at",
+)
+
+# Field weights. Postgres labels are A/B/C/D; SQLite takes explicit numbers.
+# Both express the same ordering: competitor and title, then note, then body.
+PG_WEIGHTS = "{0.1, 0.2, 0.4, 1.0}"          # D, C, B, A
+SQLITE_WEIGHTS = "0.0, 8.0, 6.0, 3.0, 1.0"   # entry_id, competitor, title, note, content
+
+SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS entries (
     id             TEXT PRIMARY KEY,
     competitor     TEXT NOT NULL DEFAULT '',
@@ -42,7 +61,6 @@ CREATE TABLE IF NOT EXISTS entries (
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL
 );
-
 CREATE INDEX IF NOT EXISTS idx_entries_competitor ON entries(competitor_key);
 CREATE INDEX IF NOT EXISTS idx_entries_category   ON entries(category);
 CREATE INDEX IF NOT EXISTS idx_entries_created    ON entries(created_at DESC);
@@ -56,90 +74,282 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE INDEX IF NOT EXISTS idx_chunks_entry ON chunks(entry_id);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
-    entry_id UNINDEXED,
-    competitor,
-    title,
-    note,
-    content,
+    entry_id UNINDEXED, competitor, title, note, content,
     tokenize = 'unicode61 remove_diacritics 2'
 );
-
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-    chunk_id UNINDEXED,
-    entry_id UNINDEXED,
-    text,
+    chunk_id UNINDEXED, entry_id UNINDEXED, text,
     tokenize = 'unicode61 remove_diacritics 2'
 );
 """
 
-ENTRY_FIELDS = (
-    "id", "competitor", "competitor_key", "title", "category", "note",
-    "lovable_url", "file_url", "file_name", "source_kind", "content",
-    "content_chars", "extract_status", "analysis_json", "analyzed_at",
-    "created_at", "updated_at",
-)
+# Generated tsvector columns keep the index correct without triggers or any
+# application-side sync, so the index cannot drift from the rows.
+POSTGRES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS entries (
+    id             TEXT PRIMARY KEY,
+    competitor     TEXT NOT NULL DEFAULT '',
+    competitor_key TEXT NOT NULL DEFAULT '',
+    title          TEXT NOT NULL DEFAULT '',
+    category       TEXT NOT NULL DEFAULT 'information',
+    note           TEXT NOT NULL DEFAULT '',
+    lovable_url    TEXT NOT NULL DEFAULT '',
+    file_url       TEXT NOT NULL DEFAULT '',
+    file_name      TEXT NOT NULL DEFAULT '',
+    source_kind    TEXT NOT NULL DEFAULT '',
+    content        TEXT NOT NULL DEFAULT '',
+    content_chars  INTEGER NOT NULL DEFAULT 0,
+    extract_status TEXT NOT NULL DEFAULT '',
+    analysis_json  TEXT NOT NULL DEFAULT '',
+    analyzed_at    TEXT NOT NULL DEFAULT '',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    search_vector  tsvector GENERATED ALWAYS AS (
+        setweight(to_tsvector('english', coalesce(competitor, '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(note, '')), 'B') ||
+        setweight(to_tsvector('english', coalesce(content, '')), 'D')
+    ) STORED
+);
+CREATE INDEX IF NOT EXISTS idx_entries_competitor ON entries(competitor_key);
+CREATE INDEX IF NOT EXISTS idx_entries_category   ON entries(category);
+CREATE INDEX IF NOT EXISTS idx_entries_created    ON entries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_entries_search     ON entries USING GIN(search_vector);
+
+CREATE TABLE IF NOT EXISTS chunks (
+    id       BIGSERIAL PRIMARY KEY,
+    entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+    ord      INTEGER NOT NULL,
+    text     TEXT NOT NULL,
+    search_vector tsvector GENERATED ALWAYS AS (
+        to_tsvector('english', coalesce(text, ''))
+    ) STORED
+);
+CREATE INDEX IF NOT EXISTS idx_chunks_entry  ON chunks(entry_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_search ON chunks USING GIN(search_vector);
+"""
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def connect(db_path: str) -> sqlite3.Connection:
-    """Per-thread connection. Flask serves requests on several threads."""
-    cached = getattr(_local, "conn", None)
-    if cached is not None and getattr(_local, "path", None) == db_path:
+class Store:
+    """A database connection plus the dialect needed to talk to it."""
+
+    def __init__(self, conn, dialect: str):
+        self.conn = conn
+        self.dialect = dialect
+
+    @property
+    def is_postgres(self) -> bool:
+        return self.dialect == "postgres"
+
+    def execute(self, sql: str, params: Iterable[Any] = ()):
+        """Run a statement, translating '?' placeholders for Postgres."""
+        if self.is_postgres:
+            sql = sql.replace("?", "%s")
+        cur = self.conn.cursor()
+        cur.execute(sql, tuple(params))
+        return cur
+
+    def commit(self) -> None:
+        self.conn.commit()
+
+    def close(self) -> None:
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+
+
+def _is_postgres_url(url: str) -> bool:
+    return urlparse(url).scheme in ("postgres", "postgresql")
+
+
+def connect(target: str) -> Store:
+    """Open (or reuse) a per-thread connection.
+
+    `target` is a DATABASE_URL for Postgres or a file path for SQLite.
+    Flask serves requests on several threads, and neither driver's connections
+    are safe to share across them.
+    """
+    cached = getattr(_local, "store", None)
+    if cached is not None and getattr(_local, "target", None) == target:
         return cached
-    os.makedirs(os.path.dirname(os.path.abspath(db_path)) or ".", exist_ok=True)
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.executescript(SCHEMA)
-    conn.commit()
-    _local.conn, _local.path = conn, db_path
-    return conn
+
+    if _is_postgres_url(target):
+        import psycopg
+        from psycopg.rows import dict_row
+
+        conn = psycopg.connect(target, row_factory=dict_row, autocommit=False)
+        store = Store(conn, "postgres")
+        with conn.cursor() as cur:
+            cur.execute(POSTGRES_SCHEMA)
+        conn.commit()
+    else:
+        os.makedirs(os.path.dirname(os.path.abspath(target)) or ".", exist_ok=True)
+        conn = sqlite3.connect(target, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.executescript(SQLITE_SCHEMA)
+        conn.commit()
+        store = Store(conn, "sqlite")
+
+    _local.store, _local.target = store, target
+    return store
 
 
-def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
+def row_to_dict(row) -> dict[str, Any] | None:
+    """Normalise a driver row into a plain dict, parsing stored analysis."""
     if row is None:
         return None
-    entry = {k: row[k] for k in row.keys()}
+    entry = dict(row) if not isinstance(row, sqlite3.Row) else {
+        k: row[k] for k in row.keys()}
+    entry.pop("search_vector", None)
     raw = entry.pop("analysis_json", "") or ""
     try:
         entry["analysis"] = json.loads(raw) if raw else None
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         entry["analysis"] = None
     return entry
 
 
+# ─── full text ─────────────────────────────────────────────────────────────
+
+def sanitise_terms(terms: Iterable[str]) -> list[str]:
+    """Strip anything that could break a full-text query in either dialect."""
+    cleaned = []
+    for term in terms:
+        safe = re.sub(r"[^0-9a-z]+", "", (term or "").lower())
+        if safe:
+            cleaned.append(safe)
+    return cleaned
+
+
+def _fts5_query(terms: list[str]) -> str:
+    return " OR ".join(f'"{t}"*' for t in terms)
+
+
+def _tsquery(terms: list[str]) -> str:
+    return " | ".join(f"{t}:*" for t in terms)
+
+
+def text_scores(store: Store, terms: list[str], limit: int = 500) -> dict[str, float]:
+    """Relevance per entry for the given terms. Higher is a better match."""
+    terms = sanitise_terms(terms)
+    if not terms:
+        return {}
+
+    if store.is_postgres:
+        rows = store.execute(
+            f"SELECT id, ts_rank_cd('{PG_WEIGHTS}', search_vector,"
+            " to_tsquery('english', ?)) AS score"
+            " FROM entries WHERE search_vector @@ to_tsquery('english', ?)"
+            " ORDER BY score DESC LIMIT ?",
+            (_tsquery(terms), _tsquery(terms), limit),
+        ).fetchall()
+        return {r["id"]: float(r["score"]) for r in rows}
+
+    rows = store.execute(
+        f"SELECT entry_id, bm25(entries_fts, {SQLITE_WEIGHTS}) AS score"
+        " FROM entries_fts WHERE entries_fts MATCH ?"
+        " ORDER BY score LIMIT ?",
+        (_fts5_query(terms), limit),
+    ).fetchall()
+    # bm25() is negative, with more negative meaning a better match.
+    return {r["entry_id"]: -float(r["score"]) for r in rows}
+
+
+def passage_scores(store: Store, terms: list[str], entry_id: str = "",
+                   competitor_key_value: str = "",
+                   limit: int = 8) -> list[dict[str, Any]]:
+    """Best-matching passages, optionally scoped to one entry or competitor."""
+    terms = sanitise_terms(terms)
+    if not terms:
+        return []
+
+    if store.is_postgres:
+        clauses = ["c.search_vector @@ to_tsquery('english', ?)"]
+        params: list[Any] = [_tsquery(terms), _tsquery(terms)]
+        # The rank expression also needs the query, so it is bound first.
+        sql_head = ("SELECT c.entry_id, c.text,"
+                    " ts_rank_cd(c.search_vector, to_tsquery('english', ?)) AS score,"
+                    " e.title, e.competitor, e.category"
+                    " FROM chunks c JOIN entries e ON e.id = c.entry_id WHERE ")
+        params = [_tsquery(terms), _tsquery(terms)]
+        if entry_id:
+            clauses.append("c.entry_id = ?")
+            params.append(entry_id)
+        elif competitor_key_value:
+            clauses.append("e.competitor_key = ?")
+            params.append(competitor_key_value)
+        params.append(limit)
+        rows = store.execute(
+            sql_head + " AND ".join(clauses) + " ORDER BY score DESC LIMIT ?",
+            params).fetchall()
+        return [{
+            "entry_id": r["entry_id"], "title": r["title"],
+            "competitor": r["competitor"], "category": r["category"],
+            "text": r["text"], "score": round(float(r["score"]), 4),
+        } for r in rows]
+
+    clauses = ["chunks_fts MATCH ?"]
+    params = [_fts5_query(terms)]
+    if entry_id:
+        clauses.append("c.entry_id = ?")
+        params.append(entry_id)
+    elif competitor_key_value:
+        clauses.append("e.competitor_key = ?")
+        params.append(competitor_key_value)
+    params.append(limit)
+    rows = store.execute(
+        "SELECT c.entry_id, c.text, bm25(chunks_fts) AS score,"
+        " e.title, e.competitor, e.category"
+        " FROM chunks_fts c JOIN entries e ON e.id = c.entry_id"
+        f" WHERE {' AND '.join(clauses)} ORDER BY score LIMIT ?",
+        params).fetchall()
+    return [{
+        "entry_id": r["entry_id"], "title": r["title"],
+        "competitor": r["competitor"], "category": r["category"],
+        "text": r["text"], "score": round(-float(r["score"]), 4),
+    } for r in rows]
+
+
 # ─── writes ────────────────────────────────────────────────────────────────
 
-def _index_entry(conn: sqlite3.Connection, entry_id: str, competitor: str,
-                 title: str, note: str, content: str) -> None:
-    conn.execute("DELETE FROM entries_fts WHERE entry_id = ?", (entry_id,))
-    conn.execute(
+def _index_entry(store: Store, entry_id: str, competitor: str, title: str,
+                 note: str, content: str) -> None:
+    """Refresh the entry's full-text row. Postgres maintains its own."""
+    if store.is_postgres:
+        return
+    store.execute("DELETE FROM entries_fts WHERE entry_id = ?", (entry_id,))
+    store.execute(
         "INSERT INTO entries_fts (entry_id, competitor, title, note, content)"
         " VALUES (?, ?, ?, ?, ?)",
-        (entry_id, competitor, title, note, content),
-    )
+        (entry_id, competitor, title, note, content))
 
 
-def _index_chunks(conn: sqlite3.Connection, entry_id: str,
-                  chunks: Iterable[str]) -> None:
-    conn.execute("DELETE FROM chunks_fts WHERE entry_id = ?", (entry_id,))
-    conn.execute("DELETE FROM chunks WHERE entry_id = ?", (entry_id,))
+def _index_chunks(store: Store, entry_id: str, chunks: Iterable[str]) -> None:
+    if not store.is_postgres:
+        store.execute("DELETE FROM chunks_fts WHERE entry_id = ?", (entry_id,))
+    store.execute("DELETE FROM chunks WHERE entry_id = ?", (entry_id,))
     for ordinal, text in enumerate(chunks):
-        cur = conn.execute(
+        if store.is_postgres:
+            store.execute(
+                "INSERT INTO chunks (entry_id, ord, text) VALUES (?, ?, ?)",
+                (entry_id, ordinal, text))
+            continue
+        cur = store.execute(
             "INSERT INTO chunks (entry_id, ord, text) VALUES (?, ?, ?)",
-            (entry_id, ordinal, text),
-        )
-        conn.execute(
+            (entry_id, ordinal, text))
+        store.execute(
             "INSERT INTO chunks_fts (chunk_id, entry_id, text) VALUES (?, ?, ?)",
-            (cur.lastrowid, entry_id, text),
-        )
+            (cur.lastrowid, entry_id, text))
 
 
-def create_entry(conn: sqlite3.Connection, data: dict[str, Any],
+def create_entry(store: Store, data: dict[str, Any],
                  chunks: Iterable[str] = ()) -> dict[str, Any]:
     entry_id = data.get("id") or uuid.uuid4().hex[:12]
     competitor = canonical_name(data.get("competitor", ""))
@@ -164,20 +374,19 @@ def create_entry(conn: sqlite3.Connection, data: dict[str, Any],
         "updated_at": now,
     }
     placeholders = ", ".join("?" for _ in ENTRY_FIELDS)
-    conn.execute(
+    store.execute(
         f"INSERT INTO entries ({', '.join(ENTRY_FIELDS)}) VALUES ({placeholders})",
-        tuple(record[f] for f in ENTRY_FIELDS),
-    )
-    _index_entry(conn, entry_id, record["competitor"], record["title"],
+        tuple(record[f] for f in ENTRY_FIELDS))
+    _index_entry(store, entry_id, record["competitor"], record["title"],
                  record["note"], record["content"])
-    _index_chunks(conn, entry_id, chunks)
-    conn.commit()
-    return get_entry(conn, entry_id)
+    _index_chunks(store, entry_id, chunks)
+    store.commit()
+    return get_entry(store, entry_id)
 
 
-def update_entry(conn: sqlite3.Connection, entry_id: str,
+def update_entry(store: Store, entry_id: str,
                  fields: dict[str, Any]) -> dict[str, Any] | None:
-    current = conn.execute(
+    current = store.execute(
         "SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
     if current is None:
         return None
@@ -191,48 +400,52 @@ def update_entry(conn: sqlite3.Connection, entry_id: str,
     allowed["updated_at"] = _now()
 
     assignments = ", ".join(f"{k} = ?" for k in allowed)
-    conn.execute(f"UPDATE entries SET {assignments} WHERE id = ?",
-                 (*allowed.values(), entry_id))
-    merged = conn.execute(
+    store.execute(f"UPDATE entries SET {assignments} WHERE id = ?",
+                  (*allowed.values(), entry_id))
+    merged = store.execute(
         "SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
-    _index_entry(conn, entry_id, merged["competitor"], merged["title"],
+    merged = row_to_dict(merged)
+    _index_entry(store, entry_id, merged["competitor"], merged["title"],
                  merged["note"], merged["content"])
-    conn.commit()
-    return get_entry(conn, entry_id)
+    store.commit()
+    return get_entry(store, entry_id)
 
 
-def set_chunks(conn: sqlite3.Connection, entry_id: str,
-               chunks: Iterable[str]) -> None:
-    _index_chunks(conn, entry_id, chunks)
-    conn.commit()
+def set_chunks(store: Store, entry_id: str, chunks: Iterable[str]) -> None:
+    _index_chunks(store, entry_id, chunks)
+    store.commit()
 
 
-def delete_entry(conn: sqlite3.Connection, entry_id: str) -> bool:
-    cur = conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
-    conn.execute("DELETE FROM entries_fts WHERE entry_id = ?", (entry_id,))
-    conn.execute("DELETE FROM chunks_fts WHERE entry_id = ?", (entry_id,))
-    conn.execute("DELETE FROM chunks WHERE entry_id = ?", (entry_id,))
-    conn.commit()
-    return cur.rowcount > 0
+def delete_entry(store: Store, entry_id: str) -> bool:
+    cur = store.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+    deleted = cur.rowcount > 0
+    if not store.is_postgres:
+        store.execute("DELETE FROM entries_fts WHERE entry_id = ?", (entry_id,))
+        store.execute("DELETE FROM chunks_fts WHERE entry_id = ?", (entry_id,))
+        store.execute("DELETE FROM chunks WHERE entry_id = ?", (entry_id,))
+    store.commit()
+    return deleted
 
 
-def clear_all(conn: sqlite3.Connection) -> int:
-    total = conn.execute("SELECT COUNT(*) AS n FROM entries").fetchone()["n"]
-    for table in ("entries", "entries_fts", "chunks", "chunks_fts"):
-        conn.execute(f"DELETE FROM {table}")
-    conn.commit()
+def clear_all(store: Store) -> int:
+    total = store.execute("SELECT COUNT(*) AS n FROM entries").fetchone()["n"]
+    tables = ("entries", "chunks") if store.is_postgres else (
+        "entries", "entries_fts", "chunks", "chunks_fts")
+    for table in tables:
+        store.execute(f"DELETE FROM {table}")
+    store.commit()
     return total
 
 
 # ─── reads ─────────────────────────────────────────────────────────────────
 
-def get_entry(conn: sqlite3.Connection, entry_id: str) -> dict[str, Any] | None:
-    return row_to_dict(
-        conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone())
+def get_entry(store: Store, entry_id: str) -> dict[str, Any] | None:
+    return row_to_dict(store.execute(
+        "SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone())
 
 
-def list_entries(conn: sqlite3.Connection, category: str = "",
-                 competitor: str = "", limit: int = 500) -> list[dict[str, Any]]:
+def list_entries(store: Store, category: str = "", competitor: str = "",
+                 limit: int = 500) -> list[dict[str, Any]]:
     clauses, params = [], []
     if category and category != "all":
         clauses.append("category = ?")
@@ -241,35 +454,45 @@ def list_entries(conn: sqlite3.Connection, category: str = "",
         clauses.append("competitor_key = ?")
         params.append(competitor_key(competitor))
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    rows = conn.execute(
+    rows = store.execute(
         f"SELECT * FROM entries {where} ORDER BY created_at DESC LIMIT ?",
-        (*params, limit),
-    ).fetchall()
+        (*params, limit)).fetchall()
     return [row_to_dict(r) for r in rows]
 
 
-def chunks_for(conn: sqlite3.Connection, entry_id: str) -> list[str]:
-    rows = conn.execute(
-        "SELECT text FROM chunks WHERE entry_id = ? ORDER BY ord", (entry_id,)
-    ).fetchall()
+def entries_where(store: Store, category: str = "",
+                  competitor_key_value: str = "") -> list[dict[str, Any]]:
+    clauses, params = [], []
+    if category:
+        clauses.append("category = ?")
+        params.append(category)
+    if competitor_key_value:
+        clauses.append("competitor_key = ?")
+        params.append(competitor_key_value)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = store.execute(f"SELECT * FROM entries {where}", params).fetchall()
+    return [row_to_dict(r) for r in rows]
+
+
+def chunks_for(store: Store, entry_id: str) -> list[str]:
+    rows = store.execute(
+        "SELECT text FROM chunks WHERE entry_id = ? ORDER BY ord",
+        (entry_id,)).fetchall()
     return [r["text"] for r in rows]
 
 
-def stats(conn: sqlite3.Connection) -> dict[str, Any]:
-    total = conn.execute("SELECT COUNT(*) AS n FROM entries").fetchone()["n"]
-    by_cat = {r["category"]: r["n"] for r in conn.execute(
-        "SELECT category, COUNT(*) AS n FROM entries GROUP BY category")}
-    competitors = conn.execute(
+def stats(store: Store) -> dict[str, Any]:
+    total = store.execute("SELECT COUNT(*) AS n FROM entries").fetchone()["n"]
+    by_cat = {r["category"]: r["n"] for r in store.execute(
+        "SELECT category, COUNT(*) AS n FROM entries GROUP BY category").fetchall()}
+    competitors = store.execute(
         "SELECT COUNT(DISTINCT competitor_key) AS n FROM entries"
         " WHERE competitor_key <> ''").fetchone()["n"]
-    analysed = conn.execute(
+    analysed = store.execute(
         "SELECT COUNT(*) AS n FROM entries WHERE analysis_json <> ''"
     ).fetchone()["n"]
-    indexed = conn.execute("SELECT COUNT(*) AS n FROM chunks").fetchone()["n"]
+    indexed = store.execute("SELECT COUNT(*) AS n FROM chunks").fetchone()["n"]
     return {
-        "entries": total,
-        "competitors": competitors,
-        "by_category": by_cat,
-        "analysed": analysed,
-        "chunks": indexed,
+        "entries": total, "competitors": competitors, "by_category": by_cat,
+        "analysed": analysed, "chunks": indexed, "backend": store.dialect,
     }

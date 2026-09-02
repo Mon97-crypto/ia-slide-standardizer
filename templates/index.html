@@ -225,6 +225,34 @@ section.panel{max-width:1240px;margin:0 auto 46px;padding:0 32px}
 .bc-out h2,.bc-out h3{font-family:"Inter Tight",sans-serif;font-weight:700;font-size:14px;
   letter-spacing:.05em;text-transform:uppercase;color:var(--blue);margin:18px 0 7px}
 .bc-out h2:first-child,.bc-out h3:first-child{margin-top:0}
+.bc-head{display:flex;align-items:flex-start;gap:14px;justify-content:space-between;
+  flex-wrap:wrap;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--g1)}
+.bc-headline{font-family:Spectral,Georgia,serif;font-size:22px;line-height:1.3;font-weight:300;
+  max-width:720px}
+.conf{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  border-radius:100px;padding:4px 12px;white-space:nowrap}
+.conf.high{background:rgba(61,212,153,.16);color:#0d7a53}
+.conf.medium{background:rgba(255,111,28,.12);color:#b34a10}
+.conf.low{background:rgba(217,54,54,.09);color:#a52a2a}
+.bc-sec{margin-top:22px}
+.bc-sec>h4{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--blue);margin-bottom:9px}
+.bc-body{font-size:14px;line-height:1.65;color:#3a3937}
+.bc-li{display:flex;gap:10px;font-size:13.5px;line-height:1.6;margin-bottom:8px;color:#3a3937}
+.bc-li .b{color:var(--blue);flex:none}
+.bc-pair{background:var(--white);border:1px solid var(--g1);border-radius:11px;
+  padding:13px 15px;margin-bottom:9px}
+.bc-pair .k{font-size:13.5px;font-weight:600;margin-bottom:5px}
+.bc-pair .v{font-size:13.5px;color:#55534f;line-height:1.6}
+.bc-pair .k::before{content:"“";color:var(--g3)}
+.bc-pair .k::after{content:"”";color:var(--g3)}
+.bc-pair.play .k::before,.bc-pair.play .k::after{content:""}
+.bc-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media(max-width:760px){.bc-grid{grid-template-columns:1fr}}
+.bc-gap{background:rgba(255,111,28,.06);border:1px solid rgba(255,111,28,.2);
+  border-radius:11px;padding:14px 16px}
+.bc-meta{font-size:12px;color:#6c6a66;margin-top:16px;padding-top:14px;
+  border-top:1px solid var(--g1)}
 
 footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
   font-size:13px;color:var(--g3)}
@@ -579,25 +607,56 @@ async function genBattlecard(){
   if(!comp) return toast('Name a competitor');
   const out = $('bcOut'); const btn = $('bcBtn');
   btn.disabled = true;
-  out.innerHTML = '<div class="a-loading"><span class="spin"></span> Reading everything on ' + esc(comp) + '...</div>';
+  out.innerHTML = '<div class="a-loading"><span class="spin"></span> Reading everything the library holds on ' + esc(comp) + '...</div>';
   try{
     const res = await fetch('/api/battlecard', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({competitor:comp})});
     const data = await res.json();
     if(!data.ok) throw new Error(data.error||'Could not generate');
-    let html = '<div class="bc-out">' + mdToHtml(data.battlecard) + '</div>';
-    if(data.sources && data.sources.length){
-      html += '<div class="cites">' + data.sources.map(s=>`<span class="cite">${esc(s)}</span>`).join('') + '</div>';
-    }
-    out.innerHTML = html;
+    out.innerHTML = renderBattlecard(data);
   }catch(err){ out.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
   finally{ btn.disabled=false; }
 }
-function mdToHtml(md){
-  return esc(md)
-    .replace(/^### (.*)$/gm,'<h3>$1</h3>')
-    .replace(/^## (.*)$/gm,'<h2>$1</h2>')
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+
+function bcList(items){
+  if(!items || !items.length) return '';
+  return items.map(t=>`<div class="bc-li"><span class="b">&bull;</span><span>${esc(t)}</span></div>`).join('');
+}
+function bcSection(title, inner){
+  return inner ? `<div class="bc-sec"><h4>${esc(title)}</h4>${inner}</div>` : '';
+}
+function bcPairs(items, kKey, vKey, cls){
+  if(!items || !items.length) return '';
+  return items.map(o=>`<div class="bc-pair ${cls||''}"><div class="k">${esc(o[kKey])}</div><div class="v">${esc(o[vKey])}</div></div>`).join('');
+}
+
+function renderBattlecard(data){
+  const c = data.battlecard || {};
+  const conf = (c.confidence||'medium').toLowerCase();
+  let h = '<div class="bc-out">';
+  h += `<div class="bc-head"><div class="bc-headline">${esc(c.headline||('Impact Analytics vs '+(c.competitor||'')))}</div>
+        <span class="conf ${conf}">${esc(conf)} confidence</span></div>`;
+  h += bcSection('Who they are', `<div class="bc-body">${esc(c.who_they_are||'')}</div>`);
+  h += `<div class="bc-grid">
+          <div>${bcSection('Where they win', bcList(c.where_they_win))}</div>
+          <div>${bcSection('Where they are weak', bcList(c.where_they_are_weak))}</div>
+        </div>`;
+  h += bcSection('How we win', bcPairs(c.how_we_win, 'play', 'why_it_works', 'play'));
+  h += bcSection('Discovery questions', bcList(c.discovery_questions));
+  h += bcSection('Objection handling', bcPairs(c.objection_handling, 'objection', 'response'));
+  h += bcSection('Landmines to avoid', bcList(c.landmines));
+  if(c.pricing_and_deployment)
+    h += bcSection('Pricing and deployment posture', `<div class="bc-body">${esc(c.pricing_and_deployment)}</div>`);
+  h += bcSection('Proof points', bcList(c.proof_points));
+  if(c.threatened_products && c.threatened_products.length)
+    h += bcSection('IA products most exposed',
+      '<div class="prods">' + c.threatened_products.map(p=>`<span class="prod">${esc(p)}</span>`).join('') + '</div>');
+  if(c.intel_gaps && c.intel_gaps.length)
+    h += bcSection('Gaps in our intel', `<div class="bc-gap">${bcList(c.intel_gaps)}</div>`);
+  h += `<div class="bc-meta">Built from ${data.passages_used||0} passages across ${(c.sources||[]).length} document${(c.sources||[]).length===1?'':'s'}`
+     + ((c.sources&&c.sources.length)?': '+c.sources.map(esc).join(', '):'') + '.</div>';
+  h += '</div>';
+  return h;
 }
 
 /* ---------- admin ---------- */

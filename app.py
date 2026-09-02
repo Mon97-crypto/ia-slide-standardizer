@@ -19,7 +19,7 @@ from ciq import db, ingest, llm
 from ciq.competitors import canonical_name, known_names, threatened_products
 from ciq.config import CATEGORIES, Config
 from ciq.fetchers import FetchError, fetch
-from ciq.search import parse_query, retrieve_passages, search
+from ciq.search import gather_passages, parse_query, retrieve_passages, search
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = Config.MAX_UPLOAD_BYTES
@@ -28,7 +28,7 @@ app.secret_key = Config.secret_key()
 
 
 def store():
-    return db.connect(Config.DB_PATH)
+    return db.connect(Config.store_target())
 
 
 def fail(message: str, status: int = 400):
@@ -226,19 +226,17 @@ def api_battlecard():
         return fail("Name a competitor.")
 
     conn = store()
-    passages = retrieve_passages(
-        conn,
-        f"{competitor} strengths weaknesses pricing customers positioning "
-        f"differentiation implementation",
-        competitor=competitor, limit=12)
+    passages = gather_passages(conn, llm.BATTLECARD_THEMES, competitor)
     try:
-        markdown = llm.build_battlecard(competitor, passages)
+        card = llm.build_battlecard(competitor, passages)
     except llm.LLMUnavailable as exc:
         return fail(str(exc), 503)
     return jsonify({
-        "ok": True, "competitor": competitor, "battlecard": markdown,
+        "ok": True,
+        "battlecard": card,
         "threatens": threatened_products(competitor),
-        "sources": sorted({p["title"] for p in passages}),
+        "passages_used": len(passages),
+        "themes_covered": sorted({p["theme"] for p in passages}),
     })
 
 
@@ -337,5 +335,5 @@ def too_large(_):
 
 
 if __name__ == "__main__":
-    db.connect(Config.DB_PATH)
+    db.connect(Config.store_target())
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)

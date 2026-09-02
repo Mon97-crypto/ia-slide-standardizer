@@ -14,14 +14,12 @@ weighted lowest so a passing mention never outranks a real title match.
 """
 from __future__ import annotations
 
-import re
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from .competitors import ALIAS_INDEX, normalise, resolve
-from .db import row_to_dict
+from .db import Store, entries_where, passage_scores, text_scores
 
 # Phrases an analyst actually types, mapped to the stored category.
 CATEGORY_LEXICON: dict[str, tuple[str, ...]] = {
@@ -144,16 +142,6 @@ def parse_query(raw: str) -> QueryIntent:
     return intent
 
 
-def _fts_query(terms: list[str]) -> str:
-    """Build a safe FTS5 MATCH expression with prefix matching on each term."""
-    cleaned = []
-    for term in terms:
-        safe = re.sub(r'[^0-9a-z]+', "", term.lower())
-        if safe:
-            cleaned.append(f'"{safe}"*')
-    return " OR ".join(cleaned)
-
-
 def _recency_score(created_at: str) -> float:
     """Newer intel edges out older intel when everything else ties."""
     try:
@@ -170,7 +158,7 @@ def _recency_score(created_at: str) -> float:
     return max(0.0, 1.0 - (age_days / 365.0))
 
 
-def search(conn: sqlite3.Connection, query: str = "", category: str = "",
+def search(store: Store, query: str = "", category: str = "",
            limit: int = 60) -> dict[str, Any]:
     """Rank library entries against a query.
 
@@ -180,46 +168,21 @@ def search(conn: sqlite3.Connection, query: str = "", category: str = "",
     intent = parse_query(query)
     effective_category = category if category and category != "all" else intent.category
 
-    clauses: list[str] = []
-    params: list[Any] = []
-    if effective_category:
-        clauses.append("e.category = ?")
-        params.append(effective_category)
-    if intent.competitor:
-        clauses.append("e.competitor_key = ?")
-        params.append(normalise(intent.competitor))
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    candidates = {
+        e["id"]: e for e in entries_where(
+            store,
+            category=effective_category,
+            competitor_key_value=normalise(intent.competitor) if intent.competitor else "",
+        )
+    }
 
-    rows = conn.execute(
-        f"SELECT e.* FROM entries e {where}", params).fetchall()
-    candidates = {r["id"]: row_to_dict(r) for r in rows}
+    scores = text_scores(store, intent.terms)
 
-    # Full-text relevance for the residual terms.
-    text_scores: dict[str, float] = {}
-    match_expr = _fts_query(intent.terms)
-    if match_expr:
-        fts_rows = conn.execute(
-            "SELECT entry_id,"
-            " bm25(entries_fts, 0.0, 8.0, 6.0, 3.0, 1.0) AS score"
-            " FROM entries_fts WHERE entries_fts MATCH ?"
-            " ORDER BY score LIMIT 500",
-            (match_expr,),
-        ).fetchall()
-        for row in fts_rows:
-            # bm25() is negative, with more-negative meaning a better match.
-            text_scores[row["entry_id"]] = -float(row["score"])
+    if scores and not intent.competitor and not effective_category:
+        # Free-text-only query: the matched set is the candidate set.
+        candidates = {i: e for i, e in candidates.items() if i in scores}
 
-        if not intent.competitor and not effective_category:
-            # Free-text-only query: the matched set is the candidate set.
-            missing = [i for i in text_scores if i not in candidates]
-            for entry_id in missing:
-                found = conn.execute(
-                    "SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
-                if found:
-                    candidates[entry_id] = row_to_dict(found)
-            candidates = {i: e for i, e in candidates.items() if i in text_scores}
-
-    top_text = max(text_scores.values(), default=0.0) or 1.0
+    top_text = max(scores.values(), default=0.0) or 1.0
 
     results = []
     for entry_id, entry in candidates.items():
@@ -237,7 +200,7 @@ def search(conn: sqlite3.Connection, query: str = "", category: str = "",
             score += W_CATEGORY
             why.append(f"type {effective_category.replace('_', ' ')}")
 
-        relevance = text_scores.get(entry_id, 0.0)
+        relevance = scores.get(entry_id, 0.0)
         if relevance:
             score += W_TEXT * (relevance / top_text)
             # Name only the terms that genuinely appear, so the explanation
@@ -270,42 +233,78 @@ def search(conn: sqlite3.Connection, query: str = "", category: str = "",
     }
 
 
-def retrieve_passages(conn: sqlite3.Connection, question: str,
-                      entry_id: str = "", competitor: str = "",
-                      limit: int = 8) -> list[dict[str, Any]]:
+def retrieve_passages(store: Store, question: str, entry_id: str = "",
+                      competitor: str = "", limit: int = 8) -> list[dict[str, Any]]:
     """Fetch the passages most likely to answer a question.
 
-    This is what replaces blindly sending the first 6000 characters of a
-    document to the model. Long files stay answerable because the relevant
+    This is what replaces blindly sending the first few thousand characters of
+    a document to the model. A long file stays answerable because the relevant
     passage is retrieved wherever it sits in the file.
     """
-    terms = [t for t in normalise(question).split() if len(t) > 2]
-    match_expr = _fts_query(terms)
-    if not match_expr:
-        return []
+    terms = [t for t in normalise(question).split()
+             if len(t) > 2 and t not in STOPWORDS]
+    return passage_scores(
+        store, terms, entry_id=entry_id,
+        competitor_key_value=normalise(competitor) if competitor else "",
+        limit=limit)
 
-    clauses, params = ["chunks_fts MATCH ?"], [match_expr]
-    if entry_id:
-        clauses.append("c.entry_id = ?")
-        params.append(entry_id)
-    elif competitor:
-        clauses.append("e.competitor_key = ?")
-        params.append(normalise(competitor))
 
-    rows = conn.execute(
-        "SELECT c.chunk_id, c.entry_id, c.text,"
-        " bm25(chunks_fts) AS score, e.title, e.competitor, e.category"
-        " FROM chunks_fts c JOIN entries e ON e.id = c.entry_id"
-        f" WHERE {' AND '.join(clauses)}"
-        " ORDER BY score LIMIT ?",
-        (*params, limit),
-    ).fetchall()
+def gather_passages(store: Store, themes: dict[str, str], competitor: str,
+                    per_theme: int = 4, cap: int = 28) -> list[dict[str, Any]]:
+    """Sweep the library once per theme and merge the results.
 
-    return [{
-        "entry_id": r["entry_id"],
-        "title": r["title"],
-        "competitor": r["competitor"],
-        "category": r["category"],
-        "text": r["text"],
-        "score": round(-float(r["score"]), 4),
-    } for r in rows]
+    A single query only ever surfaces one theme. A battlecard needs pricing,
+    implementation, customers and product gaps at the same time, so each theme
+    is retrieved separately and the union is merged.
+
+    A passage is attributed to the theme that scores it highest, not to
+    whichever theme happened to run first. Themes overlap heavily on a small
+    corpus, so first-come attribution would let a broad theme monopolise
+    passages a narrower one describes better. The merge then takes the best
+    few per theme before filling the remainder by score, which keeps breadth
+    without sacrificing the strongest matches.
+    """
+    key = normalise(competitor) if competitor else ""
+    best: dict[str, dict[str, Any]] = {}
+
+    for theme, query in themes.items():
+        terms = [t for t in normalise(query).split()
+                 if len(t) > 2 and t not in STOPWORDS]
+        for passage in passage_scores(store, terms, competitor_key_value=key,
+                                      limit=per_theme * 5):
+            fingerprint = passage["text"][:160]
+            previous = best.get(fingerprint)
+            if previous is None or passage["score"] > previous["score"]:
+                claimed = dict(passage)
+                claimed["theme"] = theme
+                best[fingerprint] = claimed
+
+    by_theme: dict[str, list[dict[str, Any]]] = {}
+    for passage in best.values():
+        by_theme.setdefault(passage["theme"], []).append(passage)
+
+    merged: list[dict[str, Any]] = []
+    overflow: list[dict[str, Any]] = []
+    for theme in themes:
+        ranked = sorted(by_theme.get(theme, []), key=lambda x: -x["score"])
+        merged.extend(ranked[:per_theme])
+        overflow.extend(ranked[per_theme:])
+
+    merged.sort(key=lambda x: -x["score"])
+    overflow.sort(key=lambda x: -x["score"])
+    merged.extend(overflow[:max(0, cap - len(merged))])
+
+    # A competitor with only one short document should still produce a card,
+    # so fall back to whatever is on file when the themed sweep finds nothing.
+    if not merged and key:
+        for entry in entries_where(store, competitor_key_value=key):
+            for text in (entry.get("content") or "").split("\n\n")[:6]:
+                if text.strip():
+                    merged.append({
+                        "entry_id": entry["id"], "title": entry["title"],
+                        "competitor": entry["competitor"],
+                        "category": entry["category"], "text": text.strip(),
+                        "score": 0.0, "theme": "fallback",
+                    })
+
+    return merged[:cap]
