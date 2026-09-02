@@ -336,6 +336,17 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 .toast.show{transform:translate(-50%,0);opacity:1}
 .toast svg{width:17px;height:17px;color:var(--green)}
 .hidden{display:none !important}
+/* Ephemeral storage has to be unmissable. A quiet field on a health endpoint
+   is not a warning; it is a warning nobody reads until the data is gone. */
+.storage-warn{position:sticky;top:0;z-index:120;display:flex;align-items:flex-start;gap:12px;
+  padding:13px 32px;font-size:13.5px;line-height:1.55;border-bottom:1px solid}
+.storage-warn.danger{background:#FFF4EC;border-bottom-color:rgba(255,111,28,.35);color:#7a3409}
+.storage-warn.broken{background:#FDF0F0;border-bottom-color:rgba(217,54,54,.3);color:#8c2323}
+.storage-warn svg{width:18px;height:18px;flex:none;margin-top:1px}
+.storage-warn b{font-weight:700}
+.storage-warn code{background:rgba(28,27,27,.07);padding:1px 6px;border-radius:5px;font-size:12.5px}
+.storage-warn .body{flex:1}
+.storage-warn a{color:inherit;font-weight:700}
 .ai-why{position:fixed;top:60px;right:22px;z-index:200;width:min(430px,calc(100vw - 44px));
   background:var(--white);border:1px solid var(--g1);border-radius:14px;padding:18px 20px;
   box-shadow:var(--sh-lg);font-size:13.5px;line-height:1.6}
@@ -357,6 +368,7 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 </head>
 <body>
 
+<div id="storageWarn"></div>
 <nav>
   <div class="nav-inner">
     <div class="nav-left">
@@ -902,6 +914,36 @@ async function clearLib(){
   else toast(data.error||'Could not clear');
 }
 
+/* Storage durability is checked on every page load. If uploads will not
+   survive the next deploy, the page says so before anyone uploads anything. */
+async function checkStorage(){
+  const box = $('storageWarn');
+  let h;
+  try{
+    const res = await fetch('/healthz');
+    const d = await res.json();
+    const st = d.storage || {};
+    if(st.configured && st.reachable === false){
+      h = `<div class="storage-warn broken">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+        <div class="body"><b>The database is not reachable.</b> <code>DATABASE_URL</code> is set but the
+        connection failed, so nothing can be saved or read right now. Check the connection string, and that it ends with
+        <code>?sslmode=require</code> if your provider needs it.
+        ${d.error?`<br><span style="opacity:.8">${esc(d.error)}</span>`:''}</div></div>`;
+    } else if(!st.durable){
+      h = `<div class="storage-warn danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <div class="body"><b>Uploads will be lost on the next deploy.</b> This server is storing the library
+        in a file inside the container, and the container is replaced every time the service restarts or redeploys.
+        Set <code>DATABASE_URL</code> to a managed Postgres to make the library permanent.
+        Until then, export from Admin before every deploy.</div></div>`;
+    } else {
+      h = '';
+    }
+  }catch(err){ h = ''; }
+  box.innerHTML = h;
+}
+
 async function whyAi(){
   const box = $('aiWhy');
   box.hidden = false;
@@ -937,6 +979,7 @@ async function whyAi(){
   }
 }
 
+checkStorage();
 doSearch();
 </script>
 </body>

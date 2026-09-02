@@ -98,8 +98,21 @@ step. `/healthz` reports which backend is live:
 {"ok": true, "backend": "postgres", "ai_enabled": true, "entries": 0}
 ```
 
-If `backend` says `sqlite`, `DATABASE_URL` did not reach the service and your
-data will not survive the next deploy.
+`storage.durable` is the field that matters:
+
+```json
+{"storage": {"backend": "postgres", "durable": true, "reachable": true}}
+```
+
+If `durable` is false the service is storing the library in a file inside the
+container, and Render replaces that container on every deploy and restart. The
+page shows a warning banner across the top whenever this is the case, so an
+ephemeral deployment cannot be mistaken for a permanent one.
+
+If `DATABASE_URL` is set but the database cannot be reached, the service
+reports the failure and refuses to serve rather than falling back to a local
+file. Silently degrading to a file is how a library disappears on the next
+deploy.
 
 ### 3. If the header says "AI off"
 

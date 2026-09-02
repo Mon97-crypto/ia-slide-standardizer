@@ -19,12 +19,42 @@ class Config:
     #
     # DATABASE_URL wins when set: a managed Postgres survives deploys and
     # restarts, which a container-local SQLite file does not.
-    DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
     DB_PATH = os.environ.get("CIQ_DB_PATH", str(BASE_DIR / "data" / "library.db"))
 
     @classmethod
+    def database_url(cls) -> str:
+        # Read on demand rather than captured at import, for the same reason as
+        # the API key: presence should not depend on when this module loaded.
+        return os.environ.get("DATABASE_URL", "").strip()
+
+    @classmethod
     def store_target(cls) -> str:
-        return cls.DATABASE_URL or cls.DB_PATH
+        return cls.database_url() or cls.DB_PATH
+
+    @classmethod
+    def storage_info(cls) -> dict:
+        """Describe where the library lives and whether it will survive.
+
+        A container filesystem is erased on every deploy. Without this being
+        stated plainly, an ephemeral deployment looks identical to a permanent
+        one right up until the moment the data is gone.
+        """
+        url = cls.database_url()
+        if url:
+            return {
+                "backend": "postgres",
+                "durable": True,
+                "configured": True,
+            }
+        return {
+            "backend": "sqlite",
+            # A local file is durable on a developer machine and ephemeral on a
+            # container host. Treated as not durable, because assuming the safe
+            # case is how uploads get lost.
+            "durable": False,
+            "configured": False,
+            "path": cls.DB_PATH,
+        }
 
     # Anthropic. The key stays server side and is never sent to the browser.
     # Read lazily rather than captured at import, so a key added to the

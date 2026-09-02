@@ -60,10 +60,17 @@ def index():
 def healthz():
     """Render health check. Confirms the database is reachable, not just that
     the process is up."""
+    storage = Config.storage_info()
     try:
         counts = db.stats(store())
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        # A configured database that cannot be reached must never fall back to
+        # local storage. Silently degrading to a file is exactly how a library
+        # disappears on the next deploy.
+        storage = {**storage, "reachable": False, "error": str(exc)}
+        return jsonify({"ok": False, "storage": storage,
+                        "error": f"The database is not reachable: {exc}"}), 500
+    storage["reachable"] = True
     # key_source says where the key was found, or that it was not found at
     # all. It never reveals the key. This is the first thing to check when the
     # header shows "AI off".
@@ -71,6 +78,7 @@ def healthz():
         "ok": True,
         "ai_enabled": llm.available(),
         "key_source": Config.api_key_with_source()[1],
+        "storage": storage,
         **counts,
     })
 

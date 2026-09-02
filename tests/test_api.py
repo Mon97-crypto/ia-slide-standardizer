@@ -233,3 +233,55 @@ def test_a_research_failure_still_produces_a_card(client, monkeypatch):
     assert body["ok"] is True
     assert "search is down" in body["research_error"]
     assert body["battlecard"]["researched"] is False
+
+
+# ─── storage durability ────────────────────────────────────────────────────
+
+def test_healthz_reports_storage_durability(client):
+    """Uploads were lost because ephemeral storage looked identical to
+    permanent storage. Durability must be stated, not inferred."""
+    storage = client.get("/healthz").get_json()["storage"]
+    assert storage["backend"] == "sqlite"
+    assert storage["durable"] is False
+    assert storage["configured"] is False
+
+
+def test_a_configured_database_is_reported_as_durable(monkeypatch):
+    import ciq.config
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pw@host/db")
+    storage = ciq.config.Config.storage_info()
+    assert storage["durable"] is True
+    assert storage["backend"] == "postgres"
+    assert storage["configured"] is True
+
+
+def test_database_url_is_read_on_demand(monkeypatch):
+    """Captured at import, a value set later would be missed."""
+    import ciq.config
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert ciq.config.Config.database_url() == ""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://x/y")
+    assert ciq.config.Config.database_url() == "postgresql://x/y"
+    assert ciq.config.Config.store_target() == "postgresql://x/y"
+
+
+def test_an_unreachable_database_never_falls_back_to_a_file(monkeypatch):
+    """Silently degrading to local storage is precisely how a library
+    disappears on the next deploy. It must fail loudly instead."""
+    import sys
+    monkeypatch.setenv("DATABASE_URL", "postgresql://ciq@127.0.0.1:1/nope")
+    monkeypatch.setenv("CIQ_SECRET_KEY", "test-secret")
+    for module in [m for m in list(sys.modules)
+                   if m == "ciq" or m.startswith("ciq.")] + ["app"]:
+        sys.modules.pop(module, None)
+    import app as application
+    application.app.config["TESTING"] = True
+    with application.app.test_client() as c:
+        response = c.get("/healthz")
+        body = response.get_json()
+    assert response.status_code == 500
+    assert body["ok"] is False
+    assert body["storage"]["configured"] is True
+    assert body["storage"]["reachable"] is False
+    # It must not claim to be durable while being unusable.
+    assert "not reachable" in body["error"]
