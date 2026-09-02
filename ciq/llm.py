@@ -57,6 +57,59 @@ ANALYSIS_SCHEMA = {
     "additionalProperties": False,
 }
 
+
+# ─── head to head scoring ──────────────────────────────────────────────────
+
+# Fixed dimensions so two battlecards are comparable. Every score reads
+# "higher is better for that vendor", including cost, where a high score means
+# a lower total cost of ownership.
+SCORE_DIMENSIONS: list[tuple[str, str, str]] = [
+    ("retail_native_depth", "Retail-native depth",
+     "Purpose built for retail rather than adapted from generic supply chain or planning."),
+    ("forecasting", "Forecasting accuracy",
+     "Demand forecasting quality at item, store and channel level."),
+    ("merchandising", "Merchandising and assortment",
+     "Assortment, item, size and pack planning depth."),
+    ("pricing_promo", "Pricing, promo and markdown",
+     "Price optimisation, promotion planning and markdown execution."),
+    ("inventory", "Inventory and replenishment",
+     "Allocation, replenishment and inventory productivity."),
+    ("speed_to_value", "Speed to value",
+     "Time from signature to a measurable business result."),
+    ("ai_capability", "AI and agentic capability",
+     "Native AI and autonomous decisioning rather than dashboards and reports."),
+    ("cost", "Total cost of ownership",
+     "Licence, services and internal effort across the contract. Higher is cheaper."),
+    ("breadth", "Suite breadth",
+     "Coverage across the planning and execution lifecycle."),
+    ("retail_proof", "Retail customer proof",
+     "Named retail references and demonstrated outcomes."),
+]
+DIMENSION_KEYS = [key for key, _, _ in SCORE_DIMENSIONS]
+DIMENSION_LABELS = {key: label for key, label, _ in SCORE_DIMENSIONS}
+
+# Server-side tools. These run on Anthropic's infrastructure, so there is no
+# client-side tool loop to implement. The _20260209 versions add dynamic
+# filtering on Opus 5, which trims search results before they reach context.
+RESEARCH_TOOLS = [
+    {"type": "web_search_20260209", "name": "web_search"},
+    {"type": "web_fetch_20260209", "name": "web_fetch"},
+]
+
+RESEARCHER_SYSTEM = (
+    "You are a competitive intelligence researcher at Impact Analytics, a "
+    "retail AI company competing in retail planning, merchandising, pricing "
+    "and inventory.\n\n"
+    "Research the named competitor using current public sources. Prioritise "
+    "primary sources: the vendor's own site and documentation, filings, "
+    "customer case studies, analyst coverage and credible trade press. "
+    "Prefer recent material and say when a source is dated.\n\n"
+    "Report only what the sources support. Where a fact is contested or "
+    "unclear, say so rather than resolving it silently. Do not use em dashes "
+    "or en dashes."
+)
+
+
 # A battlecard is only useful if a seller can act on it in a live call, so the
 # shape is fixed rather than left to prose. Every section is a field the UI can
 # render on its own.
@@ -132,11 +185,52 @@ BATTLECARD_SCHEMA = {
             "type": "string", "enum": ["high", "medium", "low"],
             "description": "How well the source material supports this battlecard.",
         },
+        "verdict": {
+            "type": "string",
+            "description": "Two sentences on where Impact Analytics genuinely stands against this competitor.",
+        },
+        "scorecard": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "description": "One entry per dimension, all ten, no repeats.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "dimension": {"type": "string", "enum": DIMENSION_KEYS},
+                    "ia_score": {
+                        "type": "number",
+                        "description": "Impact Analytics, 0 to 10. Higher is better.",
+                    },
+                    "competitor_score": {
+                        "type": "number",
+                        "description": "The competitor, 0 to 10. Higher is better.",
+                    },
+                    "weight": {
+                        "type": "number",
+                        "description": "How much this dimension matters in a real deal, 1 to 5.",
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "description": "One or two sentences justifying both scores.",
+                    },
+                    "evidence": {
+                        "type": "string",
+                        "enum": ["library", "research", "both", "inference"],
+                        "description": "Where the judgement came from. Use inference only when neither source covers it.",
+                    },
+                },
+                "required": ["dimension", "ia_score", "competitor_score",
+                             "weight", "rationale", "evidence"],
+                "additionalProperties": False,
+            },
+        },
     },
     "required": [
         "headline", "who_they_are", "where_they_win", "where_they_are_weak",
         "how_we_win", "discovery_questions", "objection_handling", "landmines",
-        "pricing_and_deployment", "intel_gaps", "confidence",
+        "pricing_and_deployment", "intel_gaps", "confidence", "verdict",
+        "scorecard",
     ],
     "additionalProperties": False,
 }
@@ -186,8 +280,31 @@ def _client():
     return anthropic.Anthropic(api_key=Config.api_key())
 
 
+def _extract_sources(response: Any) -> list[dict[str, str]]:
+    """Collect the web pages a research call actually consulted.
+
+    Walks the server tool result blocks defensively, because a block shape that
+    changes should cost the citation list, never the whole battlecard.
+    """
+    found: dict[str, dict[str, str]] = {}
+    for block in getattr(response, "content", []) or []:
+        if getattr(block, "type", "") != "web_search_tool_result":
+            continue
+        for item in getattr(block, "content", []) or []:
+            url = getattr(item, "url", None)
+            if not url:
+                continue
+            found.setdefault(url, {
+                "url": url,
+                "title": getattr(item, "title", "") or url,
+            })
+    return list(found.values())
+
+
 def _call(system: str, prompt: str, max_tokens: int = 4000,
-          schema: dict[str, Any] | None = None) -> Any:
+          schema: dict[str, Any] | None = None,
+          tools: list[dict[str, Any]] | None = None,
+          return_response: bool = False) -> Any:
     """One Claude call. Returns parsed JSON when a schema is supplied."""
     client = _client()   # raises LLMUnavailable before anthropic is needed
     import anthropic
@@ -206,6 +323,10 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
                 "schema": schema,
             }
         }
+    if tools:
+        # Server-side tools execute on Anthropic's infrastructure, so the
+        # response returns complete and there is no tool loop to run here.
+        kwargs["tools"] = tools
 
     try:
         response = client.messages.create(**kwargs)
@@ -230,10 +351,12 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
     if getattr(response, "stop_reason", None) == "refusal":
         raise LLMUnavailable("The model declined to answer this request.")
 
-    text = "".join(b.text for b in response.content if b.type == "text").strip()
-    if schema is None:
-        return text
-    return _parse_json(text)
+    text = "".join(b.text for b in response.content
+                   if getattr(b, "type", "") == "text").strip()
+    payload = text if schema is None else _parse_json(text)
+    if return_response:
+        return payload, response
+    return payload
 
 
 def _api_message(exc: Any) -> str:
@@ -345,45 +468,174 @@ def answer_question(question: str, passages: list[dict[str, Any]]) -> dict[str, 
     }
 
 
-def build_battlecard(competitor: str,
-                     passages: list[dict[str, Any]]) -> dict[str, Any]:
-    """Draft a battlecard from everything the library holds on a competitor."""
+def research_competitor(competitor: str, library_context: str = "",
+                        max_tokens: int = 8000) -> dict[str, Any]:
+    """Phase one: research the competitor against live public sources.
+
+    Kept separate from synthesis on purpose. Tool use needs several model turns
+    and structured output constrains the final one, so combining them in a
+    single call is the fragile arrangement. Splitting them also means a
+    research failure degrades to a library-only battlecard instead of losing
+    the whole card.
+    """
+    if not Config.ai_enabled():
+        raise LLMUnavailable(
+            "AI features are off because ANTHROPIC_API_KEY is not set on the "
+            "server.")
+
+    prompt = (
+        f"Research {competitor} as a competitor to Impact Analytics in retail "
+        f"planning, merchandising, pricing and inventory.\n\n"
+        "Cover, and label, each of these:\n"
+        "1. What they sell and how they position it.\n"
+        "2. Recent product and AI announcements, with dates.\n"
+        "3. Named retail customers, wins and any public losses.\n"
+        "4. Pricing signals and total cost of ownership commentary.\n"
+        "5. Implementation timelines and delivery model.\n"
+        "6. Analyst and customer criticism, stated plainly.\n"
+        "7. Where they are genuinely strong. Do not soften this.\n\n"
+        + (f"The internal library already holds the following. Treat it as "
+           f"context to extend and verify, not as fact to repeat:\n"
+           f"{library_context[:6000]}\n\n" if library_context else "")
+        + "Write a factual brief. Attribute each claim to its source."
+    )
+
+    brief, response = _call(RESEARCHER_SYSTEM, prompt, max_tokens=max_tokens,
+                            tools=RESEARCH_TOOLS, return_response=True)
+    return {"brief": brief, "sources": _extract_sources(response)}
+
+
+def normalise_scorecard(scorecard: Any) -> list[dict[str, Any]]:
+    """Clean the model's scorecard into something the UI can trust.
+
+    Unknown or repeated dimensions are dropped, scores are clamped to the
+    stated 0 to 10 range and weights to 1 to 5, and rows are ordered so the
+    competitor's strongest dimensions come first. A seller reads the threats
+    before the wins.
+    """
+    seen: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    for row in scorecard or []:
+        if not isinstance(row, dict):
+            continue
+        key = row.get("dimension")
+        if key not in DIMENSION_LABELS or key in seen:
+            continue
+        seen.add(key)
+        row = dict(row)
+        row["label"] = DIMENSION_LABELS[key]
+        for field in ("ia_score", "competitor_score"):
+            try:
+                value = float(row.get(field) or 0)
+            except (TypeError, ValueError):
+                value = 0.0
+            row[field] = max(0.0, min(10.0, round(value, 1)))
+        try:
+            weight = float(row.get("weight") or 1)
+        except (TypeError, ValueError):
+            weight = 1.0
+        row["weight"] = max(1.0, min(5.0, weight))
+        if row.get("evidence") not in ("library", "research", "both", "inference"):
+            row["evidence"] = "inference"
+        rows.append(row)
+    rows.sort(key=lambda r: (r["competitor_score"] - r["ia_score"], r["weight"]),
+              reverse=True)
+    return rows
+
+
+def score_totals(scorecard: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute weighted totals in Python, not in the model.
+
+    The model judges each dimension; the arithmetic is done here so the
+    headline number is reproducible from the visible rows and cannot drift
+    from them.
+    """
+    rows = [r for r in scorecard
+            if isinstance(r, dict) and r.get("dimension") in DIMENSION_LABELS]
+    if not rows:
+        return {"ia": 0.0, "competitor": 0.0, "gap": 0.0, "verdict_key": "unknown"}
+
+    total_weight = sum(max(float(r.get("weight") or 1), 0.1) for r in rows)
+    def weighted(field: str) -> float:
+        return sum(float(r.get(field) or 0) * max(float(r.get("weight") or 1), 0.1)
+                   for r in rows) / total_weight
+
+    ia = round(weighted("ia_score"), 1)
+    competitor = round(weighted("competitor_score"), 1)
+    gap = round(ia - competitor, 1)
+    if gap >= 1.5:
+        verdict_key = "advantage"
+    elif gap <= -1.5:
+        verdict_key = "behind"
+    else:
+        verdict_key = "close"
+    return {"ia": ia, "competitor": competitor, "gap": gap,
+            "verdict_key": verdict_key}
+
+
+def build_battlecard(competitor: str, passages: list[dict[str, Any]],
+                     research: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Phase two: synthesise a scored battlecard from library and research."""
     if not Config.ai_enabled():
         raise LLMUnavailable(
             "AI features are off because ANTHROPIC_API_KEY is not set on the "
             "server. Search, upload and the library all work without it.")
-    if not passages:
+    if not passages and not (research and research.get("brief")):
         raise LLMUnavailable(
-            f"The library holds nothing on {competitor} yet. Add a document "
-            "for them first.")
+            f"Nothing to build from. The library holds no documents on "
+            f"{competitor} and research returned nothing.")
 
     products = ", ".join(threatened_products(competitor)) or "the IA portfolio"
-    sources = sorted({p["title"] for p in passages})
+    library_block = (_format_passages(passages) if passages
+                     else "The library holds no documents on this competitor.")
+    research_block = (research or {}).get("brief") or (
+        "No external research was available for this card.")
+
+    dimension_lines = "\n".join(
+        f"- {key}: {label}. {definition}" for key, label, definition in SCORE_DIMENSIONS)
+
     prompt = (
-        f"SOURCE MATERIAL ON {competitor}, drawn from "
-        f"{len(sources)} documents in the library:\n\n"
-        f"{_format_passages(passages)}\n\n"
-        f"Build a sales battlecard for Impact Analytics against {competitor}. "
-        f"The IA products most exposed are: {products}.\n\n"
-        "Rules:\n"
-        "- Ground every claim in the passages above. Cite them inline with "
-        "bracketed numbers such as [1].\n"
-        "- Be honest about where the competitor is strong. A battlecard that "
-        "only flatters us loses deals.\n"
+        f"INTERNAL LIBRARY MATERIAL ON {competitor}:\n\n{library_block}\n\n"
+        f"EXTERNAL RESEARCH ON {competitor}:\n\n{research_block}\n\n"
+        f"Build a scored sales battlecard for Impact Analytics against "
+        f"{competitor}. The IA products most exposed are: {products}.\n\n"
+        f"Score both vendors on every one of these ten dimensions:\n"
+        f"{dimension_lines}\n\n"
+        "Scoring rules:\n"
+        "- Every score runs 0 to 10 and higher is always better for that "
+        "vendor, cost included, where a high score means a lower total cost "
+        "of ownership.\n"
+        "- Weight each dimension 1 to 5 by how much it decides a real deal.\n"
+        "- Score the competitor above Impact Analytics wherever the evidence "
+        "says so. A scorecard that flatters us on every dimension is not "
+        "credible and loses deals.\n"
+        "- Set evidence to library, research, both, or inference. Use "
+        "inference only when neither source covers the dimension, and keep "
+        "those scores near the middle.\n\n"
+        "Content rules:\n"
+        "- Cite internal passages by their bracketed numbers, such as [1].\n"
+        "- Attribute external claims to their source in the text.\n"
         "- Discovery questions must be open questions a buyer would answer, "
-        "not leading questions that name the competitor's flaw.\n"
-        "- Where the material is thin, say so in intel_gaps and lower the "
+        "not leading questions naming the competitor's flaw.\n"
+        "- Where evidence is thin, say so in intel_gaps and lower the "
         "confidence rather than inventing detail."
     )
-    card = _call(ANALYST_SYSTEM, prompt, max_tokens=8000,
+
+    card = _call(ANALYST_SYSTEM, prompt, max_tokens=12000,
                  schema=BATTLECARD_SCHEMA)
+
+    rows = normalise_scorecard(card.get("scorecard"))
+    card["scorecard"] = rows
+    card["totals"] = score_totals(rows)
 
     if not card.get("threatened_products"):
         mapped = threatened_products(competitor)
         if mapped:
             card["threatened_products"] = mapped
     card["competitor"] = competitor
-    card["sources"] = sources
+    card["sources"] = sorted({p["title"] for p in passages})
+    card["research_sources"] = (research or {}).get("sources", [])
+    card["researched"] = bool((research or {}).get("brief"))
     return card
 
 
@@ -400,10 +652,11 @@ _PROBE_SCHEMA = {
 def self_test() -> dict[str, Any]:
     """Prove the Claude integration works, and say precisely what fails if not.
 
-    Two probes run separately because they fail for different reasons. A plain
+    The probes run separately because they fail for different reasons. A plain
     message failing points at the key, the model or the credit balance. A plain
-    message succeeding while the structured probe fails points at structured
-    outputs specifically, which is what Analyze and the battlecard rely on.
+    message succeeding while the structured probe fails isolates structured
+    outputs, which Analyze and the battlecard depend on. Web search is probed
+    too, since researched battlecards need it and nothing else exercises it.
     """
     import time
 
@@ -421,16 +674,19 @@ def self_test() -> dict[str, Any]:
         })
         return report
 
-    # Both probes keep adaptive thinking on, so they exercise the exact path
-    # Analyze and the battlecard use. The budget is generous because thinking
-    # shares the max_tokens allowance, and a probe that runs out of room would
-    # report a failure the real feature would not have.
+    # Every probe keeps adaptive thinking on so it runs the same path as the
+    # real features, with a generous budget so a probe cannot run out of room
+    # and report a failure the real feature would not have hit.
     probes = (
         ("plain message", lambda: _call(
             "Reply with the single word: ready.", "Say ready.", max_tokens=1024)),
         ("structured output", lambda: _call(
             "Return JSON only.", 'Return {"ok": true}.',
             max_tokens=1024, schema=_PROBE_SCHEMA)),
+        ("web search (research)", lambda: _call(
+            "Answer in one short sentence.",
+            "Search the web for the founding year of Blue Yonder.",
+            max_tokens=4096, tools=RESEARCH_TOOLS)),
     )
 
     for name, run in probes:

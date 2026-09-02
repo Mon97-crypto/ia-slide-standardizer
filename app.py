@@ -232,19 +232,37 @@ def api_battlecard():
     competitor = canonical_name((payload.get("competitor") or "").strip())
     if not competitor:
         return fail("Name a competitor.")
+    # Research is on by default and can be turned off for a faster, cheaper
+    # card built purely from uploaded documents.
+    want_research = payload.get("research", True)
 
     conn = store()
     passages = gather_passages(conn, llm.BATTLECARD_THEMES, competitor)
+
+    research, research_error = None, ""
+    if want_research:
+        # A short digest of what is already on file, so the researcher extends
+        # and verifies the library rather than restating it.
+        library_context = "\n\n".join(p["text"] for p in passages[:8])
+        try:
+            research = llm.research_competitor(competitor, library_context)
+        except llm.LLMUnavailable as exc:
+            # Research is an enhancement. Losing it must not lose the card, so
+            # the failure is reported alongside a library-only result.
+            research_error = str(exc)
+
     try:
-        card = llm.build_battlecard(competitor, passages)
+        card = llm.build_battlecard(competitor, passages, research)
     except llm.LLMUnavailable as exc:
         return fail(str(exc), 503)
+
     return jsonify({
         "ok": True,
         "battlecard": card,
         "threatens": threatened_products(competitor),
         "passages_used": len(passages),
         "themes_covered": sorted({p["theme"] for p in passages}),
+        "research_error": research_error,
     })
 
 

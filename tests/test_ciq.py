@@ -365,3 +365,86 @@ def test_unknown_competitor_yields_no_passages(conn):
 
 def test_backend_is_reported_in_stats(conn):
     assert db.stats(conn)["backend"] in ("sqlite", "postgres")
+
+
+# ─── head to head scoring ──────────────────────────────────────────────────
+
+def test_weighted_totals_follow_the_weights():
+    from ciq.llm import score_totals
+    rows = [
+        {"dimension": "forecasting", "ia_score": 10, "competitor_score": 0, "weight": 5},
+        {"dimension": "breadth", "ia_score": 0, "competitor_score": 10, "weight": 1},
+    ]
+    totals = score_totals(rows)
+    # The heavy dimension must dominate rather than being averaged flat.
+    assert totals["ia"] > totals["competitor"]
+    assert totals["verdict_key"] == "advantage"
+
+
+def test_a_close_result_is_not_called_an_advantage():
+    from ciq.llm import score_totals
+    rows = [{"dimension": "forecasting", "ia_score": 7, "competitor_score": 6.5,
+             "weight": 3}]
+    assert score_totals(rows)["verdict_key"] == "close"
+
+
+def test_losing_is_reported_as_losing():
+    from ciq.llm import score_totals
+    rows = [{"dimension": "breadth", "ia_score": 4, "competitor_score": 9, "weight": 4}]
+    totals = score_totals(rows)
+    assert totals["verdict_key"] == "behind"
+    assert totals["gap"] < 0
+
+
+def test_totals_survive_an_empty_or_invalid_scorecard():
+    from ciq.llm import score_totals
+    assert score_totals([])["verdict_key"] == "unknown"
+    assert score_totals([{"dimension": "not_a_dimension"}])["verdict_key"] == "unknown"
+
+
+def test_scorecard_normalisation_clamps_and_deduplicates():
+    from ciq.llm import normalise_scorecard
+    rows = normalise_scorecard([
+        {"dimension": "cost", "ia_score": 99, "competitor_score": -4, "weight": 12},
+        {"dimension": "cost", "ia_score": 5, "competitor_score": 5, "weight": 3},
+        {"dimension": "made_up", "ia_score": 5, "competitor_score": 5, "weight": 3},
+        "not even a dict",
+    ])
+    assert len(rows) == 1                      # duplicate and unknown dropped
+    assert rows[0]["ia_score"] == 10.0         # clamped to the stated range
+    assert rows[0]["competitor_score"] == 0.0
+    assert rows[0]["weight"] == 5.0
+    assert rows[0]["label"] == "Total cost of ownership"
+
+
+def test_normalisation_defaults_unknown_evidence_to_inference():
+    from ciq.llm import normalise_scorecard
+    rows = normalise_scorecard([
+        {"dimension": "cost", "ia_score": 5, "competitor_score": 5,
+         "weight": 3, "evidence": "made up"}])
+    assert rows[0]["evidence"] == "inference"
+
+
+def test_scorecard_leads_with_the_competitor_strengths():
+    """A seller needs the threats before the wins."""
+    from ciq.llm import normalise_scorecard
+    rows = normalise_scorecard([
+        {"dimension": "speed_to_value", "ia_score": 9, "competitor_score": 3, "weight": 5},
+        {"dimension": "breadth", "ia_score": 5, "competitor_score": 9, "weight": 3},
+    ])
+    assert rows[0]["dimension"] == "breadth"
+
+
+def test_every_dimension_has_a_label():
+    from ciq.llm import DIMENSION_KEYS, DIMENSION_LABELS, SCORE_DIMENSIONS
+    assert len(SCORE_DIMENSIONS) == 10
+    assert len(DIMENSION_KEYS) == len(set(DIMENSION_KEYS))
+    assert all(key in DIMENSION_LABELS for key in DIMENSION_KEYS)
+
+
+def test_battlecard_schema_requires_the_full_scorecard():
+    from ciq.llm import BATTLECARD_SCHEMA
+    scorecard = BATTLECARD_SCHEMA["properties"]["scorecard"]
+    assert scorecard["minItems"] == scorecard["maxItems"] == 10
+    assert "scorecard" in BATTLECARD_SCHEMA["required"]
+    assert "verdict" in BATTLECARD_SCHEMA["required"]

@@ -220,8 +220,8 @@ section.panel{max-width:1240px;margin:0 auto 46px;padding:0 32px}
 .panel-card>p{font-size:14px;color:#6c6a66;margin-bottom:18px;max-width:640px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .row input,.row select{max-width:300px}
-.bc-out{margin-top:20px;background:var(--off-white);border-radius:12px;padding:20px 22px;
-  font-size:14px;line-height:1.7;white-space:pre-wrap;max-height:620px;overflow:auto}
+.bc-out{margin-top:20px;background:var(--off-white);border-radius:12px;padding:22px 24px;
+  font-size:14px;line-height:1.7}
 .bc-out h2,.bc-out h3{font-family:"Inter Tight",sans-serif;font-weight:700;font-size:14px;
   letter-spacing:.05em;text-transform:uppercase;color:var(--blue);margin:18px 0 7px}
 .bc-out h2:first-child,.bc-out h3:first-child{margin-top:0}
@@ -253,6 +253,78 @@ section.panel{max-width:1240px;margin:0 auto 46px;padding:0 32px}
   border-radius:11px;padding:14px 16px}
 .bc-meta{font-size:12px;color:#6c6a66;margin-top:16px;padding-top:14px;
   border-top:1px solid var(--g1)}
+
+/* ---- head to head scorecard ---- */
+.sc{background:var(--white);border:1px solid var(--g1);border-radius:14px;
+  padding:22px 24px;margin-bottom:20px}
+.sc-top{display:flex;align-items:center;gap:26px;flex-wrap:wrap;
+  padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--g1)}
+.sc-hero{display:flex;align-items:baseline;gap:9px}
+.sc-hero .n{font-family:Spectral,Georgia,serif;font-size:44px;line-height:1;font-weight:300}
+.sc-hero .of{font-size:13px;color:var(--g3)}
+.sc-hero .who{font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;display:block;margin-bottom:5px}
+.sc-ia .n,.sc-ia .who{color:var(--blue)}
+.sc-co .n,.sc-co .who{color:#B34A10}
+.sc-gap{margin-left:auto;text-align:right}
+.sc-gap .lab{font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--g3);display:block;margin-bottom:5px}
+.sc-gap .val{font-size:14px;font-weight:600}
+.sc-gap .val.advantage{color:#0d7a53}
+.sc-gap .val.behind{color:#a52a2a}
+.sc-gap .val.close{color:#b34a10}
+.sc-legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:16px}
+.sc-legend span{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;
+  font-weight:600;color:#55534f}
+.sc-key{width:10px;height:10px;border-radius:50%;flex:none}
+.sc-key.ia{background:var(--blue)}
+.sc-key.co{background:var(--orange)}
+.sc-item{border-bottom:1px solid var(--g1);padding:4px 0 10px;border-radius:8px}
+.sc-item:last-of-type{border-bottom:0}
+.sc-item:hover{background:var(--off-white)}
+.sc-row{display:grid;grid-template-columns:186px 1fr 96px;gap:14px;align-items:center;
+  padding:6px 8px}
+.sc-name{font-size:13px;font-weight:600;line-height:1.3}
+.sc-name .w{display:block;font-size:10.5px;font-weight:600;color:var(--g3);
+  letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
+/* Inset so a score of 0 or 10 sits fully inside the track instead of clipping. */
+.sc-track{position:relative;height:22px;margin:0 9px}
+.sc-axis{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--g1)}
+.sc-conn{position:absolute;top:50%;height:2px;transform:translateY(-50%);
+  background:var(--g2);border-radius:2px}
+.sc-dot{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;
+  transform:translate(-50%,-50%);box-shadow:0 0 0 2px var(--white)}
+.sc-dot.ia{background:var(--blue);z-index:2}
+.sc-dot.co{background:var(--orange);z-index:1}
+/* Values live in their own column. Printing them inside the markers made
+   close scores collide into an unreadable smudge. */
+.sc-nums{display:flex;gap:9px;justify-content:flex-end;align-items:baseline;
+  font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.sc-nums .ia{color:var(--blue)}
+.sc-nums .co{color:#B34A10}
+/* Sits tight under its own row so the pairing is unambiguous. Held apart from
+   the next dimension by the item's padding, not by its own margin. */
+.sc-why{font-size:12.5px;color:#6c6a66;line-height:1.5;padding:0 8px;margin-top:1px}
+.sc-src{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;border-radius:100px;padding:1px 8px;margin-left:6px;
+  vertical-align:1px}
+.sc-src.library{background:rgba(38,76,215,.1);color:var(--blue)}
+.sc-src.research{background:rgba(61,212,153,.16);color:#0d7a53}
+.sc-src.both{background:rgba(190,168,239,.24);color:#5b3fa8}
+.sc-src.inference{background:var(--off-white);color:var(--g3)}
+.sc-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.sc-table th,.sc-table td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--g1)}
+.sc-table th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--g3)}
+.sc-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+.sc-toggle{background:0;border:0;color:var(--blue);font-size:12px;font-weight:600;
+  cursor:pointer;padding:0;margin-top:12px}
+.res-src{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.res-src a{font-size:12.5px;color:var(--blue);text-decoration:none}
+.res-src a:hover{text-decoration:underline}
+@media(max-width:700px){
+  .sc-row{grid-template-columns:1fr auto;gap:8px}
+  .sc-track{grid-column:1/-1;margin:4px 9px}
+}
 
 footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
   font-size:13px;color:var(--g3)}
@@ -390,10 +462,13 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 <section class="panel">
   <div class="panel-card">
     <h3>Battlecard generator</h3>
-    <p>Draft a battlecard from everything the library holds on one competitor. It reads across every document, not just one file, and cites what it used.</p>
+    <p>Score a competitor against Impact Analytics across ten weighted dimensions. It reads every document in the library on them, researches current public sources, and shows where each judgement came from.</p>
     <div class="row">
       <input type="text" id="bcComp" list="knownComps" placeholder="Blue Yonder">
       <button class="btn" id="bcBtn" onclick="genBattlecard()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2 19 6.5 8.5 17 4 18l1-4.5L14.5 2z"/></svg> Generate</button>
+      <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#55534f;cursor:pointer">
+        <input type="checkbox" id="bcResearch" checked style="width:auto"> Research public sources
+      </label>
     </div>
     <div id="bcOut"></div>
   </div>
@@ -621,10 +696,14 @@ async function genBattlecard(){
   if(!comp) return toast('Name a competitor');
   const out = $('bcOut'); const btn = $('bcBtn');
   btn.disabled = true;
-  out.innerHTML = '<div class="a-loading"><span class="spin"></span> Reading everything the library holds on ' + esc(comp) + '...</div>';
+  const withResearch = $('bcResearch').checked;
+  out.innerHTML = '<div class="a-loading"><span class="spin"></span> '
+    + (withResearch ? 'Researching ' + esc(comp) + ' across public sources and the library. This takes up to a minute...'
+                    : 'Reading everything the library holds on ' + esc(comp) + '...')
+    + '</div>';
   try{
     const res = await fetch('/api/battlecard', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({competitor:comp})});
+      body: JSON.stringify({competitor:comp, research:withResearch})});
     const data = await res.json();
     if(!data.ok) throw new Error(data.error||'Could not generate');
     out.innerHTML = renderBattlecard(data);
@@ -644,12 +723,74 @@ function bcPairs(items, kKey, vKey, cls){
   return items.map(o=>`<div class="bc-pair ${cls||''}"><div class="k">${esc(o[kKey])}</div><div class="v">${esc(o[vKey])}</div></div>`).join('');
 }
 
+function renderScorecard(c){
+  const rows = c.scorecard || [];
+  if(!rows.length) return '';
+  const t = c.totals || {};
+  const gapLabel = t.verdict_key === 'advantage' ? 'Impact Analytics ahead'
+    : t.verdict_key === 'behind' ? 'Competitor ahead' : 'Close to level';
+  const gapSign = (t.gap > 0 ? '+' : '') + (t.gap != null ? t.gap : 0);
+
+  let h = '<div class="sc">';
+  h += `<div class="sc-top">
+    <div class="sc-hero sc-ia"><div><span class="who">Impact Analytics</span>
+      <span class="n">${t.ia != null ? t.ia : '-'}</span></div><span class="of">/ 10</span></div>
+    <div class="sc-hero sc-co"><div><span class="who">${esc(c.competitor||'Competitor')}</span>
+      <span class="n">${t.competitor != null ? t.competitor : '-'}</span></div><span class="of">/ 10</span></div>
+    <div class="sc-gap"><span class="lab">Weighted gap</span>
+      <span class="val ${esc(t.verdict_key||'close')}">${esc(gapSign)} &middot; ${esc(gapLabel)}</span></div>
+  </div>`;
+
+  h += `<div class="sc-legend">
+    <span><i class="sc-key ia"></i>Impact Analytics</span>
+    <span><i class="sc-key co"></i>${esc(c.competitor||'Competitor')}</span>
+  </div>`;
+
+  rows.forEach((r,i)=>{
+    const ia = Number(r.ia_score)||0, co = Number(r.competitor_score)||0;
+    // Positions are inset so a 0 or a 10 stays fully on the track. When the two
+    // scores are all but identical the markers would sit exactly on top of one
+    // another and hide a whole series, so they are nudged just far enough apart
+    // to both read while the numeric column carries the exact values.
+    const pos = v => 3 + (v/10)*94;
+    let pIa = pos(ia), pCo = pos(co);
+    if(Math.abs(pIa - pCo) < 2.4){ const m=(pIa+pCo)/2; pIa=m+1.2; pCo=m-1.2; }
+    const lo = Math.min(pIa,pCo), hi = Math.max(pIa,pCo);
+    h += `<div class="sc-item"><div class="sc-row">
+      <div class="sc-name">${esc(r.label||r.dimension)}<span class="w">weight ${esc(String(r.weight||1))}</span></div>
+      <div class="sc-track" title="${esc(r.label||'')} &mdash; Impact Analytics ${ia}, ${esc(c.competitor||'competitor')} ${co}">
+        <div class="sc-axis"></div>
+        <div class="sc-conn" style="left:${lo}%;width:${hi-lo}%"></div>
+        <div class="sc-dot co" style="left:${pCo}%"></div>
+        <div class="sc-dot ia" style="left:${pIa}%"></div>
+      </div>
+      <div class="sc-nums"><span class="ia">${ia.toFixed(1)}</span><span class="co">${co.toFixed(1)}</span></div>
+    </div>
+    <div class="sc-why">${esc(r.rationale||'')}<span class="sc-src ${esc(r.evidence||'inference')}">${esc(r.evidence||'inference')}</span></div></div>`;
+  });
+
+  // A table view is required relief for the low-contrast series colour, and
+  // makes the exact numbers readable without hovering.
+  h += `<button class="sc-toggle" onclick="const t=document.getElementById('scTable');t.hidden=!t.hidden;this.textContent=t.hidden?'Show as table':'Hide table'">Show as table</button>
+    <div id="scTable" hidden><table class="sc-table">
+      <thead><tr><th>Dimension</th><th class="num">IA</th><th class="num">${esc(c.competitor||'Them')}</th><th class="num">Weight</th><th>Evidence</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    h += `<tr><td>${esc(r.label||r.dimension)}</td><td class="num">${Number(r.ia_score)||0}</td>`
+       + `<td class="num">${Number(r.competitor_score)||0}</td><td class="num">${esc(String(r.weight||1))}</td>`
+       + `<td>${esc(r.evidence||'inference')}</td></tr>`;
+  });
+  h += '</tbody></table></div></div>';
+  return h;
+}
+
 function renderBattlecard(data){
   const c = data.battlecard || {};
   const conf = (c.confidence||'medium').toLowerCase();
   let h = '<div class="bc-out">';
   h += `<div class="bc-head"><div class="bc-headline">${esc(c.headline||('Impact Analytics vs '+(c.competitor||'')))}</div>
         <span class="conf ${conf}">${esc(conf)} confidence</span></div>`;
+  if(c.verdict) h += `<div class="bc-body" style="margin-bottom:20px">${esc(c.verdict)}</div>`;
+  h += renderScorecard(c);
   h += bcSection('Who they are', `<div class="bc-body">${esc(c.who_they_are||'')}</div>`);
   h += `<div class="bc-grid">
           <div>${bcSection('Where they win', bcList(c.where_they_win))}</div>
@@ -667,8 +808,18 @@ function renderBattlecard(data){
       '<div class="prods">' + c.threatened_products.map(p=>`<span class="prod">${esc(p)}</span>`).join('') + '</div>');
   if(c.intel_gaps && c.intel_gaps.length)
     h += bcSection('Gaps in our intel', `<div class="bc-gap">${bcList(c.intel_gaps)}</div>`);
-  h += `<div class="bc-meta">Built from ${data.passages_used||0} passages across ${(c.sources||[]).length} document${(c.sources||[]).length===1?'':'s'}`
-     + ((c.sources&&c.sources.length)?': '+c.sources.map(esc).join(', '):'') + '.</div>';
+  if(c.research_sources && c.research_sources.length){
+    h += bcSection('External sources consulted', '<div class="res-src">' +
+      c.research_sources.map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)}</a>`).join('') + '</div>');
+  }
+  if(data.research_error){
+    h += `<div class="a-info"><strong>Built from the library only.</strong> External research was unavailable: ${esc(data.research_error)}</div>`;
+  }
+  h += `<div class="bc-meta">Built from ${data.passages_used||0} library passage${data.passages_used===1?'':'s'} across `
+     + `${(c.sources||[]).length} document${(c.sources||[]).length===1?'':'s'}`
+     + ((c.sources&&c.sources.length)?': '+c.sources.map(esc).join(', '):'')
+     + (c.researched?` &middot; plus ${(c.research_sources||[]).length} external source${(c.research_sources||[]).length===1?'':'s'}`:'')
+     + '.</div>';
   h += '</div>';
   return h;
 }

@@ -24,13 +24,26 @@ a PDF, not just a title.
 profile. Ask answers questions from passages retrieved out of the library rather
 than from a truncated prefix of one file, and cites the entries it used.
 
-**Battlecards built from the whole library.** The generator sweeps the library
-once per theme, covering positioning, pricing, implementation, customers,
-product gaps and technology posture, then attributes each passage to the theme
-that scores it best. The result is a structured card with plays, discovery
-questions, objection handling, landmines, proof points and an explicit list of
-what the library does not yet cover, alongside a confidence rating so a thin
-card announces itself rather than reading like a thorough one.
+**Researched, scored battlecards.** Generation runs in two phases. First Claude
+researches the competitor against live public sources using Anthropic's
+server-side web search and fetch tools. Then it synthesises that research with
+the library into a structured card.
+
+The card opens with a head-to-head scorecard: both vendors scored 0 to 10 across
+ten weighted dimensions, from retail-native depth and merchandising to speed to
+value and total cost of ownership. Weighted totals are computed in Python rather
+than by the model, so the headline number is reproducible from the visible rows.
+Every dimension shows where its judgement came from, whether an uploaded
+document, external research, both, or inference where neither covers it.
+
+Below that sit plays paired with why each works, discovery questions, objection
+handling, landmines, pricing posture, proof points, and an explicit list of what
+the library does not yet cover, alongside a confidence rating so a thin card
+announces itself rather than reading like a thorough one.
+
+Research can be switched off per card for a faster, cheaper result built purely
+from uploaded documents. If research fails, the card is still produced from the
+library and says so rather than failing outright.
 
 **One shared library that persists.** Everything lives in a server-side
 database, so the whole team sees the same data. Point `DATABASE_URL` at a

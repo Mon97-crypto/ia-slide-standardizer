@@ -20,7 +20,13 @@ def client(monkeypatch):
     monkeypatch.setenv("CIQ_ADMIN_PASSCODE", "testpass")
     monkeypatch.setenv("CIQ_SECRET_KEY", "test-secret")
 
-    for module in ("ciq.config", "ciq.db", "ciq.llm", "app"):
+    # Drop the ciq package itself, not just its submodules. "from ciq import
+    # llm" resolves through the package attribute, which outlives a submodule
+    # being popped from sys.modules. Leaving it in place hands the app one
+    # module object while a test patches another, and the patch silently
+    # misses.
+    for module in [m for m in list(sys.modules)
+                   if m == "ciq" or m.startswith("ciq.")] + ["app"]:
         sys.modules.pop(module, None)
     import app as application
     application.app.config["TESTING"] = True
@@ -191,3 +197,39 @@ def test_a_key_in_a_secret_file_is_found(client, monkeypatch, tmp_path):
     assert ciq.config.Config.api_key_with_source()[1] == "secret_file"
     # Surrounding whitespace from the file must not reach the API header.
     assert ciq.config.Config.api_key() == "sk-ant-from-a-secret-file"
+
+
+def test_battlecard_without_research_skips_the_research_call(client, monkeypatch):
+    """research=false must not reach for the network at all."""
+    import ciq.llm as llm
+    called = {"research": False}
+
+    def fake_research(*args, **kwargs):
+        called["research"] = True
+        raise AssertionError("research should not run")
+
+    monkeypatch.setattr(llm, "research_competitor", fake_research)
+    add(client, note="Blue Yonder has legacy architecture.",
+        competitor="Blue Yonder", title="BY", category="information")
+    response = client.post("/api/battlecard",
+                           json={"competitor": "jda", "research": False})
+    assert called["research"] is False
+    assert response.status_code == 503          # no key, but research was skipped
+
+
+def test_a_research_failure_still_produces_a_card(client, monkeypatch):
+    """Research is an enhancement. Losing it must not lose the battlecard."""
+    import ciq.llm as llm
+
+    monkeypatch.setattr(llm, "research_competitor", lambda *a, **k: (_ for _ in ()).throw(
+        llm.LLMUnavailable("search is down")))
+    monkeypatch.setattr(llm, "build_battlecard",
+                        lambda competitor, passages, research: {
+                            "competitor": competitor, "scorecard": [],
+                            "researched": bool(research)})
+    add(client, note="Blue Yonder notes.", competitor="Blue Yonder",
+        title="BY", category="information")
+    body = client.post("/api/battlecard", json={"competitor": "jda"}).get_json()
+    assert body["ok"] is True
+    assert "search is down" in body["research_error"]
+    assert body["battlecard"]["researched"] is False
