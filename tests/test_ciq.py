@@ -442,9 +442,103 @@ def test_every_dimension_has_a_label():
     assert all(key in DIMENSION_LABELS for key in DIMENSION_KEYS)
 
 
-def test_battlecard_schema_requires_the_full_scorecard():
+def test_battlecard_schema_requires_a_scorecard():
     from ciq.llm import BATTLECARD_SCHEMA
     scorecard = BATTLECARD_SCHEMA["properties"]["scorecard"]
-    assert scorecard["minItems"] == scorecard["maxItems"] == 10
+    # The ten-entry count cannot live in the schema, because structured output
+    # rejects maxItems and any minItems above 1. It is stated in the prompt and
+    # checked after the response instead.
+    assert scorecard.get("minItems") in (0, 1)
+    assert "maxItems" not in scorecard
     assert "scorecard" in BATTLECARD_SCHEMA["required"]
     assert "verdict" in BATTLECARD_SCHEMA["required"]
+
+
+def test_a_short_scorecard_names_what_went_unscored():
+    """With the count no longer enforceable in the schema, a partial scorecard
+    must announce itself rather than looking complete."""
+    from ciq.llm import DIMENSION_KEYS, normalise_scorecard
+    rows = normalise_scorecard([
+        {"dimension": "cost", "ia_score": 8, "competitor_score": 4, "weight": 3}])
+    scored = {r["dimension"] for r in rows}
+    missing = [k for k in DIMENSION_KEYS if k not in scored]
+    assert len(missing) == 9
+
+
+# ─── structured output schema compatibility ────────────────────────────────
+
+# Structured output accepts a subset of JSON Schema. Sending anything outside
+# it is a 400 with no output at all, so every schema is checked here rather
+# than discovered in production.
+UNSUPPORTED_SCHEMA_KEYS = (
+    "maxItems", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+    "multipleOf", "minLength", "maxLength", "uniqueItems", "oneOf", "not",
+)
+
+
+def _walk(node, found=None, path="$"):
+    found = found if found is not None else []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in UNSUPPORTED_SCHEMA_KEYS:
+                found.append(f"{path}.{key}")
+            if key == "minItems" and value not in (0, 1):
+                found.append(f"{path}.minItems={value}")
+            if key == "additionalProperties" and value is True:
+                found.append(f"{path}.additionalProperties=true")
+            _walk(value, found, f"{path}.{key}")
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            _walk(item, found, f"{path}[{i}]")
+    return found
+
+
+def _all_schemas():
+    from ciq import llm
+    return {
+        "BATTLECARD_SCHEMA": llm.BATTLECARD_SCHEMA,
+        "ANALYSIS_SCHEMA": llm.ANALYSIS_SCHEMA,
+        "_PROBE_SCHEMA": llm._PROBE_SCHEMA,
+    }
+
+
+@pytest.mark.parametrize("name", list(_all_schemas()))
+def test_sanitised_schemas_use_only_supported_keywords(name):
+    """This is the exact failure that produced a live 400: minItems above 1
+    and maxItems are not supported by structured output."""
+    from ciq.llm import sanitise_schema
+    violations = _walk(sanitise_schema(_all_schemas()[name]))
+    assert violations == [], f"{name} would be rejected: {violations}"
+
+
+def test_sanitiser_clamps_and_strips():
+    from ciq.llm import sanitise_schema
+    cleaned = sanitise_schema({
+        "type": "object",
+        "properties": {
+            "rows": {"type": "array", "minItems": 10, "maxItems": 10,
+                     "items": {"type": "string", "maxLength": 20}},
+            "count": {"type": "number", "minimum": 0, "maximum": 5},
+        },
+        "additionalProperties": True,
+    })
+    rows = cleaned["properties"]["rows"]
+    assert rows["minItems"] == 1
+    assert "maxItems" not in rows
+    assert "maxLength" not in rows["items"]
+    assert cleaned["properties"]["count"] == {"type": "number"}
+    assert cleaned["additionalProperties"] is False
+
+
+def test_sanitiser_refuses_to_silently_drop_structural_keywords():
+    from ciq.llm import LLMUnavailable, sanitise_schema
+    with pytest.raises(LLMUnavailable, match="oneOf"):
+        sanitise_schema({"type": "object", "properties": {},
+                         "oneOf": [{"type": "string"}]})
+
+
+def test_sanitiser_leaves_a_valid_schema_alone():
+    from ciq.llm import sanitise_schema
+    schema = {"type": "object", "properties": {"a": {"type": "string"}},
+              "required": ["a"], "additionalProperties": False}
+    assert sanitise_schema(schema) == schema

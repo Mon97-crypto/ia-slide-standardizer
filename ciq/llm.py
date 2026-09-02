@@ -191,9 +191,12 @@ BATTLECARD_SCHEMA = {
         },
         "scorecard": {
             "type": "array",
-            "minItems": 10,
-            "maxItems": 10,
-            "description": "One entry per dimension, all ten, no repeats.",
+            "minItems": 1,
+            "description": (
+                "Exactly one entry for each of the ten dimensions, no repeats "
+                "and none omitted. The count cannot be expressed in the schema, "
+                "so it is enforced in the prompt and checked after the call."
+            ),
             "items": {
                 "type": "object",
                 "properties": {
@@ -320,7 +323,7 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
         kwargs["output_config"] = {
             "format": {
                 "type": "json_schema",
-                "schema": schema,
+                "schema": sanitise_schema(schema),
             }
         }
     if tools:
@@ -357,6 +360,57 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
     if return_response:
         return payload, response
     return payload
+
+
+# Structured output accepts a subset of JSON Schema. These keywords are pure
+# validation and are safe to strip, because the response is validated in Python
+# anyway. Sending any of them is a 400 with no output at all, which is a far
+# worse outcome than not declaring the constraint.
+_DROPPABLE_SCHEMA_KEYS = frozenset({
+    "maxItems", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+    "multipleOf", "minLength", "maxLength", "uniqueItems", "minProperties",
+    "maxProperties", "minContains", "maxContains",
+})
+# These change the shape of what is accepted, so dropping them silently would
+# alter meaning. They are refused instead.
+_REFUSED_SCHEMA_KEYS = frozenset({"oneOf", "not", "if", "then", "else"})
+
+
+def sanitise_schema(node: Any) -> Any:
+    """Strip keywords structured output rejects, recursively.
+
+    minItems above 1 is unsupported and maxItems is unsupported outright, so a
+    fixed-length array cannot be expressed in the schema. Such counts are
+    stated in the prompt and enforced after the response instead.
+    """
+    if isinstance(node, list):
+        return [sanitise_schema(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+
+    refused = _REFUSED_SCHEMA_KEYS & node.keys()
+    if refused:
+        raise LLMUnavailable(
+            f"Schema uses {', '.join(sorted(refused))}, which structured "
+            "output does not support. Use anyOf instead.")
+
+    cleaned: dict[str, Any] = {}
+    for key, value in node.items():
+        if key in _DROPPABLE_SCHEMA_KEYS:
+            continue
+        if key == "minItems":
+            # Only 0 and 1 are accepted. Anything higher becomes "at least one".
+            try:
+                cleaned[key] = 1 if float(value) >= 1 else 0
+            except (TypeError, ValueError):
+                continue
+            continue
+        cleaned[key] = sanitise_schema(value)
+
+    # Objects must carry additionalProperties: false, and true is rejected.
+    if cleaned.get("type") == "object" and "properties" in cleaned:
+        cleaned["additionalProperties"] = False
+    return cleaned
 
 
 def _api_message(exc: Any) -> str:
@@ -626,6 +680,16 @@ def build_battlecard(competitor: str, passages: list[dict[str, Any]],
 
     rows = normalise_scorecard(card.get("scorecard"))
     card["scorecard"] = rows
+    # The schema cannot require exactly ten entries, so a short scorecard is
+    # possible. Say which dimensions went unscored rather than quietly showing
+    # a smaller table that looks complete.
+    missing = [DIMENSION_LABELS[k] for k in DIMENSION_KEYS
+               if k not in {r["dimension"] for r in rows}]
+    card["missing_dimensions"] = missing
+    if missing:
+        gaps = list(card.get("intel_gaps") or [])
+        gaps.append("Not scored on: " + ", ".join(missing) + ".")
+        card["intel_gaps"] = gaps
     card["totals"] = score_totals(rows)
 
     if not card.get("threatened_products"):
