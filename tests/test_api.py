@@ -323,3 +323,24 @@ def test_a_wrong_method_returns_json(client):
 
 def test_the_page_itself_is_still_html(client):
     assert client.get("/").mimetype == "text/html"
+
+
+def test_diagnose_is_open_and_names_the_failing_stage(client):
+    """It is needed exactly when the app cannot serve, so it must not require
+    an admin session that cannot be established."""
+    report = client.get("/api/diagnose").get_json()["report"]
+    assert report["ok"] is False
+    first = report["stages"][0]
+    assert first["name"] == "Configuration"
+    assert first["ok"] is False
+    assert "CIQ_DB_HOST" in first["fix"]
+
+
+def test_diagnose_never_reveals_the_password(client, monkeypatch):
+    monkeypatch.setenv("CIQ_DB_HOST", "nope.invalid.example")
+    monkeypatch.setenv("CIQ_DB_USER", "postgres.abc")
+    monkeypatch.setenv("CIQ_DB_PASSWORD", "TopSecretValue123")
+    monkeypatch.setenv("CIQ_DB_NAME", "postgres")
+    body = client.get("/api/diagnose").get_data(as_text=True)
+    assert "TopSecretValue123" not in body
+    assert "postgres.abc" in body        # the user is shown, the password is not

@@ -16,7 +16,7 @@ from flask import (Flask, jsonify, render_template, request, send_file,
                    session)
 from werkzeug.exceptions import HTTPException
 
-from ciq import db, ingest, llm
+from ciq import db, diagnose as diag, ingest, llm
 from ciq.competitors import canonical_name, known_names, threatened_products
 from ciq.config import CATEGORIES, Config
 from ciq.fetchers import FetchError, fetch
@@ -359,6 +359,17 @@ def api_admin_import():
         imported += 1
 
     return jsonify({"ok": True, "imported": imported, **db.stats(conn)})
+
+
+@app.route("/api/diagnose")
+def api_diagnose():
+    """Walk the database connection stage by stage and name what failed.
+
+    Deliberately open, because it is needed exactly when the app cannot serve
+    and an admin session cannot be established. It reports host, port, user and
+    database, and never the password.
+    """
+    return jsonify({"ok": True, "report": diag.diagnose()})
 
 
 @app.route("/api/admin/keycheck")

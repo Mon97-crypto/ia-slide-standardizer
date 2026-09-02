@@ -349,6 +349,16 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 .storage-warn code{background:rgba(28,27,27,.07);padding:1px 6px;border-radius:5px;font-size:12.5px}
 .storage-warn .body{flex:1}
 .storage-warn a{color:inherit;font-weight:700}
+.storage-warn button.diag{margin-top:9px;background:rgba(28,27,27,.08);border:0;border-radius:8px;
+  padding:6px 13px;font-size:12.5px;font-weight:700;cursor:pointer;color:inherit}
+.storage-warn button.diag:hover{background:rgba(28,27,27,.14)}
+.diag-out{margin-top:11px;background:rgba(255,255,255,.65);border-radius:10px;padding:12px 14px}
+.diag-row{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.5;padding:3px 0}
+.diag-row .mk{font-weight:800;flex:none;width:15px}
+.diag-row.pass .mk{color:#0d7a53}
+.diag-row.fail .mk{color:#a52a2a}
+.diag-row .nm{font-weight:700;flex:none;width:118px}
+.diag-fix{margin:5px 0 0 142px;font-size:12.5px;font-weight:600}
 .ai-why{position:fixed;top:60px;right:22px;z-index:200;width:min(430px,calc(100vw - 44px));
   background:var(--white);border:1px solid var(--g1);border-radius:14px;padding:18px 20px;
   box-shadow:var(--sh-lg);font-size:13.5px;line-height:1.6}
@@ -966,7 +976,9 @@ async function checkStorage(){
         connection failed, so nothing can be saved or read right now.
         ${bits.length?`<br>It tried ${bits.join(', ')}.`:''}
         ${issues?`<ul style="margin:7px 0 0 18px">${issues}</ul>`:''}
-        ${d.error?`<br><span style="opacity:.75">${esc(d.error)}</span>`:''}</div></div>`;
+        ${d.error?`<br><span style="opacity:.75">${esc(d.error)}</span>`:''}
+        <button class="diag" onclick="runDiagnose(this)">Diagnose the connection</button>
+        <div id="diagOut"></div></div></div>`;
     } else if(!st.durable){
       h = `<div class="storage-warn danger">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
@@ -984,6 +996,28 @@ async function checkStorage(){
       <div class="body"><b>Cannot reach the server.</b> ${esc(err.message)}</div></div>`;
   }
   box.innerHTML = h;
+}
+
+/* Walks the connection stage by stage, so "connection failed" resolves into
+   the one stage that actually broke. */
+async function runDiagnose(btn){
+  const out = document.getElementById('diagOut');
+  if(btn) btn.disabled = true;
+  out.innerHTML = '<div class="diag-out"><div class="a-loading"><span class="spin"></span> Testing configuration, DNS, network and credentials...</div></div>';
+  try{
+    const data = await api('/api/diagnose');
+    const r = data.report;
+    let h = '<div class="diag-out">';
+    r.stages.forEach(st=>{
+      h += `<div class="diag-row ${st.ok?'pass':'fail'}"><span class="mk">${st.ok?'&check;':'&times;'}</span>`
+         + `<span class="nm">${esc(st.name)}</span><span>${esc(st.detail)}${st.ms!=null?` <span style="opacity:.6">(${st.ms} ms)</span>`:''}</span></div>`;
+      if(st.fix) h += `<div class="diag-fix">Fix: ${esc(st.fix)}</div>`;
+    });
+    if(r.ok) h += '<div class="diag-fix" style="margin-left:0;color:#0d7a53">All stages passed. Reload the page.</div>';
+    out.innerHTML = h + '</div>';
+  }catch(err){
+    out.innerHTML = `<div class="diag-out"><span style="color:#a52a2a">${esc(err.message)}</span></div>`;
+  }finally{ if(btn) btn.disabled = false; }
 }
 
 async function whyAi(){
