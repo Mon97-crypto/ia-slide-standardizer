@@ -88,6 +88,21 @@ step. `/healthz` reports which backend is live:
 If `backend` says `sqlite`, `DATABASE_URL` did not reach the service and your
 data will not survive the next deploy.
 
+### 3. Confirm the AI works
+
+`ai_enabled` in `/healthz` only reports that a key is present, not that it
+works. Unlock the Admin panel and click **Run AI self test**. It makes two live
+calls and reports each separately:
+
+- **plain message** failing points at the key, the model, or the credit balance.
+- **plain message** passing while **structured output** fails points at
+  structured outputs specifically, which is what Analyze and the battlecard
+  depend on.
+
+Each failure carries the message the Anthropic API itself returned, so the
+reason is visible rather than inferred. If the model is unavailable to your
+organisation, set `CIQ_MODEL` to one that is.
+
 ## Configuration
 
 See `.env.example`. Notable settings:

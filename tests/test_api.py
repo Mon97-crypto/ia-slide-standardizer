@@ -135,3 +135,24 @@ def test_battlecard_reports_unavailable_without_a_key(client):
     response = client.post("/api/battlecard", json={"competitor": "jda"})
     assert response.status_code == 503
     assert "ANTHROPIC_API_KEY" in response.get_json()["error"]
+
+
+def test_selftest_requires_admin(client):
+    assert client.post("/api/admin/selftest").status_code == 403
+
+
+def test_selftest_reports_a_missing_key_without_calling_out(client):
+    """With no key the report must explain the gap rather than error."""
+    client.post("/api/admin/login", json={"passcode": "testpass"})
+    report = client.post("/api/admin/selftest").get_json()["report"]
+    assert report["ok"] is False
+    assert report["key_present"] is False
+    assert "ANTHROPIC_API_KEY" in report["checks"][0]["error"]
+
+
+def test_selftest_never_returns_the_key(client, monkeypatch):
+    import ciq.config
+    monkeypatch.setattr(ciq.config.Config, "ANTHROPIC_API_KEY", "sk-ant-secret-value")
+    client.post("/api/admin/login", json={"passcode": "testpass"})
+    body = client.post("/api/admin/selftest").get_data(as_text=True)
+    assert "sk-ant-secret-value" not in body

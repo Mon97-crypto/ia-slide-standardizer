@@ -317,6 +317,17 @@ def api_admin_import():
     return jsonify({"ok": True, "imported": imported, **db.stats(conn)})
 
 
+@app.route("/api/admin/selftest", methods=["POST"])
+@admin_required
+def api_admin_selftest():
+    """Confirm the Claude integration end to end, from a live deployment.
+
+    Admin gated because it spends a small amount of API credit and reports
+    configuration detail. It never returns the key itself.
+    """
+    return jsonify({"ok": True, "report": llm.self_test()})
+
+
 @app.route("/api/admin/clear", methods=["POST"])
 @admin_required
 def api_admin_clear():

@@ -211,13 +211,21 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
         response = client.messages.create(**kwargs)
     except anthropic.AuthenticationError as exc:
         raise LLMUnavailable(
-            "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY.") from exc
+            "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in "
+            f"the Render dashboard. ({_api_message(exc)})") from exc
     except anthropic.RateLimitError as exc:
-        raise LLMUnavailable("Rate limited by the Anthropic API. Retry shortly.") from exc
+        raise LLMUnavailable(
+            f"Rate limited by the Anthropic API. Retry shortly. "
+            f"({_api_message(exc)})") from exc
     except anthropic.APIStatusError as exc:
-        raise LLMUnavailable(f"Anthropic API error {exc.status_code}.") from exc
+        # The API's own message names the real cause: an unavailable model, an
+        # exhausted credit balance, a disabled feature. Swallowing it and
+        # printing only a status code leaves nothing to act on.
+        raise LLMUnavailable(
+            f"Anthropic API error {exc.status_code}: {_api_message(exc)}") from exc
     except anthropic.APIConnectionError as exc:
-        raise LLMUnavailable("Could not reach the Anthropic API.") from exc
+        raise LLMUnavailable(
+            f"Could not reach the Anthropic API. ({exc})") from exc
 
     if getattr(response, "stop_reason", None) == "refusal":
         raise LLMUnavailable("The model declined to answer this request.")
@@ -226,6 +234,17 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
     if schema is None:
         return text
     return _parse_json(text)
+
+
+def _api_message(exc: Any) -> str:
+    """Pull the human-readable reason out of an SDK error."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return str(error["message"])
+    message = getattr(exc, "message", None)
+    return str(message or exc)
 
 
 def _parse_json(text: str) -> dict[str, Any]:
@@ -366,3 +385,74 @@ def build_battlecard(competitor: str,
     card["competitor"] = competitor
     card["sources"] = sources
     return card
+
+
+# Minimal schema for the structured-output probe. Kept tiny so the check costs
+# almost nothing while still exercising the same code path as a battlecard.
+_PROBE_SCHEMA = {
+    "type": "object",
+    "properties": {"ok": {"type": "boolean"}},
+    "required": ["ok"],
+    "additionalProperties": False,
+}
+
+
+def self_test() -> dict[str, Any]:
+    """Prove the Claude integration works, and say precisely what fails if not.
+
+    Two probes run separately because they fail for different reasons. A plain
+    message failing points at the key, the model or the credit balance. A plain
+    message succeeding while the structured probe fails points at structured
+    outputs specifically, which is what Analyze and the battlecard rely on.
+    """
+    import time
+
+    report: dict[str, Any] = {
+        "key_present": bool(Config.ANTHROPIC_API_KEY),
+        "model": Config.MODEL,
+        "checks": [],
+    }
+    if not Config.ai_enabled():
+        report["ok"] = False
+        report["checks"].append({
+            "name": "api key configured", "ok": False,
+            "error": "ANTHROPIC_API_KEY is not set on the server.",
+        })
+        return report
+
+    # Both probes keep adaptive thinking on, so they exercise the exact path
+    # Analyze and the battlecard use. The budget is generous because thinking
+    # shares the max_tokens allowance, and a probe that runs out of room would
+    # report a failure the real feature would not have.
+    probes = (
+        ("plain message", lambda: _call(
+            "Reply with the single word: ready.", "Say ready.", max_tokens=1024)),
+        ("structured output", lambda: _call(
+            "Return JSON only.", 'Return {"ok": true}.',
+            max_tokens=1024, schema=_PROBE_SCHEMA)),
+    )
+
+    for name, run in probes:
+        started = time.monotonic()
+        try:
+            result = run()
+            report["checks"].append({
+                "name": name, "ok": True,
+                "ms": int((time.monotonic() - started) * 1000),
+                "sample": str(result)[:120],
+            })
+        except LLMUnavailable as exc:
+            report["checks"].append({
+                "name": name, "ok": False,
+                "ms": int((time.monotonic() - started) * 1000),
+                "error": str(exc),
+            })
+        except Exception as exc:
+            report["checks"].append({
+                "name": name, "ok": False,
+                "ms": int((time.monotonic() - started) * 1000),
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+
+    report["ok"] = all(check["ok"] for check in report["checks"])
+    return report

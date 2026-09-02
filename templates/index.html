@@ -398,12 +398,14 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
       <button class="btn sm" onclick="unlock()">Unlock</button>
     </div>
     <div class="row hidden" id="adminTools">
+      <button class="btn sm" onclick="selfTest()">Run AI self test</button>
       <button class="btn sm ghost" onclick="exportLib()">Export JSON</button>
       <button class="btn sm ghost" onclick="document.getElementById('jsonIn').click()">Import JSON</button>
       <button class="btn sm danger" onclick="clearLib()">Clear all</button>
       <button class="btn sm ghost" onclick="lock()">Lock</button>
     </div>
     <input type="file" id="jsonIn" accept=".json" class="hidden">
+    <div id="selfTestOut"></div>
   </div>
 </section>
 
@@ -672,6 +674,27 @@ async function lock(){
   await fetch('/api/admin/logout', {method:'POST'});
   $('lockRow').classList.remove('hidden'); $('adminTools').classList.add('hidden'); toast('Locked');
 }
+async function selfTest(){
+  const out = $('selfTestOut');
+  out.innerHTML = '<div class="a-loading"><span class="spin"></span> Calling the Anthropic API...</div>';
+  try{
+    const res = await fetch('/api/admin/selftest', {method:'POST'});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Self test failed to run');
+    const r = data.report;
+    let h = `<div class="analysis"><div class="a-label">AI self test &middot; model ${esc(r.model)}</div>`;
+    r.checks.forEach(c=>{
+      h += `<div class="a-item"><span class="b" style="color:${c.ok?'#0d7a53':'#a52a2a'}">${c.ok?'&check;':'&times;'}</span>`
+         + `<span><strong>${esc(c.name)}</strong>${c.ms!=null?` &middot; ${c.ms} ms`:''}`
+         + (c.error?`<br><span style="color:#a52a2a">${esc(c.error)}</span>`:'') + '</span></div>';
+    });
+    h += r.ok
+      ? '<div class="a-summary" style="margin-top:10px">AI is working. Analyze, Ask and battlecards are live.</div>'
+      : '<div class="a-error">AI is not working yet. The message above is the reason the Anthropic API gave.</div>';
+    out.innerHTML = h + '</div>';
+  }catch(err){ out.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
+}
+
 function exportLib(){ window.location = '/api/admin/export'; }
 $('jsonIn').addEventListener('change', async e=>{
   const file = e.target.files[0]; if(!file) return;
