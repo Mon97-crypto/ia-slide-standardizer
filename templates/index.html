@@ -399,6 +399,7 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
     </div>
     <div class="row hidden" id="adminTools">
       <button class="btn sm" onclick="selfTest()">Run AI self test</button>
+      <button class="btn sm ghost" onclick="keyCheck()">Why is AI off?</button>
       <button class="btn sm ghost" onclick="exportLib()">Export JSON</button>
       <button class="btn sm ghost" onclick="document.getElementById('jsonIn').click()">Import JSON</button>
       <button class="btn sm danger" onclick="clearLib()">Clear all</button>
@@ -674,6 +675,32 @@ async function lock(){
   await fetch('/api/admin/logout', {method:'POST'});
   $('lockRow').classList.remove('hidden'); $('adminTools').classList.add('hidden'); toast('Locked');
 }
+async function keyCheck(){
+  const out = $('selfTestOut');
+  out.innerHTML = '<div class="a-loading"><span class="spin"></span> Checking configuration...</div>';
+  try{
+    const res = await fetch('/api/admin/keycheck');
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Check failed');
+    const d = data.diagnostics;
+    const found = d.source !== 'missing';
+    let h = '<div class="analysis"><div class="a-label">Anthropic key configuration</div>';
+    h += `<div class="a-item"><span class="b" style="color:${found?'#0d7a53':'#a52a2a'}">${found?'&check;':'&times;'}</span>`
+       + `<span>${found?('Key found in the '+esc(d.source.replace('_',' '))):'No key found'}</span></div>`;
+    h += `<div class="a-item"><span class="b">&bull;</span><span>Expected variable: <strong>${esc(d.expected_variable)}</strong></span></div>`;
+    h += `<div class="a-item"><span class="b">&bull;</span><span>Related variable names present: ${
+      d.related_variable_names_present.length ? d.related_variable_names_present.map(esc).join(', ') : 'none'}</span></div>`;
+    h += `<div class="a-item"><span class="b">&bull;</span><span>Secret files at ${esc(d.secret_file_dir)}: ${
+      d.secret_file_dir_exists ? (d.secret_file_names_present.map(esc).join(', ') || 'directory is empty') : 'directory not present'}</span></div>`;
+    if(!found){
+      h += '<div class="a-info">If a related name above is close but not exactly <strong>ANTHROPIC_API_KEY</strong>, that is the problem. '
+         + 'If the key was added as a Render <strong>Secret File</strong> rather than an <strong>Environment Variable</strong>, name the file exactly ANTHROPIC_API_KEY. '
+         + 'Environment changes need a restart to take effect.</div>';
+    }
+    out.innerHTML = h + '</div>';
+  }catch(err){ out.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
+}
+
 async function selfTest(){
   const out = $('selfTestOut');
   out.innerHTML = '<div class="a-loading"><span class="spin"></span> Calling the Anthropic API...</div>';

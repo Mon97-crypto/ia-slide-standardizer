@@ -183,7 +183,7 @@ def _client():
         import anthropic
     except ImportError as exc:  # pragma: no cover
         raise LLMUnavailable("Server is missing the anthropic package.") from exc
-    return anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+    return anthropic.Anthropic(api_key=Config.api_key())
 
 
 def _call(system: str, prompt: str, max_tokens: int = 4000,
@@ -408,7 +408,8 @@ def self_test() -> dict[str, Any]:
     import time
 
     report: dict[str, Any] = {
-        "key_present": bool(Config.ANTHROPIC_API_KEY),
+        "key_present": Config.ai_enabled(),
+        "key_source": Config.api_key_with_source()[1],
         "model": Config.MODEL,
         "checks": [],
     }

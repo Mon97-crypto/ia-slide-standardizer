@@ -64,7 +64,15 @@ def healthz():
         counts = db.stats(store())
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
-    return jsonify({"ok": True, "ai_enabled": llm.available(), **counts})
+    # key_source says where the key was found, or that it was not found at
+    # all. It never reveals the key. This is the first thing to check when the
+    # header shows "AI off".
+    return jsonify({
+        "ok": True,
+        "ai_enabled": llm.available(),
+        "key_source": Config.api_key_with_source()[1],
+        **counts,
+    })
 
 
 # ─── library ───────────────────────────────────────────────────────────────
@@ -315,6 +323,17 @@ def api_admin_import():
         imported += 1
 
     return jsonify({"ok": True, "imported": imported, **db.stats(conn)})
+
+
+@app.route("/api/admin/keycheck")
+@admin_required
+def api_admin_keycheck():
+    """Explain why the Anthropic key was or was not found.
+
+    Reports variable and file names only, never values, so it is safe to read
+    against a live deployment.
+    """
+    return jsonify({"ok": True, "diagnostics": Config.key_diagnostics()})
 
 
 @app.route("/api/admin/selftest", methods=["POST"])

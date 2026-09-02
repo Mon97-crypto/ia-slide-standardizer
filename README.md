@@ -88,7 +88,26 @@ step. `/healthz` reports which backend is live:
 If `backend` says `sqlite`, `DATABASE_URL` did not reach the service and your
 data will not survive the next deploy.
 
-### 3. Confirm the AI works
+### 3. If the header says "AI off"
+
+`/healthz` reports `key_source`, which names where the key was found:
+
+- `environment` the key is set as a Render Environment Variable.
+- `secret_file` the key is mounted as a Render Secret File.
+- `missing` no key was found, which is what "AI off" reflects.
+
+Render offers Environment Variables and Secret Files as separate features with
+similar names. Only Environment Variables reach `os.environ`; Secret Files
+mount under `/etc/secrets`. Both are supported, but a Secret File must be named
+exactly `ANTHROPIC_API_KEY`.
+
+When `key_source` is `missing`, unlock Admin and click **Why is AI off?**. It
+lists the variable names actually present, so a near miss such as
+`ANTHROPIC_KEY` is visible immediately. It never prints any value.
+
+Environment changes require a restart before they take effect.
+
+### 4. Confirm the AI works
 
 `ai_enabled` in `/healthz` only reports that a key is present, not that it
 works. Unlock the Admin panel and click **Run AI self test**. It makes two live

@@ -27,7 +27,14 @@ class Config:
         return cls.DATABASE_URL or cls.DB_PATH
 
     # Anthropic. The key stays server side and is never sent to the browser.
-    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    # Read lazily rather than captured at import, so a key added to the
+    # environment takes effect without depending on when this module loaded.
+    #
+    # Render offers two separate features with similar names: Environment
+    # Variables, which land in os.environ, and Secret Files, which are mounted
+    # under /etc/secrets and never appear in the environment at all. A key put
+    # in the wrong one would otherwise look simply absent, so both are checked.
+    SECRET_FILE_DIR = os.environ.get("CIQ_SECRET_FILE_DIR", "/etc/secrets")
     MODEL = os.environ.get("CIQ_MODEL", "claude-opus-5")
     MAX_UPLOAD_BYTES = int(os.environ.get("CIQ_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
 
@@ -41,8 +48,62 @@ class Config:
     REMOTE_FETCH_MAX_BYTES = int(os.environ.get("CIQ_REMOTE_FETCH_MAX_BYTES", 25 * 1024 * 1024))
 
     @classmethod
+    def api_key_with_source(cls) -> tuple[str, str]:
+        """Return the Anthropic key and where it came from."""
+        from_env = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        if from_env:
+            return from_env, "environment"
+        try:
+            path = Path(cls.SECRET_FILE_DIR) / "ANTHROPIC_API_KEY"
+            if path.is_file():
+                value = path.read_text().strip()
+                if value:
+                    return value, "secret_file"
+        except OSError:
+            pass
+        return "", "missing"
+
+    @classmethod
+    def api_key(cls) -> str:
+        return cls.api_key_with_source()[0]
+
+    @classmethod
     def ai_enabled(cls) -> bool:
-        return bool(cls.ANTHROPIC_API_KEY)
+        return bool(cls.api_key())
+
+    @classmethod
+    def key_diagnostics(cls) -> dict:
+        """Explain why the key was or was not found, without revealing it.
+
+        Only names are reported, never values, so this is safe to read while
+        debugging a live deployment.
+        """
+        _, source = cls.api_key_with_source()
+        # Narrow enough to be readable, wide enough to catch a typo such as
+        # ANTHROPIC_KEY or ANTROPIC_API_KEY. ANTHROPIC_BASE_URL is included on
+        # purpose: an unexpected base URL redirects calls away from the real
+        # API and is worth seeing here.
+        related = sorted(
+            name for name in os.environ
+            if "ANTHROPIC" in name.upper() or "API_KEY" in name.upper()
+        )[:20]
+        secret_files: list[str] = []
+        secret_dir_exists = False
+        try:
+            directory = Path(cls.SECRET_FILE_DIR)
+            secret_dir_exists = directory.is_dir()
+            if secret_dir_exists:
+                secret_files = sorted(f.name for f in directory.iterdir())
+        except OSError:
+            pass
+        return {
+            "source": source,
+            "expected_variable": "ANTHROPIC_API_KEY",
+            "related_variable_names_present": related,
+            "secret_file_dir": cls.SECRET_FILE_DIR,
+            "secret_file_dir_exists": secret_dir_exists,
+            "secret_file_names_present": secret_files,
+        }
 
     @classmethod
     def secret_key(cls) -> bytes:

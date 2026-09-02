@@ -151,8 +151,43 @@ def test_selftest_reports_a_missing_key_without_calling_out(client):
 
 
 def test_selftest_never_returns_the_key(client, monkeypatch):
-    import ciq.config
-    monkeypatch.setattr(ciq.config.Config, "ANTHROPIC_API_KEY", "sk-ant-secret-value")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret-value")
     client.post("/api/admin/login", json={"passcode": "testpass"})
     body = client.post("/api/admin/selftest").get_data(as_text=True)
     assert "sk-ant-secret-value" not in body
+
+
+def test_healthz_reports_where_the_key_came_from(client):
+    body = client.get("/healthz").get_json()
+    assert body["key_source"] == "missing"
+    assert body["ai_enabled"] is False
+
+
+def test_keycheck_requires_admin(client):
+    assert client.get("/api/admin/keycheck").status_code == 403
+
+
+def test_keycheck_explains_a_missing_key_without_leaking_values(
+        client, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_LOOKALIKE_API_KEY", "sk-ant-should-not-appear")
+    client.post("/api/admin/login", json={"passcode": "testpass"})
+    response = client.get("/api/admin/keycheck")
+    body = response.get_data(as_text=True)
+    diagnostics = response.get_json()["diagnostics"]
+    assert diagnostics["source"] == "missing"
+    # The lookalike name is surfaced so a typo is visible, the value is not.
+    assert "ANTHROPIC_LOOKALIKE_API_KEY" in diagnostics[
+        "related_variable_names_present"]
+    assert "sk-ant-should-not-appear" not in body
+
+
+def test_a_key_in_a_secret_file_is_found(client, monkeypatch, tmp_path):
+    """Render Secret Files mount on disk and never reach os.environ. A key put
+    there must still switch AI on."""
+    import ciq.config
+    (tmp_path / "ANTHROPIC_API_KEY").write_text("sk-ant-from-a-secret-file\n")
+    monkeypatch.setattr(ciq.config.Config, "SECRET_FILE_DIR", str(tmp_path))
+    assert ciq.config.Config.ai_enabled() is True
+    assert ciq.config.Config.api_key_with_source()[1] == "secret_file"
+    # Surrounding whitespace from the file must not reach the API header.
+    assert ciq.config.Config.api_key() == "sk-ant-from-a-secret-file"
