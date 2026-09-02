@@ -634,9 +634,21 @@ def test_stray_whitespace_is_named():
     assert any("whitespace" in i for i in d["issues"])
 
 
-def test_a_host_without_a_dot_is_flagged():
-    d = db.describe_target("postgresql://user:pw@localhostx:5432/db")
-    assert any("not a domain name" in i for i in d["issues"])
+@pytest.mark.parametrize("url", [
+    "postgresql://ciq:pw@dpg-cv1234abcd-a/ciq",      # platform internal host
+    "postgresql://u:pw@localhost:5432/db",
+    "postgresql://u:pw@db:5432/app",                 # container service name
+])
+def test_a_legitimate_dotless_host_is_not_flagged(url):
+    """Internal hostnames have no dot. Flagging them sent people to fix a
+    password that was never wrong."""
+    assert db.describe_target(url)["issues"] == []
+
+
+def test_the_username_appearing_as_the_host_is_flagged():
+    """That is the unmistakable signature of a truncated URL."""
+    d = db.describe_target("postgresql://myuser:pw@myuser/db")
+    assert any("Percent-encode" in i for i in d["issues"])
 
 
 def test_diagnostics_never_reveal_the_password():

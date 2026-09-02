@@ -251,12 +251,14 @@ def describe_target(url: str) -> dict[str, Any]:
     host = report["host"]
     if not host:
         report["issues"].append("No host could be read from the value.")
-    elif "." not in host:
-        # A hostname with no dot is almost always the username, promoted to the
-        # host position because an unencoded character cut the URL short.
+    elif host == report.get("user"):
+        # The unmistakable signature of a truncated URL: the username ended up
+        # in the host position. A hostname merely lacking a dot is not enough
+        # to conclude that, because internal hostnames on a platform network,
+        # container names and localhost all legitimately have none, and a false
+        # alarm sends someone to fix a password that was never wrong.
         report["issues"].append(
-            f"The host reads as {host!r}, which is not a domain name. "
-            + _password_hint())
+            f"The host and the user are both {host!r}. " + _password_hint())
 
     # A pooled connection routes by project, and the project reference travels
     # in the username. A bare "postgres" gives the pooler nothing to route on,
