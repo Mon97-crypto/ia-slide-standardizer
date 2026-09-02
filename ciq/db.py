@@ -257,6 +257,18 @@ def describe_target(url: str) -> dict[str, Any]:
         report["issues"].append(
             f"The host reads as {host!r}, which is not a domain name. "
             + _password_hint())
+
+    # A pooled connection routes by project, and the project reference travels
+    # in the username. A bare "postgres" gives the pooler nothing to route on,
+    # so it rejects the credentials and the failure reads as a wrong password.
+    user = report.get("user") or ""
+    if host and "pooler" in host and user and "." not in user:
+        report["issues"].append(
+            f"The user is {user!r}, but a pooled connection needs the project "
+            "reference in the username, as postgres.<project-ref>. A bare "
+            "'postgres' fails as a password error even when the password is "
+            "correct. Copy the pooler string from the provider rather than "
+            "editing the direct one.")
     return report
 
 

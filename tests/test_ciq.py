@@ -656,3 +656,26 @@ def test_a_harmless_special_character_is_not_flagged():
 
 def test_an_empty_value_is_named():
     assert any("empty" in i for i in db.describe_target("")["issues"])
+
+
+def test_a_bare_postgres_user_on_a_pooler_host_is_flagged():
+    """A pooled connection routes by project, and the reference travels in the
+    username. A bare 'postgres' is rejected as a password failure even when the
+    password is right, which sends people to reset a password that was fine."""
+    d = db.describe_target(
+        "postgresql://postgres:Secret1@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres")
+    assert any("project reference" in i for i in d["issues"])
+
+
+def test_a_project_scoped_user_on_a_pooler_host_is_accepted():
+    d = db.describe_target(
+        "postgresql://postgres.qwertyuiop:Secret1@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres")
+    assert d["issues"] == []
+
+
+def test_a_bare_postgres_user_on_a_direct_host_is_not_flagged():
+    """Bare 'postgres' is correct for a direct connection, so flagging it there
+    would send someone to fix something that is not broken."""
+    d = db.describe_target(
+        "postgresql://postgres:Secret1@db.qwertyuiop.supabase.co:5432/postgres")
+    assert d["issues"] == []
