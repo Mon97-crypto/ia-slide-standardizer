@@ -264,6 +264,16 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 .toast.show{transform:translate(-50%,0);opacity:1}
 .toast svg{width:17px;height:17px;color:var(--green)}
 .hidden{display:none !important}
+.ai-why{position:fixed;top:60px;right:22px;z-index:200;width:min(430px,calc(100vw - 44px));
+  background:var(--white);border:1px solid var(--g1);border-radius:14px;padding:18px 20px;
+  box-shadow:var(--sh-lg);font-size:13.5px;line-height:1.6}
+.ai-why h5{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--blue);margin-bottom:10px}
+.ai-why code{background:var(--off-white);padding:1px 6px;border-radius:5px;font-size:12.5px}
+.ai-why .close{position:absolute;top:12px;right:14px;background:0;border:0;cursor:pointer;
+  color:var(--g3);font-size:17px;line-height:1}
+.ai-why ol{margin:9px 0 0 18px}
+.ai-why li{margin-bottom:6px}
 @media(max-width:820px){
   .wrap,.console,.results,section.panel{padding-left:20px;padding-right:20px}
   .nav-inner{padding:12px 20px}
@@ -284,9 +294,9 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
     </div>
     <div class="nav-right">
       {% if ai_enabled %}
-        <span class="pill ok" title="ANTHROPIC_API_KEY is set on the server"><span class="dot"></span> AI ready</span>
+        <button class="pill ok" onclick="whyAi()" title="Click for details"><span class="dot"></span> AI ready</button>
       {% else %}
-        <span class="pill warn" title="Set ANTHROPIC_API_KEY to enable Analyze, Ask and battlecards"><span class="dot"></span> AI off</span>
+        <button class="pill warn" onclick="whyAi()" title="Click to see why"><span class="dot"></span> AI off &middot; why?</button>
       {% endif %}
       <button class="pill" onclick="document.getElementById('admin').scrollIntoView({behavior:'smooth'})">Admin</button>
     </div>
@@ -411,6 +421,7 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 </section>
 
 <footer>Impact Analytics · Competitor Intelligence</footer>
+<div class="ai-why" id="aiWhy" hidden></div>
 <div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg><span id="toastMsg"></span></div>
 
 <script>
@@ -738,6 +749,41 @@ async function clearLib(){
   const data = await res.json();
   if(data.ok){ toast(`Cleared ${data.deleted} entries`); doSearch(); }
   else toast(data.error||'Could not clear');
+}
+
+async function whyAi(){
+  const box = $('aiWhy');
+  box.hidden = false;
+  box.innerHTML = '<div class="a-loading"><span class="spin"></span> Checking...</div>';
+  try{
+    const h = await (await fetch('/healthz')).json();
+    const src = h.key_source || 'unknown';
+    let body;
+    if(h.ai_enabled){
+      body = `<p>A key is loaded from the <code>${esc(src.replace('_',' '))}</code>.</p>
+        <p style="margin-top:8px">That only means a key is <em>present</em>. To prove it actually works,
+        unlock Admin below and run the AI self test.</p>`;
+    } else {
+      body = `<p>No Anthropic key reached this server. <code>key_source</code> is
+        <code>${esc(src)}</code>.</p>
+        <p style="margin-top:10px">On Render, check in this order:</p>
+        <ol>
+          <li>The key is under <strong>Environment &rarr; Environment Variables</strong>,
+              named exactly <code>ANTHROPIC_API_KEY</code>. A <strong>Secret File</strong> also works,
+              but the file must carry that exact name.</li>
+          <li>It is set on <strong>this</strong> service, if you created more than one.</li>
+          <li>The service restarted after the value was saved.</li>
+          <li>The value is not empty, and has no stray quotes around it.</li>
+        </ol>
+        <p style="margin-top:10px">Admin below has <strong>Why is AI off?</strong>, which lists the
+        variable names actually present so a typo is visible.</p>`;
+    }
+    box.innerHTML = `<button class="close" onclick="document.getElementById('aiWhy').hidden=true">&times;</button>
+      <h5>Anthropic key status</h5>${body}`;
+  }catch(err){
+    box.innerHTML = `<button class="close" onclick="document.getElementById('aiWhy').hidden=true">&times;</button>
+      <div class="a-error">${esc(err.message)}</div>`;
+  }
 }
 
 doSearch();
