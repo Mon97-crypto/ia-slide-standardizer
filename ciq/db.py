@@ -23,7 +23,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from .competitors import canonical_name, competitor_key
 
@@ -193,6 +193,92 @@ class Store:
 
 def _is_postgres_url(url: str) -> bool:
     return urlparse(url).scheme in ("postgres", "postgresql")
+
+
+# Characters that must be percent-encoded inside a password. Left raw, they
+# terminate the URL early and the username or a password fragment ends up being
+# used as the hostname, which fails DNS with a message that names nothing.
+RESERVED_IN_PASSWORD = {"@": "%40", "/": "%2F", "?": "%3F",
+                        "#": "%23", ":": "%3A", "&": "%26"}
+
+
+def describe_target(url: str) -> dict[str, Any]:
+    """Explain a connection string without ever revealing its password.
+
+    A DNS failure says only "Name or service not known" and never names the
+    host it tried, so the common causes all look identical. Reporting the host
+    that was actually parsed makes a mangled URL obvious at a glance.
+    """
+    report: dict[str, Any] = {"issues": [], "host": None, "port": None,
+                              "user": None, "database": None}
+    if not url:
+        report["issues"].append("DATABASE_URL is empty.")
+        return report
+
+    if url != url.strip():
+        report["issues"].append(
+            "The value has leading or trailing whitespace. Retype it.")
+    cleaned = url.strip()
+    if cleaned[:1] in ("\"", "'") or cleaned[-1:] in ("\"", "'"):
+        report["issues"].append(
+            "The value is wrapped in quotes. Save it without them.")
+        cleaned = cleaned.strip("\"'")
+    if "[" in cleaned or "]" in cleaned:
+        report["issues"].append(
+            "The value still contains a [placeholder]. Replace it, brackets "
+            "included, with the real value.")
+
+    try:
+        parts = urlsplit(cleaned)
+        report["host"] = parts.hostname
+        report["port"] = parts.port
+        report["user"] = parts.username
+        report["database"] = parts.path.lstrip("/") or None
+    except ValueError as exc:
+        report["issues"].append(f"The value cannot be parsed: {exc}")
+        # A parse failure here is nearly always a raw reserved character in the
+        # password rather than a genuinely malformed URL, so say so plainly
+        # instead of leaving a message about casting a port.
+        report["issues"].append(_password_hint())
+        # Recover the host by hand so it can still be reported.
+        try:
+            netloc = cleaned.split("//", 1)[1].split("/", 1)[0]
+            report["host"] = netloc.rsplit("@", 1)[-1].split(":", 1)[0] or None
+        except IndexError:
+            pass
+        return report
+
+    host = report["host"]
+    if not host:
+        report["issues"].append("No host could be read from the value.")
+    elif "." not in host:
+        # A hostname with no dot is almost always the username, promoted to the
+        # host position because an unencoded character cut the URL short.
+        report["issues"].append(
+            f"The host reads as {host!r}, which is not a domain name. "
+            + _password_hint())
+    return report
+
+
+def _password_hint() -> str:
+    encoded = ", ".join(f"{ch} as {code}" for ch, code
+                        in list(RESERVED_IN_PASSWORD.items())[:4])
+    return ("A password containing a reserved character ends the URL early and "
+            "pushes the wrong text into the host position. Percent-encode it "
+            f"({encoded}), or reset the database password to letters and "
+            "digits only.")
+
+
+def resolve_host(host: str) -> tuple[bool, str]:
+    """Check whether a hostname resolves, so DNS is separated from auth."""
+    import socket
+    if not host:
+        return False, "no host to resolve"
+    try:
+        socket.getaddrinfo(host, None)
+        return True, "resolves"
+    except socket.gaierror as exc:
+        return False, str(exc)
 
 
 def _is_connection_error(exc: Exception) -> bool:

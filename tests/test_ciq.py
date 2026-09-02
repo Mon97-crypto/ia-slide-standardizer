@@ -581,3 +581,78 @@ def test_postgres_connections_disable_prepared_statements():
     source = inspect.getsource(db._open_postgres)
     assert "prepare_threshold=None" in source
     assert "connect_timeout" in source
+
+
+# ─── connection string diagnostics ─────────────────────────────────────────
+
+def test_a_valid_connection_string_reports_no_issues():
+    d = db.describe_target(
+        "postgresql://postgres.abc:Secret1@aws-0-us-east-1.pooler.supabase.com:5432/postgres")
+    assert d["host"] == "aws-0-us-east-1.pooler.supabase.com"
+    assert d["port"] == 5432
+    assert d["user"] == "postgres.abc"
+    assert d["database"] == "postgres"
+    assert d["issues"] == []
+
+
+# & and : are legal in the userinfo part and parse cleanly, so they are
+# deliberately not flagged. Only characters that actually truncate the URL are.
+@pytest.mark.parametrize("password", ["Pa/ss", "Pa#ss", "Pa?ss"])
+def test_a_reserved_character_in_the_password_is_named(password):
+    """This is the failure that reports only "Name or service not known"."""
+    d = db.describe_target(
+        f"postgresql://postgres.abc:{password}@aws-0-us-east-1.pooler.supabase.com:5432/postgres")
+    joined = " ".join(d["issues"])
+    assert "Percent-encode" in joined
+    assert "%2F" in joined
+
+
+def test_a_slash_in_the_password_puts_the_username_in_the_host_position():
+    """Seeing the username reported as the host is the giveaway, so the
+    recovered host must be the wrong one that DNS actually received."""
+    d = db.describe_target(
+        "postgresql://postgres.abc:Pa/ss@aws-0-us-east-1.pooler.supabase.com:5432/postgres")
+    assert d["host"] == "postgres.abc"
+
+
+def test_a_leftover_placeholder_is_named():
+    d = db.describe_target(
+        "postgresql://postgres.abc:[YOUR-PASSWORD]@host.pooler.supabase.com:5432/postgres")
+    assert any("placeholder" in i for i in d["issues"])
+
+
+def test_surrounding_quotes_are_named():
+    d = db.describe_target(
+        '"postgresql://postgres.abc:Secret1@host.pooler.supabase.com:5432/postgres"')
+    assert any("quotes" in i for i in d["issues"])
+    assert d["host"] == "host.pooler.supabase.com"
+
+
+def test_stray_whitespace_is_named():
+    d = db.describe_target(
+        " postgresql://postgres.abc:Secret1@host.pooler.supabase.com:5432/postgres\n")
+    assert any("whitespace" in i for i in d["issues"])
+
+
+def test_a_host_without_a_dot_is_flagged():
+    d = db.describe_target("postgresql://user:pw@localhostx:5432/db")
+    assert any("not a domain name" in i for i in d["issues"])
+
+
+def test_diagnostics_never_reveal_the_password():
+    secret = "SuperSecret123"
+    d = db.describe_target(
+        f"postgresql://postgres.abc:{secret}@host.pooler.supabase.com:5432/postgres")
+    assert secret not in json.dumps(d)
+
+
+def test_a_harmless_special_character_is_not_flagged():
+    """A false alarm sends someone chasing the wrong thing."""
+    d = db.describe_target(
+        "postgresql://postgres.abc:Pa&ss@aws-0-us-east-1.pooler.supabase.com:5432/postgres")
+    assert d["issues"] == []
+    assert d["host"] == "aws-0-us-east-1.pooler.supabase.com"
+
+
+def test_an_empty_value_is_named():
+    assert any("empty" in i for i in db.describe_target("")["issues"])

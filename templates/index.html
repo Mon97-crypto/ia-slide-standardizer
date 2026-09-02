@@ -955,12 +955,18 @@ async function checkStorage(){
     const d = await res.json();
     const st = d.storage || {};
     if(st.configured && st.reachable === false){
+      const bits = [];
+      if(st.host) bits.push(`host <code>${esc(st.host)}</code>${st.port?` port <code>${esc(String(st.port))}</code>`:''}`);
+      if(st.user) bits.push(`user <code>${esc(st.user)}</code>`);
+      if(st.host_resolves === false) bits.push('<b>that host does not resolve</b>');
+      const issues = (st.issues||[]).map(i=>`<li>${esc(i)}</li>`).join('');
       h = `<div class="storage-warn broken">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
         <div class="body"><b>The database is not reachable.</b> <code>DATABASE_URL</code> is set but the
-        connection failed, so nothing can be saved or read right now. Check the connection string, and that it ends with
-        <code>?sslmode=require</code> if your provider needs it.
-        ${d.error?`<br><span style="opacity:.8">${esc(d.error)}</span>`:''}</div></div>`;
+        connection failed, so nothing can be saved or read right now.
+        ${bits.length?`<br>It tried ${bits.join(', ')}.`:''}
+        ${issues?`<ul style="margin:7px 0 0 18px">${issues}</ul>`:''}
+        ${d.error?`<br><span style="opacity:.75">${esc(d.error)}</span>`:''}</div></div>`;
     } else if(!st.durable){
       h = `<div class="storage-warn danger">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>

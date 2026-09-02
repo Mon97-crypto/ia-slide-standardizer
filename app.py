@@ -68,7 +68,16 @@ def healthz():
         # A configured database that cannot be reached must never fall back to
         # local storage. Silently degrading to a file is exactly how a library
         # disappears on the next deploy.
-        storage = {**storage, "reachable": False, "error": str(exc)}
+        # Name the host that was actually parsed. A DNS failure reports only
+        # "Name or service not known" and never says what it tried, so a
+        # mangled connection string is indistinguishable from a real outage.
+        detail = db.describe_target(Config.database_url())
+        resolves, dns = db.resolve_host(detail.get("host") or "")
+        storage = {**storage, "reachable": False, "error": str(exc),
+                   "host": detail.get("host"), "port": detail.get("port"),
+                   "user": detail.get("user"), "database": detail.get("database"),
+                   "host_resolves": resolves, "dns": dns,
+                   "issues": detail.get("issues", [])}
         return jsonify({"ok": False, "storage": storage,
                         "error": f"The database is not reachable: {exc}"}), 500
     storage["reachable"] = True
