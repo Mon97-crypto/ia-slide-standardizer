@@ -173,6 +173,22 @@ Each failure carries the message the Anthropic API itself returned, so the
 reason is visible rather than inferred. If the model is unavailable to your
 organisation, set `CIQ_MODEL` to one that is.
 
+## Long work runs as a job
+
+Generating a battlecard or a deck runs two model calls, one of them an agentic
+research loop, and takes longer than a web request should be held open. Held
+inside the request, it exceeds the hosting platform's proxy timeout and the
+browser is handed a 502 from the proxy, which the application never sees and so
+cannot explain.
+
+Those endpoints now return a job id immediately and the browser polls
+`/api/jobs/<id>` for progress. Job state lives in the database rather than in
+process memory, because the request that starts a job and the request that
+polls for it are frequently handled by different workers.
+
+Anthropic calls carry a timeout (`CIQ_API_TIMEOUT`). Without one a stalled call
+holds a worker until the platform kills it.
+
 ## Cost control
 
 Every API call is metered with the token counts the API reports, priced at list

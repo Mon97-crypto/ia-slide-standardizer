@@ -369,7 +369,12 @@ def _client():
         import anthropic
     except ImportError as exc:  # pragma: no cover
         raise LLMUnavailable("Server is missing the anthropic package.") from exc
-    return anthropic.Anthropic(api_key=Config.api_key())
+    # Without a timeout a stalled request holds a worker open until the
+    # platform kills it, which surfaces to the browser as a 502 from the proxy
+    # rather than as an error the application can explain.
+    return anthropic.Anthropic(api_key=Config.api_key(),
+                               timeout=Config.API_TIMEOUT,
+                               max_retries=1)
 
 
 def _extract_sources(response: Any) -> list[dict[str, str]]:

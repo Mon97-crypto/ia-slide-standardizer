@@ -101,6 +101,8 @@ class Config:
     RESEARCH_CACHE_HOURS = float(os.environ.get("CIQ_RESEARCH_CACHE_HOURS", 24))
     # A hard ceiling on a day's spend. Zero disables the guard.
     DAILY_BUDGET_USD = float(os.environ.get("CIQ_DAILY_BUDGET_USD", 5.0))
+    # Ceiling on a single Anthropic request, in seconds.
+    API_TIMEOUT = float(os.environ.get("CIQ_API_TIMEOUT", 240))
     MAX_UPLOAD_BYTES = int(os.environ.get("CIQ_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
 
     # Access is by company identity through Google, not a shared passcode.

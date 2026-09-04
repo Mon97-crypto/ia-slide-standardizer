@@ -11,6 +11,7 @@ import json
 import os
 import re
 import secrets
+import threading
 import uuid
 from functools import wraps
 
@@ -44,6 +45,48 @@ def _record_usage(row: dict) -> None:
     """Attribute each API call to the person who triggered it."""
     user = current_user() or {}
     db.record_usage(store(), {**row, "user_email": user.get("email", "")})
+
+
+def run_in_background(kind: str, stage: str, work) -> str:
+    """Start work that takes longer than a request should, and return its id.
+
+    A battlecard runs two model calls, one of them an agentic research loop.
+    Held inside the request that asked for it, that exceeds the platform's
+    proxy timeout and the browser is handed a 502 from the proxy, which the
+    application never sees and so cannot explain. The request now returns
+    immediately and the browser polls.
+    """
+    job_id = uuid.uuid4().hex[:16]
+    user = current_user() or {}
+    conn = store()
+    db.create_job(conn, job_id, kind, stage, user.get("email", ""))
+    db.purge_jobs(conn)
+
+    def runner():
+        try:
+            result = work(lambda s: db.update_job(store(), job_id, stage=s))
+            db.update_job(store(), job_id, status="done", stage="",
+                          result=result)
+        except llm.BudgetExceeded as exc:
+            db.update_job(store(), job_id, status="error", error=str(exc))
+        except llm.LLMUnavailable as exc:
+            db.update_job(store(), job_id, status="error", error=str(exc))
+        except Exception as exc:
+            app.logger.exception("Background %s failed", kind)
+            db.update_job(store(), job_id, status="error",
+                          error=f"{type(exc).__name__}: {exc}")
+
+    threading.Thread(target=runner, daemon=True).start()
+    return job_id
+
+
+@app.route("/api/jobs/<job_id>")
+@login_required
+def api_job(job_id: str):
+    job = db.get_job(store(), job_id)
+    if job is None:
+        return fail("That job is not known. It may have been cleared.", 404)
+    return jsonify({"ok": True, "job": job})
 
 
 def _budget_status() -> dict:
@@ -321,43 +364,44 @@ def api_chat():
 @app.route("/api/deck", methods=["POST"])
 @login_required
 def api_deck():
-    """Draft a sales deck from a brief, the library and public research."""
     payload = request.get_json(silent=True) or {}
     brief = (payload.get("brief") or "").strip()
     if not brief:
         return fail("Describe the deck you need.")
+    want_research = payload.get("research", Config.RESEARCH_BY_DEFAULT)
 
-    conn = store()
-    competitor = payload.get("competitor") or parse_query(brief).competitor
-    passages = (gather_passages(conn, llm.BATTLECARD_THEMES, competitor)
-                if competitor else retrieve_passages(conn, brief, limit=16))
+    def work(progress):
+        conn = store()
+        competitor = payload.get("competitor") or parse_query(brief).competitor
+        progress("Reading the library")
+        passages = (gather_passages(conn, llm.BATTLECARD_THEMES, competitor)
+                    if competitor else retrieve_passages(conn, brief, limit=12))
 
-    research = None
-    research_error = ""
-    if payload.get("research", Config.RESEARCH_BY_DEFAULT) and competitor:
-        try:
-            research = llm.research_competitor(
-                competitor, "\n\n".join(p["text"] for p in passages[:6]))
-        except llm.LLMUnavailable as exc:
-            research_error = str(exc)
+        research, research_error = None, ""
+        if want_research and competitor:
+            progress(f"Researching {competitor}")
+            try:
+                research = llm.research_competitor(
+                    competitor, "\n\n".join(p["text"] for p in passages[:6]))
+            except llm.LLMUnavailable as exc:
+                research_error = str(exc)
 
-    try:
+        progress("Writing the slides")
         spec = llm.draft_deck(brief, passages, research)
-    except llm.LLMUnavailable as exc:
-        return fail(str(exc), 503)
+        progress("Rendering the file")
+        token = uuid.uuid4().hex[:12]
+        DECK_CACHE[token] = (spec, deckgen.build(spec).getvalue())
+        for stale in list(DECK_CACHE)[:-8]:
+            DECK_CACHE.pop(stale, None)
+        return {
+            "ok": True, "spec": spec, "download": f"/api/deck/{token}.pptx",
+            "competitor": competitor, "library_passages": len(passages),
+            "research_error": research_error,
+            "research_sources": (research or {}).get("sources", []),
+        }
 
-    token = uuid.uuid4().hex[:12]
-    DECK_CACHE[token] = (spec, deckgen.build(spec).getvalue())
-    # Keep only the most recent handful, since these live in memory.
-    for stale in list(DECK_CACHE)[:-8]:
-        DECK_CACHE.pop(stale, None)
-
-    return jsonify({
-        "ok": True, "spec": spec, "download": f"/api/deck/{token}.pptx",
-        "competitor": competitor, "library_passages": len(passages),
-        "research_error": research_error,
-        "research_sources": (research or {}).get("sources", []),
-    })
+    job_id = run_in_background("deck", "Reading the library", work)
+    return jsonify({"ok": True, "status": "running", "job_id": job_id}), 202
 
 
 @app.route("/api/deck/<token>.pptx")
@@ -381,49 +425,45 @@ def api_battlecard():
     competitor = canonical_name((payload.get("competitor") or "").strip())
     if not competitor:
         return fail("Name a competitor.")
-    # Research is on by default and can be turned off for a faster, cheaper
-    # card built purely from uploaded documents.
     want_research = payload.get("research", Config.RESEARCH_BY_DEFAULT)
 
     conn = store()
     cache_key = f"{competitor.lower()}|{bool(want_research)}"
     if not payload.get("refresh") and cache_key in BATTLECARD_CACHE:
-        cached = BATTLECARD_CACHE[cache_key]
-        return jsonify({**cached, "cached": True})
+        return jsonify({**BATTLECARD_CACHE[cache_key], "cached": True,
+                        "status": "done"})
 
-    passages = gather_passages(conn, llm.BATTLECARD_THEMES, competitor)
+    def work(progress):
+        progress("Reading the library")
+        conn = store()
+        passages = gather_passages(conn, llm.BATTLECARD_THEMES, competitor)
 
-    research, research_error = None, ""
-    if want_research:
-        # A short digest of what is already on file, so the researcher extends
-        # and verifies the library rather than restating it.
-        library_context = "\n\n".join(p["text"] for p in passages[:8])
-        try:
-            research = llm.research_competitor(competitor, library_context)
-        except llm.LLMUnavailable as exc:
-            # Research is an enhancement. Losing it must not lose the card, so
-            # the failure is reported alongside a library-only result.
-            research_error = str(exc)
+        research, research_error = None, ""
+        if want_research:
+            progress(f"Researching {competitor} across public sources")
+            try:
+                research = llm.research_competitor(
+                    competitor, "\n\n".join(p["text"] for p in passages[:6]))
+            except llm.LLMUnavailable as exc:
+                research_error = str(exc)
 
-    try:
+        progress("Scoring against Impact Analytics")
         card = llm.build_battlecard(competitor, passages, research)
-    except llm.LLMUnavailable as exc:
-        return fail(str(exc), 503)
+        result = {
+            "ok": True, "battlecard": card,
+            "threatens": threatened_products(competitor),
+            "passages_used": len(passages),
+            "themes_covered": sorted({p["theme"] for p in passages}),
+            "research_error": research_error, "cached": False,
+        }
+        BATTLECARD_CACHE[cache_key] = result
+        for stale in list(BATTLECARD_CACHE)[:-12]:
+            BATTLECARD_CACHE.pop(stale, None)
+        return result
 
-    result = {
-        "ok": True,
-        "battlecard": card,
-        "threatens": threatened_products(competitor),
-        "passages_used": len(passages),
-        "themes_covered": sorted({p["theme"] for p in passages}),
-        "research_error": research_error,
-    }
-    # A battlecard is expensive and rarely changes between two people asking
-    # for it in the same session, so it is reused unless a refresh is asked for.
-    BATTLECARD_CACHE[cache_key] = result
-    for stale in list(BATTLECARD_CACHE)[:-12]:
-        BATTLECARD_CACHE.pop(stale, None)
-    return jsonify({**result, "cached": False})
+    job_id = run_in_background("battlecard", "Reading the library", work)
+    return jsonify({"ok": True, "status": "running", "job_id": job_id,
+                    "competitor": competitor}), 202
 
 
 # ─── admin ─────────────────────────────────────────────────────────────────

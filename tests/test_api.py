@@ -38,6 +38,24 @@ def client(monkeypatch):
             pass
 
 
+def battlecard(client, **payload):
+    """Post a battlecard request and wait for the job, since generation now
+    runs outside the request that asks for it."""
+    import time
+    response = client.post("/api/battlecard", json=payload)
+    body = response.get_json()
+    if body.get("status") != "running":
+        return body                      # served from cache, or refused
+    for _ in range(80):
+        job = client.get(f"/api/jobs/{body['job_id']}").get_json()["job"]
+        if job["status"] != "running":
+            break
+        time.sleep(0.05)
+    if job["status"] == "error":
+        return {"ok": False, "error": job["error"]}
+    return job["result"]
+
+
 def add(client, **fields):
     payload = {"competitor": "o9", "title": "T", "category": "battlecard"}
     payload.update(fields)
@@ -132,9 +150,9 @@ def test_battlecard_requires_a_competitor(client):
 def test_battlecard_reports_unavailable_without_a_key(client):
     add(client, note="Blue Yonder has legacy architecture and long timelines.",
         competitor="Blue Yonder", title="BY notes", category="information")
-    response = client.post("/api/battlecard", json={"competitor": "jda"})
-    assert response.status_code == 503
-    assert "ANTHROPIC_API_KEY" in response.get_json()["error"]
+    body = battlecard(client, competitor="jda")
+    assert body["ok"] is False
+    assert "ANTHROPIC_API_KEY" in body["error"]
 
 
 def test_selftest_reports_a_missing_key_without_calling_out(client):
@@ -194,10 +212,11 @@ def test_battlecard_without_research_skips_the_research_call(client, monkeypatch
     monkeypatch.setattr(llm, "research_competitor", fake_research)
     add(client, note="Blue Yonder has legacy architecture.",
         competitor="Blue Yonder", title="BY", category="information")
-    response = client.post("/api/battlecard",
-                           json={"competitor": "jda", "research": False})
+    body = battlecard(client, competitor="jda", research=False)
     assert called["research"] is False
-    assert response.status_code == 503          # no key, but research was skipped
+    # No key configured, so the job fails, but it fails after skipping research.
+    assert body["ok"] is False
+    assert "ANTHROPIC_API_KEY" in body["error"]
 
 
 def test_a_research_failure_still_produces_a_card(client, monkeypatch):
@@ -212,8 +231,7 @@ def test_a_research_failure_still_produces_a_card(client, monkeypatch):
                             "researched": bool(research)})
     add(client, note="Blue Yonder notes.", competitor="Blue Yonder",
         title="BY", category="information")
-    body = client.post("/api/battlecard",
-                       json={"competitor": "jda", "research": True}).get_json()
+    body = battlecard(client, competitor="jda", research=True)
     assert body["ok"] is True
     assert "search is down" in body["research_error"]
     assert body["battlecard"]["researched"] is False
@@ -343,10 +361,9 @@ def test_research_is_off_by_default(client, monkeypatch):
                                                                 "scorecard": []})
     add(client, note="Blue Yonder notes.", competitor="Blue Yonder",
         title="BY", category="information")
-    client.post("/api/battlecard", json={"competitor": "jda"})
+    battlecard(client, competitor="jda")
     assert called["n"] == 0
-    client.post("/api/battlecard", json={"competitor": "jda", "research": True,
-                                         "refresh": True})
+    battlecard(client, competitor="jda", research=True, refresh=True)
     assert called["n"] == 1
 
 
@@ -361,12 +378,12 @@ def test_a_battlecard_is_reused_rather_than_regenerated(client, monkeypatch):
     monkeypatch.setattr(llm, "build_battlecard", fake_build)
     add(client, note="notes", competitor="Blue Yonder", title="BY",
         category="information")
-    first = client.post("/api/battlecard", json={"competitor": "jda"}).get_json()
-    second = client.post("/api/battlecard", json={"competitor": "jda"}).get_json()
+    first = battlecard(client, competitor="jda")
+    second = battlecard(client, competitor="jda")
     assert built["n"] == 1
     assert first["cached"] is False and second["cached"] is True
     # An explicit refresh must still rebuild.
-    client.post("/api/battlecard", json={"competitor": "jda", "refresh": True})
+    battlecard(client, competitor="jda", refresh=True)
     assert built["n"] == 2
 
 
@@ -455,3 +472,77 @@ def test_usage_reports_the_budget(client):
     body = client.get("/api/usage").get_json()
     assert "budget" in body
     assert body["budget"]["limit"] >= 0
+
+
+# ─── long work runs as a job ───────────────────────────────────────────────
+
+def test_a_battlecard_returns_a_job_rather_than_holding_the_request(client,
+                                                                    monkeypatch):
+    """Held inside the request, this exceeds the platform's proxy timeout and
+    the browser is handed a 502 the application never sees."""
+    import ciq.llm as llm
+    monkeypatch.setattr(llm, "build_battlecard",
+                        lambda competitor, passages, research: {
+                            "competitor": competitor, "scorecard": []})
+    add(client, note="notes", competitor="Blue Yonder", title="BY",
+        category="information")
+    response = client.post("/api/battlecard", json={"competitor": "jda"})
+    assert response.status_code == 202
+    body = response.get_json()
+    assert body["status"] == "running"
+    assert body["job_id"]
+
+
+def test_a_finished_job_carries_its_result(client, monkeypatch):
+    import time
+    import ciq.llm as llm
+    monkeypatch.setattr(llm, "build_battlecard",
+                        lambda competitor, passages, research: {
+                            "competitor": competitor, "scorecard": [],
+                            "verdict": "done"})
+    add(client, note="notes", competitor="Blue Yonder", title="BY",
+        category="information")
+    job_id = client.post("/api/battlecard",
+                         json={"competitor": "jda"}).get_json()["job_id"]
+
+    for _ in range(60):
+        job = client.get(f"/api/jobs/{job_id}").get_json()["job"]
+        if job["status"] != "running":
+            break
+        time.sleep(0.1)
+    assert job["status"] == "done"
+    assert job["result"]["battlecard"]["verdict"] == "done"
+
+
+def test_a_failing_job_reports_the_reason_rather_than_hanging(client, monkeypatch):
+    import time
+    import ciq.llm as llm
+    monkeypatch.setattr(llm, "build_battlecard",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            llm.LLMUnavailable("model is unavailable")))
+    add(client, note="notes", competitor="Blue Yonder", title="BY",
+        category="information")
+    job_id = client.post("/api/battlecard",
+                         json={"competitor": "jda"}).get_json()["job_id"]
+    for _ in range(60):
+        job = client.get(f"/api/jobs/{job_id}").get_json()["job"]
+        if job["status"] != "running":
+            break
+        time.sleep(0.1)
+    assert job["status"] == "error"
+    assert "model is unavailable" in job["error"]
+
+
+def test_an_unknown_job_is_reported_as_json(client):
+    response = client.get("/api/jobs/does-not-exist")
+    assert response.status_code == 404
+    assert response.mimetype == "application/json"
+
+
+def test_the_anthropic_client_carries_a_timeout():
+    """Without one, a stalled call holds a worker until the platform kills it,
+    which the browser sees as a 502 from the proxy."""
+    import inspect
+    from ciq import llm
+    source = inspect.getsource(llm._client)
+    assert "timeout=" in source

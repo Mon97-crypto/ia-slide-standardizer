@@ -89,6 +89,19 @@ CREATE TABLE IF NOT EXISTS usage (
 CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_feature ON usage(feature);
 
+CREATE TABLE IF NOT EXISTS jobs (
+    id         TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'running',
+    stage      TEXT NOT NULL DEFAULT '',
+    result     TEXT NOT NULL DEFAULT '',
+    error      TEXT NOT NULL DEFAULT '',
+    user_email TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at DESC);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
     entry_id UNINDEXED, competitor, title, note, content,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -143,6 +156,19 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_entry  ON chunks(entry_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_search ON chunks USING GIN(search_vector);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id         TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'running',
+    stage      TEXT NOT NULL DEFAULT '',
+    result     TEXT NOT NULL DEFAULT '',
+    error      TEXT NOT NULL DEFAULT '',
+    user_email TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS usage (
     id            BIGSERIAL PRIMARY KEY,
@@ -744,3 +770,63 @@ def spend_today(store: Store) -> float:
         "SELECT COALESCE(SUM(cost_usd),0) AS spent FROM usage"
         " WHERE substr(ts,1,10) = ?", (today,)).fetchone()
     return float(row["spent"] if row else 0)
+
+
+# ─── background jobs ───────────────────────────────────────────────────────
+
+def create_job(store: Store, job_id: str, kind: str, stage: str = "",
+               user_email: str = "") -> None:
+    """Register work that will outlive the request that started it.
+
+    Job state lives in the database rather than in process memory because the
+    server runs several workers: the request that starts a job and the request
+    that polls for it are frequently handled by different ones.
+    """
+    now = _now()
+    store.execute(
+        "INSERT INTO jobs (id, kind, status, stage, user_email, created_at,"
+        " updated_at) VALUES (?, ?, 'running', ?, ?, ?, ?)",
+        (job_id, kind, stage, user_email, now, now))
+    store.commit()
+
+
+def update_job(store: Store, job_id: str, *, stage: str | None = None,
+               status: str | None = None, result: Any = None,
+               error: str | None = None) -> None:
+    fields: dict[str, Any] = {"updated_at": _now()}
+    if stage is not None:
+        fields["stage"] = stage
+    if status is not None:
+        fields["status"] = status
+    if result is not None:
+        fields["result"] = json.dumps(result)
+    if error is not None:
+        fields["error"] = error
+    assignments = ", ".join(f"{k} = ?" for k in fields)
+    store.execute(f"UPDATE jobs SET {assignments} WHERE id = ?",
+                  (*fields.values(), job_id))
+    store.commit()
+
+
+def get_job(store: Store, job_id: str) -> dict[str, Any] | None:
+    row = store.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if row is None:
+        return None
+    job = dict(row)
+    raw = job.pop("result", "") or ""
+    try:
+        job["result"] = json.loads(raw) if raw else None
+    except (json.JSONDecodeError, TypeError):
+        job["result"] = None
+    return job
+
+
+def purge_jobs(store: Store, keep: int = 200) -> None:
+    """Jobs are transient; keep the recent ones and drop the rest."""
+    try:
+        store.execute(
+            "DELETE FROM jobs WHERE id NOT IN ("
+            " SELECT id FROM jobs ORDER BY created_at DESC LIMIT ?)", (keep,))
+        store.commit()
+    except Exception:
+        pass
