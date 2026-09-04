@@ -9,16 +9,19 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
+import uuid
 from functools import wraps
 
-from flask import (Flask, jsonify, render_template, request, send_file,
-                   session)
+from flask import (Flask, jsonify, redirect, render_template, request,
+                   send_file, session, url_for)
 from werkzeug.exceptions import HTTPException
 
-from ciq import db, diagnose as diag, ingest, llm
+from ciq import auth, db, deck as deckgen, diagnose as diag, ingest, llm
 from ciq.competitors import canonical_name, known_names, threatened_products
 from ciq.config import CATEGORIES, Config
+from ciq.auth import current_user, login_required
 from ciq.fetchers import FetchError, fetch
 from ciq.search import gather_passages, parse_query, retrieve_passages, search
 
@@ -26,6 +29,10 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = Config.MAX_UPLOAD_BYTES
 # Shared across workers, so an admin session stays valid on every worker.
 app.secret_key = Config.secret_key()
+
+# Generated decks, held briefly so the browser can fetch the file it was
+# just offered. Small and short lived by design.
+DECK_CACHE: dict[str, tuple] = {}
 
 
 def store():
@@ -36,24 +43,26 @@ def fail(message: str, status: int = 400):
     return jsonify({"ok": False, "error": message}), status
 
 
-def admin_required(view):
-    @wraps(view)
-    def wrapper(*args, **kwargs):
-        if not session.get("is_admin"):
-            return fail("Admin access required.", 403)
-        return view(*args, **kwargs)
-    return wrapper
+def _redirect_uri() -> str:
+    """Google requires an exact, absolute redirect URI."""
+    return url_for("auth_callback", _external=True, _scheme=(
+        "https" if not request.host.startswith("127.0.0.1")
+        and not request.host.startswith("localhost") else "http"))
 
 
 # ─── pages ─────────────────────────────────────────────────────────────────
 
 @app.route("/")
+@login_required
 def index():
     return render_template(
         "index.html",
         categories=CATEGORIES,
         competitors=known_names(),
         ai_enabled=llm.available(),
+        user=current_user(),
+        auth_configured=auth.configured(),
+        domain=Config.ALLOWED_EMAIL_DOMAIN,
     )
 
 
@@ -96,6 +105,7 @@ def healthz():
 # ─── library ───────────────────────────────────────────────────────────────
 
 @app.route("/api/entries", methods=["GET"])
+@login_required
 def api_list_entries():
     entries = db.list_entries(
         store(),
@@ -106,6 +116,7 @@ def api_list_entries():
 
 
 @app.route("/api/search")
+@login_required
 def api_search():
     outcome = search(
         store(),
@@ -116,6 +127,7 @@ def api_search():
 
 
 @app.route("/api/entries", methods=["POST"])
+@login_required
 def api_create_entry():
     competitor = (request.form.get("competitor") or "").strip()
     title = (request.form.get("title") or "").strip()
@@ -172,6 +184,7 @@ def api_create_entry():
 
 
 @app.route("/api/entries/<entry_id>", methods=["GET"])
+@login_required
 def api_get_entry(entry_id: str):
     entry = db.get_entry(store(), entry_id)
     if entry is None:
@@ -180,6 +193,7 @@ def api_get_entry(entry_id: str):
 
 
 @app.route("/api/entries/<entry_id>", methods=["DELETE"])
+@login_required
 def api_delete_entry(entry_id: str):
     if not db.delete_entry(store(), entry_id):
         return fail("Entry not found.", 404)
@@ -189,6 +203,7 @@ def api_delete_entry(entry_id: str):
 # ─── intelligence ──────────────────────────────────────────────────────────
 
 @app.route("/api/entries/<entry_id>/analyze", methods=["POST"])
+@login_required
 def api_analyze(entry_id: str):
     conn = store()
     entry = db.get_entry(conn, entry_id)
@@ -219,6 +234,7 @@ def api_analyze(entry_id: str):
 
 
 @app.route("/api/ask", methods=["POST"])
+@login_required
 def api_ask():
     payload = request.get_json(silent=True) or {}
     question = (payload.get("question") or "").strip()
@@ -244,7 +260,94 @@ def api_ask():
                                           "competitor": competitor}, **result})
 
 
+@app.route("/api/chat", methods=["POST"])
+@login_required
+def api_chat():
+    """Conversational intelligence over the library, with optional research."""
+    payload = request.get_json(silent=True) or {}
+    messages = payload.get("messages") or []
+    if not messages or not (messages[-1].get("content") or "").strip():
+        return fail("Ask a question.")
+    # Keep the window bounded so a long thread cannot grow without limit.
+    messages = [{"role": m["role"], "content": m["content"]}
+                for m in messages[-12:]
+                if m.get("role") in ("user", "assistant") and m.get("content")]
+
+    conn = store()
+    question = messages[-1]["content"]
+    competitor = payload.get("competitor") or parse_query(question).competitor
+    passages = retrieve_passages(conn, question, competitor=competitor, limit=10)
+    if not passages:
+        # Nothing competitor specific, so fall back to the whole library.
+        passages = retrieve_passages(conn, question, limit=10)
+
+    try:
+        result = llm.chat(messages, passages,
+                          research=bool(payload.get("research", True)))
+    except llm.LLMUnavailable as exc:
+        return fail(str(exc), 503)
+    return jsonify({"ok": True, "competitor": competitor,
+                    "library_passages": len(passages), **result})
+
+
+@app.route("/api/deck", methods=["POST"])
+@login_required
+def api_deck():
+    """Draft a sales deck from a brief, the library and public research."""
+    payload = request.get_json(silent=True) or {}
+    brief = (payload.get("brief") or "").strip()
+    if not brief:
+        return fail("Describe the deck you need.")
+
+    conn = store()
+    competitor = payload.get("competitor") or parse_query(brief).competitor
+    passages = (gather_passages(conn, llm.BATTLECARD_THEMES, competitor)
+                if competitor else retrieve_passages(conn, brief, limit=16))
+
+    research = None
+    research_error = ""
+    if payload.get("research", True) and competitor:
+        try:
+            research = llm.research_competitor(
+                competitor, "\n\n".join(p["text"] for p in passages[:6]))
+        except llm.LLMUnavailable as exc:
+            research_error = str(exc)
+
+    try:
+        spec = llm.draft_deck(brief, passages, research)
+    except llm.LLMUnavailable as exc:
+        return fail(str(exc), 503)
+
+    token = uuid.uuid4().hex[:12]
+    DECK_CACHE[token] = (spec, deckgen.build(spec).getvalue())
+    # Keep only the most recent handful, since these live in memory.
+    for stale in list(DECK_CACHE)[:-8]:
+        DECK_CACHE.pop(stale, None)
+
+    return jsonify({
+        "ok": True, "spec": spec, "download": f"/api/deck/{token}.pptx",
+        "competitor": competitor, "library_passages": len(passages),
+        "research_error": research_error,
+        "research_sources": (research or {}).get("sources", []),
+    })
+
+
+@app.route("/api/deck/<token>.pptx")
+@login_required
+def api_deck_download(token: str):
+    entry = DECK_CACHE.get(token)
+    if entry is None:
+        return fail("That deck has expired. Generate it again.", 404)
+    spec, data = entry
+    name = re.sub(r"[^A-Za-z0-9]+", "-", spec.get("title", "deck")).strip("-")[:60]
+    from io import BytesIO
+    return send_file(
+        BytesIO(data), as_attachment=True, download_name=f"{name or 'deck'}.pptx",
+        mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+
+
 @app.route("/api/battlecard", methods=["POST"])
+@login_required
 def api_battlecard():
     payload = request.get_json(silent=True) or {}
     competitor = canonical_name((payload.get("competitor") or "").strip())
@@ -286,26 +389,63 @@ def api_battlecard():
 
 # ─── admin ─────────────────────────────────────────────────────────────────
 
-@app.route("/api/admin/login", methods=["POST"])
-def api_admin_login():
-    payload = request.get_json(silent=True) or {}
-    supplied = payload.get("passcode") or ""
-    # Constant-time compare, and the passcode never appears in page source.
-    if not secrets.compare_digest(supplied, Config.ADMIN_PASSCODE):
-        return fail("Wrong passcode.", 401)
-    session["is_admin"] = True
-    return jsonify({"ok": True})
+@app.route("/auth/login")
+def auth_login():
+    if not auth.configured():
+        return render_template("signin.html", error=(
+            "Sign-in is not configured on this server. Set GOOGLE_CLIENT_ID "
+            "and GOOGLE_CLIENT_SECRET."), domain=Config.ALLOWED_EMAIL_DOMAIN,
+            configured=False)
+    session["post_login"] = request.args.get("next", "/")
+    return redirect(auth.login_url(_redirect_uri()))
 
 
-@app.route("/api/admin/logout", methods=["POST"])
-def api_admin_logout():
-    session.pop("is_admin", None)
-    return jsonify({"ok": True})
+@app.route("/auth/callback")
+def auth_callback():
+    # The state is what stops a third party from completing a sign-in on
+    # someone else's behalf, so it is checked before the code is spent.
+    if not request.args.get("state") or \
+            request.args.get("state") != session.pop("oauth_state", None):
+        return render_template("signin.html",
+                               error="The sign-in attempt expired. Try again.",
+                               domain=Config.ALLOWED_EMAIL_DOMAIN, configured=True), 400
+    if request.args.get("error"):
+        return render_template("signin.html",
+                               error=f"Google reported: {request.args['error']}",
+                               domain=Config.ALLOWED_EMAIL_DOMAIN, configured=True), 400
+    code = request.args.get("code")
+    if not code:
+        return render_template("signin.html", error="Google returned no code.",
+                               domain=Config.ALLOWED_EMAIL_DOMAIN, configured=True), 400
+    try:
+        user = auth.exchange_code(code, _redirect_uri())
+    except auth.AuthError as exc:
+        return render_template("signin.html", error=str(exc),
+                               domain=Config.ALLOWED_EMAIL_DOMAIN, configured=True), 403
+
+    session["user"] = user
+    session.permanent = True
+    return redirect(session.pop("post_login", "/") or "/")
 
 
-@app.route("/api/admin/export")
-@admin_required
-def api_admin_export():
+@app.route("/auth/logout", methods=["GET", "POST"])
+def auth_logout():
+    session.pop("user", None)
+    if request.method == "POST":
+        return jsonify({"ok": True})
+    return redirect("/")
+
+
+@app.route("/api/me")
+def api_me():
+    return jsonify({"ok": True, "user": current_user(),
+                    "auth_configured": auth.configured(),
+                    "domain": Config.ALLOWED_EMAIL_DOMAIN})
+
+
+@app.route("/api/library/export")
+@login_required
+def api_library_export():
     entries = db.list_entries(store(), limit=100000)
     buffer = json.dumps(entries, indent=2).encode()
     from io import BytesIO
@@ -313,9 +453,9 @@ def api_admin_export():
                      as_attachment=True, download_name="ia-competitor-library.json")
 
 
-@app.route("/api/admin/import", methods=["POST"])
-@admin_required
-def api_admin_import():
+@app.route("/api/library/import", methods=["POST"])
+@login_required
+def api_library_import():
     upload = request.files.get("file")
     if not upload:
         return fail("Choose a library JSON file.")
@@ -372,9 +512,9 @@ def api_diagnose():
     return jsonify({"ok": True, "report": diag.diagnose()})
 
 
-@app.route("/api/admin/keycheck")
-@admin_required
-def api_admin_keycheck():
+@app.route("/api/keycheck")
+@login_required
+def api_keycheck():
     """Explain why the Anthropic key was or was not found.
 
     Reports variable and file names only, never values, so it is safe to read
@@ -383,9 +523,9 @@ def api_admin_keycheck():
     return jsonify({"ok": True, "diagnostics": Config.key_diagnostics()})
 
 
-@app.route("/api/admin/selftest", methods=["POST"])
-@admin_required
-def api_admin_selftest():
+@app.route("/api/selftest", methods=["POST"])
+@login_required
+def api_selftest():
     """Confirm the Claude integration end to end, from a live deployment.
 
     Admin gated because it spends a small amount of API credit and reports
@@ -394,9 +534,9 @@ def api_admin_selftest():
     return jsonify({"ok": True, "report": llm.self_test()})
 
 
-@app.route("/api/admin/clear", methods=["POST"])
-@admin_required
-def api_admin_clear():
+@app.route("/api/library/clear", methods=["POST"])
+@login_required
+def api_library_clear():
     return jsonify({"ok": True, "deleted": db.clear_all(store())})
 
 

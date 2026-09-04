@@ -17,7 +17,6 @@ def client(monkeypatch):
     os.close(handle)
     os.unlink(path)
     monkeypatch.setenv("CIQ_DB_PATH", path)
-    monkeypatch.setenv("CIQ_ADMIN_PASSCODE", "testpass")
     monkeypatch.setenv("CIQ_SECRET_KEY", "test-secret")
 
     # Drop the ciq package itself, not just its submodules. "from ciq import
@@ -92,20 +91,16 @@ def test_ai_endpoints_report_unavailable_rather_than_failing_silently(client):
     assert "ANTHROPIC_API_KEY" in response.get_json()["error"]
 
 
-def test_admin_routes_require_authentication(client):
-    assert client.get("/api/admin/export").status_code == 403
-    assert client.post("/api/admin/clear").status_code == 403
+def test_library_tools_are_reachable_without_a_passcode(client):
+    """The shared passcode is gone. Access control is Google sign-in, covered
+    in tests/test_auth.py; with sign-in unconfigured these fall open."""
+    assert client.get("/api/library/export").status_code == 200
+    assert client.post("/api/library/clear").status_code == 200
 
 
-def test_admin_rejects_a_wrong_passcode(client):
-    response = client.post("/api/admin/login", json={"passcode": "wrong"})
-    assert response.status_code == 401
-
-
-def test_admin_unlocks_with_the_right_passcode(client):
-    assert client.post("/api/admin/login",
-                       json={"passcode": "testpass"}).status_code == 200
-    assert client.get("/api/admin/export").status_code == 200
+def test_the_old_passcode_routes_no_longer_exist(client):
+    assert client.post("/api/admin/login", json={"passcode": "impact"}).status_code == 404
+    assert client.get("/api/admin/export").status_code == 404
 
 
 def test_import_accepts_the_prototype_export_format(client):
@@ -120,10 +115,9 @@ def test_import_accepts_the_prototype_export_format(client):
         "fileName": "by.txt", "fileUrl": "", "lovable": "",
         "addedAt": "2026-06-24T10:05:00Z",
     }]
-    client.post("/api/admin/login", json={"passcode": "testpass"})
     data = {"file": (__import__("io").BytesIO(json.dumps(payload).encode()),
                      "library.json")}
-    response = client.post("/api/admin/import", data=data,
+    response = client.post("/api/library/import", data=data,
                            content_type="multipart/form-data")
     assert response.get_json()["imported"] == 1
     # The base64 body must be indexed, not just stored.
@@ -143,14 +137,9 @@ def test_battlecard_reports_unavailable_without_a_key(client):
     assert "ANTHROPIC_API_KEY" in response.get_json()["error"]
 
 
-def test_selftest_requires_admin(client):
-    assert client.post("/api/admin/selftest").status_code == 403
-
-
 def test_selftest_reports_a_missing_key_without_calling_out(client):
     """With no key the report must explain the gap rather than error."""
-    client.post("/api/admin/login", json={"passcode": "testpass"})
-    report = client.post("/api/admin/selftest").get_json()["report"]
+    report = client.post("/api/selftest").get_json()["report"]
     assert report["ok"] is False
     assert report["key_present"] is False
     assert "ANTHROPIC_API_KEY" in report["checks"][0]["error"]
@@ -158,8 +147,7 @@ def test_selftest_reports_a_missing_key_without_calling_out(client):
 
 def test_selftest_never_returns_the_key(client, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret-value")
-    client.post("/api/admin/login", json={"passcode": "testpass"})
-    body = client.post("/api/admin/selftest").get_data(as_text=True)
+    body = client.post("/api/selftest").get_data(as_text=True)
     assert "sk-ant-secret-value" not in body
 
 
@@ -169,15 +157,10 @@ def test_healthz_reports_where_the_key_came_from(client):
     assert body["ai_enabled"] is False
 
 
-def test_keycheck_requires_admin(client):
-    assert client.get("/api/admin/keycheck").status_code == 403
-
-
 def test_keycheck_explains_a_missing_key_without_leaking_values(
         client, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_LOOKALIKE_API_KEY", "sk-ant-should-not-appear")
-    client.post("/api/admin/login", json={"passcode": "testpass"})
-    response = client.get("/api/admin/keycheck")
+    response = client.get("/api/keycheck")
     body = response.get_data(as_text=True)
     diagnostics = response.get_json()["diagnostics"]
     assert diagnostics["source"] == "missing"

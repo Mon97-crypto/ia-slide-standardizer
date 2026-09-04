@@ -45,6 +45,17 @@ Research can be switched off per card for a faster, cheaper result built purely
 from uploaded documents. If research fails, the card is still produced from the
 library and says so rather than failing outright.
 
+**Company sign-in.** Access is Google sign-in limited to one email domain,
+`impactanalytics.co` by default. The domain is enforced on the verified token
+rather than trusted from the browser hint, so a personal account, a lookalike
+domain and an unverified address are each refused. Set `GOOGLE_CLIENT_ID` and
+`GOOGLE_CLIENT_SECRET`, and add `<your-app>/auth/callback` as an authorised
+redirect URI in the Google Cloud console.
+
+**Ask AI.** A conversation over the library that reads uploaded documents
+first, then researches public sources, and cites which answer came from which.
+Ask it for a deck and it drafts one and returns a branded `.pptx`.
+
 **One shared library that persists.** Everything lives in a server-side
 database, so the whole team sees the same data. Point `DATABASE_URL` at a
 managed Postgres and the library survives deploys and restarts; without it the
@@ -101,8 +112,9 @@ the free plan. Set these in the dashboard, not in git:
 |---|---|
 | `DATABASE_URL` | The Postgres connection string from step 1. This is what makes the library permanent. |
 | `ANTHROPIC_API_KEY` | Enables Analyze, Ask and battlecards. Everything else works without it. |
-| `CIQ_ADMIN_PASSCODE` | Admin passcode. Change it from the default. |
-| `CIQ_SECRET_KEY` | Signs admin sessions. `render.yaml` generates one. |
+| `GOOGLE_CLIENT_ID` | Google sign-in. Without it the app runs open and says so. |
+| `GOOGLE_CLIENT_SECRET` | The matching secret. |
+| `CIQ_SECRET_KEY` | Signs sessions. `render.yaml` generates one. |
 
 The schema is created automatically on first boot, so there is no migration
 step. `/healthz` reports which backend is live:

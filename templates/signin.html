@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Competitor Intelligence</title>
+<link rel="icon" href="{{ url_for('static', filename='img/ia-mark.png') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@300&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Inter Tight",-apple-system,sans-serif;background:#F4F4F6;color:#1C1B1B;
+  min-height:100vh;display:grid;place-items:center;padding:24px}
+.card{background:#fff;border:1px solid #E4E4E4;border-radius:20px;padding:44px 40px;
+  max-width:440px;width:100%;box-shadow:0 24px 64px rgba(22,38,122,.12);text-align:center}
+.logo{height:30px;margin-bottom:26px}
+h1{font-family:Spectral,Georgia,serif;font-weight:300;font-size:29px;line-height:1.2;margin-bottom:10px}
+p{font-size:14.5px;color:#55534f;line-height:1.6;margin-bottom:26px}
+.dom{background:rgba(38,76,215,.08);color:#264CD7;border-radius:6px;padding:1px 7px;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:11px;width:100%;
+  padding:13px 20px;border-radius:11px;background:#264CD7;color:#fff;font-size:15px;
+  font-weight:600;text-decoration:none;transition:all .2s cubic-bezier(.22,1,.36,1)}
+.btn:hover{background:#3A5EE3;transform:translateY(-1px);box-shadow:0 10px 26px rgba(38,76,215,.28)}
+.btn svg{width:18px;height:18px}
+.err{background:#FDF0F0;border:1px solid rgba(217,54,54,.25);color:#8c2323;border-radius:11px;
+  padding:13px 15px;font-size:13.5px;line-height:1.55;margin-bottom:22px;text-align:left}
+.foot{margin-top:24px;font-size:12.5px;color:#B3B2AD}
+</style>
+</head>
+<body>
+<div class="card">
+  <img class="logo" src="{{ url_for('static', filename='img/ia-logo.png') }}" alt="Impact Analytics">
+  <h1>Competitor Intelligence</h1>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  <p>Sign in with your <span class="dom">@{{ domain }}</span> Google account. Access is limited to Impact Analytics.</p>
+  {% if configured is not defined or configured %}
+  <a class="btn" href="{{ url_for('auth_login') }}">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 11v2.9h6.9c-.3 1.8-2.1 5.2-6.9 5.2-4.1 0-7.5-3.4-7.5-7.6S7.9 3.9 12 3.9c2.4 0 4 1 4.9 1.9l3.3-3.2C18.1.7 15.3-.4 12-.4 5.4-.4.1 4.9.1 11.5S5.4 23.4 12 23.4c6.9 0 11.5-4.8 11.5-11.6 0-.8-.1-1.4-.2-1.9H12z" transform="translate(0 .6)"/></svg>
+    Continue with Google
+  </a>
+  {% endif %}
+  <div class="foot">Impact Analytics · Market Intelligence</div>
+</div>
+</body>
+</html>

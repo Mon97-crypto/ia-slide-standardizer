@@ -737,3 +737,69 @@ def test_no_configuration_means_no_url(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("CIQ_DB_HOST", raising=False)
     assert Config.database_url() == ""
+
+
+# ─── deck rendering ────────────────────────────────────────────────────────
+
+def test_every_slide_type_renders_without_error():
+    """Layout is computed here rather than described by the model, so each
+    type must survive whatever the model returns."""
+    from ciq import deck
+    spec = {
+        "title": "Impact Analytics vs Blue Yonder", "subtitle": "For a retailer",
+        "slides": [
+            {"type": "section", "heading": "The problem", "subheading": "Sub"},
+            {"type": "bullets", "heading": "Findings", "bullets": ["One", "Two"]},
+            {"type": "comparison", "heading": "Head to head",
+             "left_title": "Us", "right_title": "Them",
+             "left": ["Deep"], "right": ["Broad"]},
+            {"type": "stats", "heading": "Impact",
+             "stats": [{"value": "6 weeks", "label": "To value"}]},
+            {"type": "quote", "heading": "", "quote": "It worked.",
+             "attribution": "A customer"},
+            {"type": "close", "heading": "Next", "bullets": ["Pilot"]},
+        ],
+    }
+    data = deck.build(spec).getvalue()
+    assert len(data) > 20000
+
+    import io
+    from pptx import Presentation
+    rendered = Presentation(io.BytesIO(data))
+    assert len(rendered.slides) == 7          # a title slide plus the six
+    assert rendered.slide_width == deck.SLIDE_W
+
+
+def test_a_deck_survives_missing_and_empty_fields():
+    """A model omitting an optional field must not produce a broken file."""
+    from ciq import deck
+    spec = {"title": "T", "subtitle": "",
+            "slides": [{"type": "bullets", "heading": "Only a heading"},
+                       {"type": "comparison", "heading": "Bare"},
+                       {"type": "stats", "heading": "No stats"},
+                       {"type": "unknown_type", "heading": "Falls back"}]}
+    assert len(deck.build(spec).getvalue()) > 20000
+
+
+def test_long_bullets_do_not_break_the_build():
+    from ciq import deck
+    spec = {"title": "T", "subtitle": "S", "slides": [
+        {"type": "bullets", "heading": "Long", "bullets": ["word " * 60] * 6}]}
+    assert len(deck.build(spec).getvalue()) > 20000
+
+
+def test_speaker_notes_are_carried_through():
+    import io
+    from pptx import Presentation
+    from ciq import deck
+    spec = {"title": "T", "subtitle": "S", "slides": [
+        {"type": "bullets", "heading": "H", "bullets": ["b"],
+         "note": "Say this out loud."}]}
+    rendered = Presentation(io.BytesIO(deck.build(spec).getvalue()))
+    assert "Say this out loud." in rendered.slides[1].notes_slide.notes_text_frame.text
+
+
+def test_the_deck_schema_avoids_unsupported_keywords():
+    from ciq.deck import DECK_SCHEMA
+    from ciq.llm import sanitise_schema
+    assert _walk(sanitise_schema(DECK_SCHEMA)) == []

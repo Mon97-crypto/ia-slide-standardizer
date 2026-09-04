@@ -777,3 +777,146 @@ def self_test() -> dict[str, Any]:
 
     report["ok"] = all(check["ok"] for check in report["checks"])
     return report
+
+
+# ─── conversational intelligence ───────────────────────────────────────────
+
+CHAT_SYSTEM = (
+    "You are the competitive intelligence analyst for Impact Analytics, a "
+    "retail AI company. Its products are ItemSmart, PlanSmart, AssortSmart, "
+    "PriceSmart, MarkSmart, PromoSmart, InventorySmart, SizeSmart, "
+    "StoreSmart, AttributeSmart and CortexEye.\n\n"
+    "You are talking to a seller or product manager, often mid deal. Answer "
+    "directly and lead with the point.\n\n"
+    "Two kinds of source reach you. Passages from the internal library are "
+    "the team's own uploaded material, cited as [1], [2]. Anything you find "
+    "with web search is public and must be attributed to its source in the "
+    "text. Say which is which when it matters, and say plainly when the "
+    "library holds nothing on a question rather than filling the gap with "
+    "generalities.\n\n"
+    "Be honest about competitor strengths. Do not use em dashes or en dashes."
+)
+
+
+def chat(messages: list[dict[str, str]], passages: list[dict[str, Any]],
+         research: bool = True) -> dict[str, Any]:
+    """Answer a conversational turn from the library, optionally researching.
+
+    The library material is supplied as context rather than as a tool, so an
+    answer is grounded in what the team actually holds before anything public
+    is consulted.
+    """
+    if not Config.ai_enabled():
+        raise LLMUnavailable(
+            "AI features are off because ANTHROPIC_API_KEY is not set on the "
+            "server.")
+    if not messages:
+        raise LLMUnavailable("Ask a question.")
+
+    context = (_format_passages(passages) if passages else
+               "The library holds nothing matching this question.")
+    turns = [dict(m) for m in messages if m.get("role") in ("user", "assistant")]
+    turns[-1]["content"] = (
+        f"LIBRARY PASSAGES:\n\n{context}\n\n"
+        f"QUESTION: {turns[-1]['content']}")
+
+    kwargs_tools = RESEARCH_TOOLS if research else None
+    answer, response = _call_messages(
+        CHAT_SYSTEM, turns, max_tokens=6000, tools=kwargs_tools,
+        return_response=True)
+
+    cited = sorted({int(n) for n in re.findall(r"\[(\d+)\]", answer)
+                    if 0 < int(n) <= len(passages)})
+    return {
+        "answer": answer,
+        "citations": [{"n": n, "entry_id": passages[n - 1]["entry_id"],
+                       "title": passages[n - 1]["title"],
+                       "competitor": passages[n - 1]["competitor"]}
+                      for n in cited],
+        "web_sources": _extract_sources(response),
+    }
+
+
+def _call_messages(system: str, messages: list[dict[str, str]],
+                   max_tokens: int = 4000,
+                   tools: list[dict[str, Any]] | None = None,
+                   return_response: bool = False) -> Any:
+    """Like _call, but for a multi-turn conversation."""
+    client = _client()
+    import anthropic
+
+    kwargs: dict[str, Any] = {
+        "model": Config.MODEL,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": messages,
+        "thinking": {"type": "adaptive"},
+    }
+    if tools:
+        kwargs["tools"] = tools
+
+    try:
+        response = client.messages.create(**kwargs)
+    except anthropic.AuthenticationError as exc:
+        raise LLMUnavailable(
+            "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in "
+            f"the Render dashboard. ({_api_message(exc)})") from exc
+    except anthropic.RateLimitError as exc:
+        raise LLMUnavailable(f"Rate limited. Retry shortly. ({_api_message(exc)})") from exc
+    except anthropic.APIStatusError as exc:
+        raise LLMUnavailable(
+            f"Anthropic API error {exc.status_code}: {_api_message(exc)}") from exc
+    except anthropic.APIConnectionError as exc:
+        raise LLMUnavailable(f"Could not reach the Anthropic API. ({exc})") from exc
+
+    if getattr(response, "stop_reason", None) == "refusal":
+        raise LLMUnavailable("The model declined to answer this request.")
+
+    text = "".join(b.text for b in response.content
+                   if getattr(b, "type", "") == "text").strip()
+    return (text, response) if return_response else text
+
+
+DECK_SYSTEM = (
+    "You write sales decks for Impact Analytics, a retail AI company. Its "
+    "products are ItemSmart, PlanSmart, AssortSmart, PriceSmart, MarkSmart, "
+    "PromoSmart, InventorySmart, SizeSmart, StoreSmart, AttributeSmart and "
+    "CortexEye.\n\n"
+    "Write slides a seller can present without editing. Every line is short "
+    "enough to read from the back of a room: headings under nine words, "
+    "bullets one line each, at most five per slide. Lead with the buyer's "
+    "problem, not the product.\n\n"
+    "Ground claims in the supplied material. Where a number is not in the "
+    "material, leave it out rather than inventing one. Be honest about "
+    "competitor strengths. Do not use em dashes or en dashes."
+)
+
+
+def draft_deck(brief: str, passages: list[dict[str, Any]],
+               research: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Turn a brief plus evidence into a deck specification."""
+    if not Config.ai_enabled():
+        raise LLMUnavailable(
+            "AI features are off because ANTHROPIC_API_KEY is not set on the "
+            "server.")
+
+    from .deck import DECK_SCHEMA
+
+    library = (_format_passages(passages) if passages
+               else "The library holds nothing relevant to this brief.")
+    external = (research or {}).get("brief") or "No external research was used."
+    prompt = (
+        f"BRIEF FROM THE SELLER:\n{brief}\n\n"
+        f"INTERNAL LIBRARY MATERIAL:\n\n{library}\n\n"
+        f"EXTERNAL RESEARCH:\n\n{external}\n\n"
+        "Build the deck. Use eight to twelve slides. Open with a section "
+        "slide that frames the buyer's problem, and close with a slide of "
+        "concrete next steps. Use a comparison slide when a competitor is "
+        "named, a stats slide only when the material supplies real figures, "
+        "and a quote slide only when the material contains a real quote. "
+        "Add a speaker note to every slide saying what to say out loud."
+    )
+    spec = _call(DECK_SYSTEM, prompt, max_tokens=10000, schema=DECK_SCHEMA)
+    spec["slides"] = [s for s in (spec.get("slides") or []) if s.get("heading")
+                      or s.get("quote") or s.get("stats")]
+    return spec

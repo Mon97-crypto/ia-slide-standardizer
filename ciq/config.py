@@ -94,8 +94,18 @@ class Config:
     MODEL = os.environ.get("CIQ_MODEL", "claude-opus-5")
     MAX_UPLOAD_BYTES = int(os.environ.get("CIQ_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
 
-    # Admin passcode. Verified on the server, never shipped in page source.
-    ADMIN_PASSCODE = os.environ.get("CIQ_ADMIN_PASSCODE", "impact")
+    # Access is by company identity through Google, not a shared passcode.
+    ALLOWED_EMAIL_DOMAIN = os.environ.get(
+        "CIQ_ALLOWED_EMAIL_DOMAIN", "impactanalytics.co").strip().lstrip("@").lower()
+    REQUIRE_AUTH = _bool("CIQ_REQUIRE_AUTH", False)
+
+    @classmethod
+    def google_client_id(cls) -> str:
+        return os.environ.get("GOOGLE_CLIENT_ID", "").strip().strip('"\'')
+
+    @classmethod
+    def google_client_secret(cls) -> str:
+        return os.environ.get("GOOGLE_CLIENT_SECRET", "").strip().strip('"\'')
     SECRET_KEY = os.environ.get("CIQ_SECRET_KEY", "")
 
     # Outbound fetching of shared cloud links.
