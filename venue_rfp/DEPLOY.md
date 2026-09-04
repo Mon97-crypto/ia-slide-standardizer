@@ -71,9 +71,27 @@ address — it will not be delivered.
 
 ## Part 2 — Render
 
-### 1. Get the code onto the branch Render watches
-The work is on `claude/event-venues-rfp-tool-3dup61`. Render deploys whichever
-branch the service is configured to track, usually `main`:
+### Step 0 — work out which situation you are in
+
+Open [dashboard.render.com](https://dashboard.render.com) and look for a service
+named **ia-slide-standardizer**.
+
+- **Not there** → Path A. You are creating the service for the first time.
+- **It is there** → check whether it is Blueprint-managed: open the service and
+  look for a **Blueprint** link in its settings, or check the **Blueprints** tab
+  in the dashboard.
+  - Listed under Blueprints → **Path B**. `render.yaml` drives it.
+  - Not listed → **Path C**. It was created by hand, so `render.yaml` is
+    *ignored* and every environment variable must be set in the dashboard.
+
+Getting this wrong is the most common cause of "I set the variables and nothing
+changed", so spend the thirty seconds.
+
+---
+
+### Path A — first deploy (no service yet)
+
+**1. Put the code on `main`.**
 
 ```bash
 git checkout main
@@ -81,43 +99,120 @@ git merge claude/event-venues-rfp-tool-3dup61
 git push origin main
 ```
 
-Or open a PR from the branch and merge it in GitHub — same result.
+**2.** Dashboard → **+ New** → **Blueprint**.
 
-### 2. Add the environment variables
-`render.yaml` already declares everything except the secret.
+**3.** Connect GitHub if you have not already, then **Connect** next to
+`Mon97-crypto/ia-slide-standardizer`. If the repo is not listed, click *Configure
+account* and grant Render access to it.
 
-**If the service already exists:** Render ignores `sync: false` variables when
-updating an existing Blueprint, so add the key by hand —
-**Dashboard → your service → Environment → Add Environment Variable**:
+**4.** Render reads `render.yaml` and shows what it will create: one web service,
+`ia-slide-standardizer`, Docker runtime, Free plan. Give the Blueprint a name and
+confirm the branch is **main**.
+
+**5.** It prompts for **`RESEND_API_KEY`** — this is the `sync: false` variable.
+Paste the `re_...` key from Part 1. (You can leave it blank and add it later; the
+tool just runs without one-click send until you do.)
+
+**6.** Click **Deploy Blueprint**. The first Docker build takes roughly 3–6
+minutes — it installs tesseract via apt and then the Python dependencies.
+
+**7.** Follow the **Logs** tab. You are waiting for gunicorn's
+`Booting worker with pid ...` and then **Your service is live**.
+
+**8.** Your URL is `https://ia-slide-standardizer.onrender.com` — or with a random
+suffix if that name is taken globally. The exact URL is at the top of the service
+page.
+
+**9.** Open `/venues` on it.
+
+---
+
+### Path B — service exists and is Blueprint-managed
+
+**1. Find which branch it deploys.** Service → **Settings** → **Build & Deploy** →
+**Branch**. It is almost certainly `main`.
+
+**2. Merge into that branch and push.**
+
+```bash
+git checkout main
+git merge claude/event-venues-rfp-tool-3dup61
+git push origin main
+```
+
+**3.** If **Auto-Deploy** is *On* (Settings → Build & Deploy → Auto-Deploy), the
+push starts a build by itself — watch the **Events** tab. If it is *Off*, click
+**Manual Deploy** → **Deploy latest commit**.
+
+**4. Add the secret by hand.** Render *ignores `sync: false` variables when
+updating an existing Blueprint*, so it will not prompt you. Service →
+**Environment** → **Add Environment Variable** → `RESEND_API_KEY` = your `re_...`
+key → **Save Changes**. Saving triggers another deploy on its own.
+
+The other four variables (`RESEND_FROM`, `RFP_REPLY_TO`, `RFP_SENDER_NAME`,
+`RFP_SENDER_ORG`) sync from `render.yaml` automatically on this path.
+
+**5.** Wait for **Your service is live**, then open `/venues`.
+
+---
+
+### Path C — service exists but was created manually
+
+`render.yaml` does nothing for this service. Same merge and deploy as Path B,
+but in step 4 add **all five** variables in the Environment tab:
 
 | Key | Value |
 |---|---|
-| `RESEND_API_KEY` | the `re_...` key from Part 1, step 5 |
+| `RESEND_API_KEY` | your `re_...` key |
+| `RESEND_FROM` | `Impact Analytics Events <events@send.impactanalytics.co>` |
+| `RFP_REPLY_TO` | `marketing@impactanalytics.co` |
+| `RFP_SENDER_NAME` | `Impact Analytics — Events Team` |
+| `RFP_SENDER_ORG` | `Impact Analytics` |
 
-The rest (`RESEND_FROM`, `RFP_REPLY_TO`, `RFP_SENDER_NAME`, `RFP_SENDER_ORG`)
-come from `render.yaml` automatically. Override any of them in the dashboard if
-you want different wording without a code change.
-
-**If you are creating the service fresh:** **New → Blueprint**, point it at this
-repo, and Render will prompt for `RESEND_API_KEY` during setup.
-
-### 3. Deploy
-Saving an environment variable triggers a deploy on its own. Otherwise:
-**Manual Deploy → Deploy latest commit**. The Docker build takes a few minutes.
-
-### 4. Verify
-Open `https://<your-service>.onrender.com/venues`. The badge top-right should
-read **“● Resend connected”** in green rather than the amber warning. Then:
-
-1. Click **Send RFP** on any venue.
-2. Replace the To address with your own.
-3. **Send via Resend.**
-
-Check it arrives, check the Reply-To is `marketing@impactanalytics.co`, and check
-the card flipped to *RFP sent*. Confirm the send appears in Resend's **Emails**
-log. Only then start sending to venues.
+(Only the first is strictly required — the rest have sensible defaults in code.
+Set them anyway so the sender identity is explicit rather than implied.)
 
 ---
+
+### Deploying without touching `main` first
+
+If you would rather see it running before merging, point the existing service at
+the feature branch: Settings → Build & Deploy → **Branch** →
+`claude/event-venues-rfp-tool-3dup61` → Save. It deploys from there. Remember to
+point it back at `main` afterwards.
+
+---
+
+### Verify the deploy
+
+1. Open `https://<your-service>.onrender.com/` — the slide standardiser should
+   still work exactly as before. The venue tool is additive; it changes nothing
+   about the existing app.
+2. Open `/venues`. You should see 18 venue cards.
+3. Check the badge top-right: **“● Resend connected”** in green means the key is
+   live. Amber means it is missing or the deploy predates it.
+4. Click **Send RFP** on any venue, change the To address to your own, and
+   **Send via Resend**. Confirm it arrives, that Reply-To is
+   `marketing@impactanalytics.co`, that the card flipped to *RFP sent*, and that
+   the send shows in Resend's **Emails** log.
+
+Only after that test should you send to an actual venue.
+
+---
+
+### If the build fails
+
+| Symptom | Likely cause |
+|---|---|
+| Build fails at `apt-get` or `pip install` | Transient network — click **Manual Deploy → Deploy latest commit** and try again |
+| `ModuleNotFoundError: venue_rfp` | The merge did not land on the deployed branch — check the Events tab shows the right commit |
+| Deploy succeeds, `/venues` returns 404 | Deployed commit predates the tool; redeploy latest |
+| Health check failing | `healthCheckPath` is `/`, which is the slide standardiser — unrelated to the venue tool |
+
+A fresh clone of this branch on Python 3.11 (the Dockerfile's base image)
+installs from `requirements.txt` and boots under gunicorn with both routes
+serving 200, so a build failure here is an infrastructure hiccup rather than a
+code problem.
 
 ## Two limits of the free plan
 
