@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NRF 2027 Venue RFPs — Impact Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --blue:#264CD7; --blue-2:#3A5EE3; --green:#3DD499; --navy:#17375E;
+  --ink:#1C1B1B; --muted:#6B7280; --line:#E3E7EF; --gray:#F4F4F6; --white:#fff;
+  --amber:#B4690E; --red:#B42318;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(16,24,40,.05), 0 8px 24px -12px rgba(16,24,40,.18);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--gray);color:var(--ink);
+  font-family:'Inter Tight',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px 72px}
+
+/* ── header ─────────────────────────────────────────── */
+header.top{background:var(--ink);color:#fff;padding:28px 0 0}
+header.top .wrap{padding-bottom:0}
+.brandbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brandbar h1{font-size:22px;font-weight:600;margin:0;letter-spacing:-.01em}
+.brandbar .sub{color:#A8AFBD;font-size:13px;margin-top:2px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;
+  padding:5px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.22);color:#D7DCE6}
+.pill.live{border-color:rgba(61,212,153,.5);color:var(--green)}
+.pill.off{border-color:rgba(180,105,14,.6);color:#F0B65B}
+.nights{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin:24px 0 0;padding-bottom:28px}
+.night{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:var(--radius);padding:16px 18px}
+.night h2{margin:0;font-size:14px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--green)}
+.night .date{font-size:17px;font-weight:600;margin:6px 0 2px}
+.night .meta{color:#A8AFBD;font-size:13px}
+.night .prog{margin-top:12px;height:5px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden}
+.night .prog i{display:block;height:100%;background:var(--green);width:0;transition:width .3s}
+.night .progtxt{font-size:12px;color:#A8AFBD;margin-top:6px}
+
+/* ── controls ───────────────────────────────────────── */
+.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+  background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+  padding:12px;margin:24px 0;box-shadow:var(--shadow);position:sticky;top:0;z-index:20}
+.seg{display:flex;background:var(--gray);border-radius:9px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;font:inherit;font-weight:500;color:var(--muted);
+  padding:7px 14px;border-radius:7px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(16,24,40,.1)}
+.controls input[type=search],.controls select{font:inherit;padding:8px 11px;border:1px solid var(--line);
+  border-radius:9px;background:#fff;color:var(--ink)}
+.controls input[type=search]{flex:1;min-width:180px}
+.controls .spacer{flex:1}
+.btn{font:inherit;font-weight:500;border-radius:9px;padding:8px 14px;cursor:pointer;
+  border:1px solid var(--line);background:#fff;color:var(--ink)}
+.btn:hover{background:var(--gray)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:var(--blue-2)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── cards ──────────────────────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+.cover{height:132px;position:relative;background-size:cover;background-position:center;
+  display:flex;align-items:flex-end;padding:14px}
+.cover::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(0,0,0,.05) 0%,rgba(0,0,0,.62) 100%)}
+.cover .mono{position:absolute;right:14px;top:8px;font-size:64px;font-weight:700;
+  color:rgba(255,255,255,.16);line-height:1;letter-spacing:-.04em}
+.cover .cuisine{position:relative;z-index:1;color:#fff;font-size:12px;font-weight:500;
+  text-transform:uppercase;letter-spacing:.06em;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.cover .editcover{position:absolute;top:8px;left:8px;z-index:2;border:0;cursor:pointer;
+  background:rgba(0,0,0,.45);color:#fff;font:inherit;font-size:11px;padding:4px 8px;border-radius:7px;opacity:0;transition:opacity .15s}
+.card:hover .cover .editcover{opacity:1}
+.body{padding:16px;display:flex;flex-direction:column;gap:10px;flex:1}
+.body h3{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em}
+.body .space{color:var(--muted);font-size:13px;margin-top:-4px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:11.5px;font-weight:500;padding:3px 8px;border-radius:999px;
+  background:var(--gray);color:#414651;border:1px solid var(--line)}
+.chip.near{background:#EAF7F1;color:#146C43;border-color:#BFE6D4}
+.chip.cap{background:#EEF2FF;color:#2C3E9E;border-color:#D3DCFB}
+.why{font-size:13px;color:#414651;flex:1}
+.contact{font-size:12.5px;border-top:1px solid var(--line);padding-top:10px;display:flex;
+  align-items:center;gap:8px;flex-wrap:wrap}
+.contact .em{font-weight:500}
+.badge{font-size:10.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
+  padding:2px 6px;border-radius:5px}
+.badge.verified{background:#EAF7F1;color:#146C43}
+.badge.form_only{background:#FFF5E6;color:var(--amber)}
+.badge.unconfirmed{background:#FDECEA;color:var(--red)}
+.badge.user_supplied{background:#EEF2FF;color:#2C3E9E}
+.note{font-size:12px;color:var(--amber);background:#FFF9EF;border:1px solid #F5E3C2;
+  border-radius:8px;padding:7px 9px}
+.rows{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+.row{display:flex;align-items:center;gap:8px}
+.row .lbl{font-size:12px;font-weight:600;width:34px;color:var(--muted);flex:none}
+.row select{font:inherit;font-size:12.5px;padding:5px 8px;border-radius:8px;
+  border:1px solid var(--line);background:#fff;flex:1;min-width:0}
+.row .send{font:inherit;font-size:12.5px;font-weight:500;padding:5px 10px;border-radius:8px;
+  border:1px solid var(--blue);background:var(--blue);color:#fff;cursor:pointer;flex:none}
+.row .send:hover{background:var(--blue-2)}
+.row .send.done{background:#fff;color:var(--blue)}
+.row.na{opacity:.45}
+.dot{width:7px;height:7px;border-radius:50%;flex:none;background:#C8CDD8}
+.dot.rfp_sent{background:var(--blue)} .dot.replied{background:#7B61FF}
+.dot.proposal_received{background:#B4690E} .dot.shortlisted{background:var(--green)}
+.dot.booked{background:#146C43} .dot.declined{background:var(--red)}
+.links{display:flex;gap:12px;font-size:12.5px;padding-top:2px}
+
+/* ── modal ──────────────────────────────────────────── */
+dialog{border:0;border-radius:16px;padding:0;width:min(720px,94vw);box-shadow:0 24px 64px rgba(16,24,40,.28)}
+dialog::backdrop{background:rgba(16,24,40,.45)}
+.dlg-h{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.dlg-h h3{margin:0;font-size:17px;font-weight:600}
+.dlg-h .s{color:var(--muted);font-size:13px;margin-top:2px}
+.dlg-b{padding:18px 20px;display:flex;flex-direction:column;gap:12px;max-height:62vh;overflow:auto}
+.fld label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;
+  text-transform:uppercase;letter-spacing:.04em}
+.fld input,.fld textarea{width:100%;font:inherit;padding:9px 11px;border:1px solid var(--line);
+  border-radius:9px;background:#fff;color:var(--ink)}
+.fld textarea{min-height:300px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6}
+.dlg-f{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dlg-f .spacer{flex:1}
+.msg{font-size:12.5px;padding:8px 11px;border-radius:9px;display:none}
+.msg.ok{display:block;background:#EAF7F1;color:#146C43}
+.msg.err{display:block;background:#FDECEA;color:var(--red)}
+.empty{text-align:center;padding:60px 20px;color:var(--muted)}
+@media (max-width:600px){.wrap{padding:0 14px 48px}.controls{position:static}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brandbar">
+      <div>
+        <h1>{{ event.name }} — venue RFPs</h1>
+        <div class="sub">{{ event.conference_dates }} · {{ event.conference_venue }}</div>
+      </div>
+      {% if resend_ready %}
+        <span class="pill live">● Resend connected — sending as {{ mail_config.from_address }}</span>
+      {% else %}
+        <span class="pill off">● Resend not configured — set RESEND_API_KEY to enable one-click send</span>
+      {% endif %}
+    </div>
+    <div class="nights">
+      {% for key, n in event.nights.items() %}
+      <div class="night" data-night="{{ key }}">
+        <h2>{{ n.label }}</h2>
+        <div class="date">{{ n.date }}</div>
+        <div class="meta">{{ n.headcount }} · {{ n.format }}</div>
+        <div class="meta">{{ n.window }} · {{ n.audience }}</div>
+        <div class="prog"><i data-prog="{{ key }}"></i></div>
+        <div class="progtxt" data-progtxt="{{ key }}">—</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="controls">
+    <div class="seg" id="nightSeg">
+      <button data-night="all" aria-pressed="true">All venues</button>
+      {% for key, n in event.nights.items() %}
+      <button data-night="{{ key }}" aria-pressed="false">{{ n.label }}</button>
+      {% endfor %}
+    </div>
+    <input type="search" id="q" placeholder="Search venue, neighbourhood or cuisine…" autocomplete="off">
+    <select id="statusFilter">
+      <option value="all">Any status</option>
+      {% for s in statuses %}<option value="{{ s }}">{{ s.replace('_',' ')|title }}</option>{% endfor %}
+    </select>
+    <div class="spacer"></div>
+    <a class="btn" href="{{ url_for('venues.api_export') }}">Export tracker</a>
+  </div>
+
+  <div class="grid" id="grid">
+  {% for v in venues %}
+    <article class="card" data-id="{{ v.id }}"
+             data-fits="{{ v.fits|join(',') }}"
+             data-search="{{ (v.name ~ ' ' ~ v.neighborhood ~ ' ' ~ v.cuisine ~ ' ' ~ (v.space or ''))|lower }}">
+      <div class="cover" data-cover
+           style="{% if v.cover_image %}background-image:url('{{ v.cover_image }}');{% else %}background:linear-gradient(135deg,{{ v.accent }} 0%,#1C1B1B 100%);{% endif %}">
+        <span class="mono">{{ v.monogram }}</span>
+        <button class="editcover" type="button" data-editcover>Cover image</button>
+        <span class="cuisine">{{ v.cuisine }}</span>
+      </div>
+      <div class="body">
+        <div>
+          <h3>{{ v.name }}</h3>
+          <div class="space">{{ v.space }}</div>
+        </div>
+        <div class="chips">
+          <span class="chip near">{{ v.proximity }}</span>
+          <span class="chip">{{ v.neighborhood }}</span>
+          {% if v.seated_max %}<span class="chip cap">Seats to {{ v.seated_max }}</span>{% endif %}
+          {% if v.reception_max %}<span class="chip cap">Reception to {{ v.reception_max }}</span>{% endif %}
+        </div>
+        <p class="why">{{ v.why }}</p>
+        {% if v.booking_note %}<div class="note">{{ v.booking_note }}</div>{% endif %}
+        <div class="contact">
+          {% if v.email %}<span class="em" data-email>{{ v.email }}</span>{% else %}<span class="em" data-email style="color:var(--muted)">No public address</span>{% endif %}
+          <span class="badge {{ v.email_confidence }}" data-conf>{{ v.email_confidence.replace('_',' ') }}</span>
+          <button class="btn" type="button" style="padding:3px 8px;font-size:11.5px" data-editemail>Edit</button>
+        </div>
+        <div class="rows">
+          {% for key, n in event.nights.items() %}
+          <div class="row {% if key not in v.fits %}na{% endif %}" data-night="{{ key }}">
+            <span class="dot {{ v.outreach[key].status }}" data-dot></span>
+            <span class="lbl">{{ 'SAT' if key == 'saturday' else 'SUN' }}</span>
+            <select data-status>
+              {% for s in statuses %}
+              <option value="{{ s }}" {% if v.outreach[key].status == s %}selected{% endif %}>{{ s.replace('_',' ')|title }}</option>
+              {% endfor %}
+            </select>
+            <button class="send {% if v.outreach[key].status != 'not_contacted' %}done{% endif %}" type="button" data-draft>
+              {% if v.outreach[key].status == 'not_contacted' %}Send RFP{% else %}Resend{% endif %}
+            </button>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="links">
+          <a href="{{ v.website }}" target="_blank" rel="noopener">Events page ↗</a>
+          {% if v.phone %}<span style="color:var(--muted)">{{ v.phone }}</span>{% endif %}
+        </div>
+      </div>
+    </article>
+  {% endfor %}
+  </div>
+  <div class="empty" id="empty" style="display:none">No venues match that filter.</div>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" style="margin:0">
+    <div class="dlg-h">
+      <div>
+        <h3 id="dlgTitle">Draft RFP</h3>
+        <div class="s" id="dlgSub"></div>
+      </div>
+      <button class="btn" value="cancel" type="submit">Close</button>
+    </div>
+  </form>
+  <div class="dlg-b">
+    <div class="msg" id="dlgMsg"></div>
+    <div class="fld"><label for="fTo">To</label><input id="fTo" type="email" autocomplete="off"></div>
+    <div class="fld"><label for="fSubj">Subject</label><input id="fSubj" type="text"></div>
+    <div class="fld"><label for="fBody">Message</label><textarea id="fBody" spellcheck="true"></textarea></div>
+  </div>
+  <div class="dlg-f">
+    <button class="btn" type="button" id="bCopy">Copy</button>
+    <button class="btn" type="button" id="bMail">Open in mail app</button>
+    <div class="spacer"></div>
+    <button class="btn primary" type="button" id="bSend" {% if not resend_ready %}disabled title="Set RESEND_API_KEY to enable"{% endif %}>Send via Resend</button>
+  </div>
+</dialog>
+
+<script>
+const NIGHT_LABEL = {{ event.nights|tojson }};
+const dlg = document.getElementById('dlg');
+let current = null;   // {venueId, nightId, row}
+
+/* ── filtering ─────────────────────────────────────── */
+let nightFilter = 'all';
+function applyFilters(){
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+  let shown = 0;
+  document.querySelectorAll('.card').forEach(card => {
+    const fits = card.dataset.fits.split(',');
+    const statuses = [...card.querySelectorAll('.row')].map(r => r.querySelector('[data-status]').value);
+    const ok = (nightFilter === 'all' || fits.includes(nightFilter))
+      && (!q || card.dataset.search.includes(q))
+      && (status === 'all' || statuses.includes(status));
+    card.style.display = ok ? '' : 'none';
+    if (ok) shown++;
+  });
+  document.getElementById('empty').style.display = shown ? 'none' : '';
+}
+document.getElementById('nightSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  nightFilter = b.dataset.night;
+  document.querySelectorAll('#nightSeg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  applyFilters();
+});
+document.getElementById('q').addEventListener('input', applyFilters);
+document.getElementById('statusFilter').addEventListener('change', applyFilters);
+
+/* ── progress ──────────────────────────────────────── */
+function refreshProgress(){
+  Object.keys(NIGHT_LABEL).forEach(night => {
+    let total = 0, touched = 0;
+    document.querySelectorAll('.card').forEach(card => {
+      if (!card.dataset.fits.split(',').includes(night)) return;
+      total++;
+      const row = card.querySelector(`.row[data-night="${night}"] [data-status]`);
+      if (row && row.value !== 'not_contacted') touched++;
+    });
+    const pct = total ? Math.round(touched / total * 100) : 0;
+    document.querySelector(`[data-prog="${night}"]`).style.width = pct + '%';
+    document.querySelector(`[data-progtxt="${night}"]`).textContent =
+      `${touched} of ${total} shortlisted venues contacted`;
+  });
+}
+
+/* ── status + notes persistence ────────────────────── */
+async function post(url, payload){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                             body: JSON.stringify(payload)});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+  return data;
+}
+
+document.getElementById('grid').addEventListener('change', async e => {
+  const sel = e.target.closest('[data-status]'); if (!sel) return;
+  const card = sel.closest('.card'), row = sel.closest('.row');
+  row.querySelector('[data-dot]').className = 'dot ' + sel.value;
+  const btn = row.querySelector('[data-draft]');
+  btn.textContent = sel.value === 'not_contacted' ? 'Send RFP' : 'Resend';
+  btn.classList.toggle('done', sel.value !== 'not_contacted');
+  refreshProgress(); applyFilters();
+  try { await post(`/venues/api/outreach/${card.dataset.id}/${row.dataset.night}`, {status: sel.value}); }
+  catch (err) { alert('Could not save status: ' + err.message); }
+});
+
+/* ── cover image + email overrides ─────────────────── */
+document.getElementById('grid').addEventListener('click', async e => {
+  const card = e.target.closest('.card'); if (!card) return;
+
+  if (e.target.closest('[data-editcover]')) {
+    const url = prompt('Cover image URL for ' + card.querySelector('h3').textContent +
+                       '\n(leave blank to go back to the generated cover)');
+    if (url === null) return;
+    try {
+      await post(`/venues/api/meta/${card.dataset.id}`, {cover_image: url.trim()});
+      const cover = card.querySelector('[data-cover]');
+      cover.style.backgroundImage = url.trim() ? `url('${url.trim()}')` : '';
+    } catch (err) { alert('Could not save image: ' + err.message); }
+    return;
+  }
+
+  if (e.target.closest('[data-editemail]')) {
+    const cur = card.querySelector('[data-email]').textContent.trim();
+    const email = prompt('Events email for ' + card.querySelector('h3').textContent, cur.includes('@') ? cur : '');
+    if (email === null) return;
+    try {
+      await post(`/venues/api/meta/${card.dataset.id}`, {email_override: email.trim()});
+      const el = card.querySelector('[data-email]');
+      el.textContent = email.trim() || 'No public address';
+      el.style.color = email.trim() ? '' : 'var(--muted)';
+      const badge = card.querySelector('[data-conf]');
+      if (email.trim()) { badge.className = 'badge user_supplied'; badge.textContent = 'user supplied'; }
+    } catch (err) { alert('Could not save email: ' + err.message); }
+    return;
+  }
+
+  const draft = e.target.closest('[data-draft]');
+  if (draft) openDraft(card, draft.closest('.row').dataset.night);
+});
+
+/* ── draft + send ──────────────────────────────────── */
+async function openDraft(card, nightId){
+  const venueId = card.dataset.id;
+  const msg = document.getElementById('dlgMsg');
+  msg.className = 'msg'; msg.textContent = '';
+  document.getElementById('dlgTitle').textContent = card.querySelector('h3').textContent;
+  document.getElementById('dlgSub').textContent =
+    `${NIGHT_LABEL[nightId].label} · ${NIGHT_LABEL[nightId].date} · ${NIGHT_LABEL[nightId].headcount}`;
+  document.getElementById('fBody').value = 'Loading…';
+  dlg.showModal();
+
+  const r = await fetch(`/venues/api/draft/${venueId}/${nightId}`);
+  const d = await r.json();
+  if (!r.ok) { msg.className = 'msg err'; msg.textContent = d.error; return; }
+  document.getElementById('fTo').value = d.to || '';
+  document.getElementById('fSubj').value = d.subject;
+  document.getElementById('fBody').value = d.body;
+  current = {venueId, nightId, card};
+  if (!d.to) {
+    msg.className = 'msg err';
+    msg.textContent = d.booking_note || 'This venue takes enquiries through a web form — add an address above, or use the events page link on the card.';
+  }
+}
+
+document.getElementById('bCopy').addEventListener('click', async () => {
+  const text = `To: ${document.getElementById('fTo').value}\nSubject: ${document.getElementById('fSubj').value}\n\n${document.getElementById('fBody').value}`;
+  try { await navigator.clipboard.writeText(text); flash('ok', 'Copied to clipboard.'); }
+  catch { flash('err', 'Clipboard blocked — select the text manually.'); }
+});
+
+document.getElementById('bMail').addEventListener('click', () => {
+  const to = encodeURIComponent(document.getElementById('fTo').value);
+  const s = encodeURIComponent(document.getElementById('fSubj').value);
+  const b = encodeURIComponent(document.getElementById('fBody').value);
+  window.location.href = `mailto:${to}?subject=${s}&body=${b}`;
+});
+
+document.getElementById('bSend').addEventListener('click', async () => {
+  if (!current) return;
+  const btn = document.getElementById('bSend');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await post('/venues/api/send', {
+      venue_id: current.venueId, night_id: current.nightId,
+      to: document.getElementById('fTo').value,
+      subject: document.getElementById('fSubj').value,
+      body: document.getElementById('fBody').value,
+    });
+    flash('ok', 'RFP sent. Marked as “RFP sent” in the tracker.');
+    const row = current.card.querySelector(`.row[data-night="${current.nightId}"]`);
+    row.querySelector('[data-status]').value = 'rfp_sent';
+    row.querySelector('[data-dot]').className = 'dot rfp_sent';
+    const b = row.querySelector('[data-draft]'); b.textContent = 'Resend'; b.classList.add('done');
+    refreshProgress();
+  } catch (err) {
+    flash('err', err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send via Resend';
+  }
+});
+
+function flash(kind, text){
+  const m = document.getElementById('dlgMsg');
+  m.className = 'msg ' + kind; m.textContent = text;
+}
+
+refreshProgress();
+</script>
+</body>
+</html>

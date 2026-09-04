@@ -1,0 +1,501 @@
+{
+  "event": {
+    "name": "NRF 2027 — Retail's Big Show",
+    "conference_dates": "January 10–12, 2027",
+    "conference_venue": "Jacob K. Javits Convention Center, 429 11th Ave, New York, NY",
+    "nights": {
+      "saturday": {
+        "id": "saturday",
+        "label": "Saturday reception",
+        "date": "Saturday, January 9, 2027",
+        "format": "Standing cocktail reception with passed food",
+        "headcount": "Up to 50 guests",
+        "audience": "international attendees arriving ahead of NRF",
+        "window": "7:00–10:00 PM"
+      },
+      "sunday": {
+        "id": "sunday",
+        "label": "Sunday executive dinner",
+        "date": "Sunday, January 10, 2027",
+        "format": "Seated dinner, private or fully partitioned room",
+        "headcount": "30–35 guests",
+        "audience": "senior retail executives",
+        "window": "7:00–10:30 PM"
+      }
+    }
+  },
+  "venues": [
+    {
+      "id": "legacy-records",
+      "name": "Legacy Records",
+      "space": "Private dining rooms + full buyout (7 spaces)",
+      "cuisine": "Contemporary Mediterranean-American",
+      "address": "517 W 38th St, New York, NY 10018",
+      "neighborhood": "Hudson Yards / Hell's Kitchen",
+      "proximity": "≈6 min walk from Javits",
+      "proximity_rank": 1,
+      "website": "https://www.legacyrecordsrestaurant.com/private-events-1/",
+      "phone": "(212) 736-1200",
+      "email": "events@dhgnyc.com",
+      "email_confidence": "verified",
+      "seated_max": 100,
+      "reception_max": 500,
+      "fits": [
+        "saturday",
+        "sunday"
+      ],
+      "accent": "#264CD7",
+      "why": "The single closest serious room to Javits — guests can walk. Seven configurable spaces including two private dining rooms and a glass-roofed atrium, so the same venue can hold a 50-person standing reception and a 35-seat dinner on consecutive nights. Delicious Hospitality Group (Charlie Bird, Pasquale Jones) runs the events team centrally.",
+      "sources": [
+        "https://www.legacyrecordsrestaurant.com/private-events-1/",
+        "https://www.dhgnyc.com/private-events-venue/legacy-records/"
+      ]
+    },
+    {
+      "id": "zou-zous",
+      "name": "Zou Zou's",
+      "space": "Mural Room + Parlour Room (combinable) · Chez Zou for buyouts",
+      "cuisine": "Eastern Mediterranean",
+      "address": "385 9th Ave, Manhattan West, New York, NY 10001",
+      "neighborhood": "Manhattan West",
+      "proximity_rank": 2,
+      "proximity": "≈8 min walk from Javits",
+      "website": "https://www.zouzousnyc.com/private-events/",
+      "phone": "(212) 838-2558",
+      "email": "mcrane@qualitybranded.com",
+      "email_confidence": "verified",
+      "contact_name": "Matt Crane, Private Events",
+      "seated_max": 42,
+      "reception_max": 100,
+      "fits": [
+        "saturday",
+        "sunday"
+      ],
+      "accent": "#3DD499",
+      "why": "Mural Room (24 seated / 30 standing) and Parlour Room (18 seated / 20 standing) combine for a group your size, and sister venue Chez Zou upstairs does semi-private and full buyouts for 15–100 — the cleanest single-property answer if you want both nights under one contract minutes from the show floor.",
+      "sources": [
+        "https://www.zouzousnyc.com/private-events/",
+        "https://www.qualitybranded.com/private-events-venue/zou-zous/",
+        "https://www.chezzou.com/private-events/"
+      ]
+    },
+    {
+      "id": "keens-bullmoose",
+      "name": "Keens Steakhouse",
+      "space": "Bullmoose Room (30–35 seated) · Lambs Room (up to 80)",
+      "cuisine": "Classic American chophouse",
+      "address": "72 W 36th St, New York, NY 10018",
+      "neighborhood": "Garment District",
+      "proximity_rank": 3,
+      "proximity": "≈12 min walk / 6 min car from Javits",
+      "website": "https://www.keens.com/privateevents/",
+      "phone": "(212) 947-3636",
+      "email": "banquets@keens.com",
+      "email_confidence": "verified",
+      "seated_max": 35,
+      "reception_max": 80,
+      "fits": [
+        "sunday",
+        "saturday"
+      ],
+      "accent": "#17375E",
+      "why": "The Bullmoose Room is a 30–35 guest room — an exact fit for the Sunday dinner, with no partition compromise. For Saturday the Lambs Room holds up to 80 (50 minimum). 1885 clay-pipe ceilings and a mutton chop are the most legibly 'New York' thing you can put in front of an international crowd, and it is the closest landmark restaurant to Javits.",
+      "sources": [
+        "https://www.keens.com/privateevents/",
+        "https://thevendry.com/venue/43652/keens-steakhouse-new-york-ny/space/644"
+      ]
+    },
+    {
+      "id": "le-bernardin",
+      "name": "Le Bernardin",
+      "space": "Les Salons Bernardin · Le Bernardin Privé",
+      "cuisine": "French seafood — three Michelin stars",
+      "address": "155 W 51st St, New York, NY 10019",
+      "neighborhood": "Midtown West",
+      "proximity_rank": 5,
+      "proximity": "≈10 min car from Javits",
+      "website": "https://www.le-bernardin.com/private-dining",
+      "phone": "(212) 554-1106",
+      "email": "events@le-bernardin.com",
+      "email_confidence": "verified",
+      "seated_max": 80,
+      "reception_max": 80,
+      "fits": [
+        "sunday",
+        "saturday"
+      ],
+      "accent": "#1C1B1B",
+      "why": "Les Salons Bernardin sits one level above the restaurant with its own entrance and movable walls, seating anywhere from 2 to 80 — so a 30–35 exec dinner gets a room sized exactly to it. Eric Ripert's name carries internationally without explanation, which is the whole job on an exec night. Book early; this is the most contested room on the list.",
+      "sources": [
+        "https://www.le-bernardin.com/private-dining/les-salons-bernardin",
+        "https://www.le-bernardinprive.com/contact"
+      ]
+    },
+    {
+      "id": "aquavit",
+      "name": "Aquavit",
+      "space": "Linné Salon · Nobel Room",
+      "cuisine": "Nordic — two Michelin stars",
+      "address": "65 E 55th St, New York, NY 10022",
+      "neighborhood": "Midtown East",
+      "proximity_rank": 7,
+      "proximity": "≈15 min car from Javits",
+      "website": "http://www.aquavit.org/private-dining-1",
+      "phone": "(212) 957-9045",
+      "email": "events@aquavit.org",
+      "email_confidence": "verified",
+      "seated_max": 76,
+      "reception_max": 100,
+      "fits": [
+        "saturday",
+        "sunday"
+      ],
+      "accent": "#3A5EE3",
+      "why": "The Linné Salon is quoted at exactly 30 seated or 50 standing — it hits both of your briefs on the nose, from one room and one contact. Nobel Room scales to 76 seated / 100 standing if the count grows. Two Michelin stars, a Scandinavian register that reads as international rather than American, and a team that runs consular and corporate programs constantly.",
+      "sources": [
+        "http://www.aquavit.org/private-dining-1",
+        "https://static1.squarespace.com/static/54288085e4b0461906627747/t/6723e17d60030479058d5762/1730404733588/AQUAVIT+Private+Dining+Kit+FALL+2024.pdf"
+      ]
+    },
+    {
+      "id": "manhatta",
+      "name": "Manhatta",
+      "space": "Private Dining Room · Whitman / Bay Rooms",
+      "cuisine": "New American (Union Square Hospitality Group)",
+      "address": "28 Liberty St, 60th Floor, New York, NY 10005",
+      "neighborhood": "Financial District",
+      "proximity_rank": 9,
+      "proximity": "≈20 min car from Javits",
+      "website": "https://www.manhattarestaurant.com/private-events/",
+      "phone": "(212) 542-1990",
+      "email": "",
+      "email_confidence": "form_only",
+      "booking_note": "Inquiry form at eventsatmanhatta.com — no public events address published.",
+      "seated_max": 150,
+      "reception_max": 250,
+      "fits": [
+        "saturday",
+        "sunday"
+      ],
+      "accent": "#264CD7",
+      "why": "60 storeys up with the East River, the bridges and the Brooklyn skyline through floor-to-ceiling glass — the view does the hosting for you with an international group. The Private Dining Room is 35 seated / 40 standing (your Sunday number precisely), and the larger rooms scale to 250 standing if Saturday grows. Danny Meyer service standard. F&B minimums start around $2,500.",
+      "sources": [
+        "https://www.manhattarestaurant.com/private-events/",
+        "https://www.manhattarestaurant.com/private-events-venue/private-dining-room/"
+      ]
+    },
+    {
+      "id": "saga",
+      "name": "SAGA & Overstory",
+      "space": "62nd-floor private rooms · Overstory terrace buyout",
+      "cuisine": "New American tasting — one Michelin star",
+      "address": "70 Pine St, New York, NY 10005",
+      "neighborhood": "Financial District",
+      "proximity_rank": 10,
+      "proximity": "≈20 min car from Javits",
+      "website": "https://www.saga-nyc.com/private-dining-and-events",
+      "phone": "(212) 339-3963",
+      "email": "events@saga-nyc.com",
+      "email_confidence": "verified",
+      "seated_max": 40,
+      "reception_max": 70,
+      "fits": [
+        "saturday",
+        "sunday"
+      ],
+      "accent": "#00D1B2",
+      "why": "Private rooms on the 62nd floor run 15–40 seated and 30–70 standing, and Overstory one floor up is a cocktail bar wrapped in a 360° terrace — a purpose-built reception room in an Art Deco landmark. Kent Hospitality will quote both nights together. The strongest 'they'll talk about it on the flight home' option that is still a restaurant, not an event hall.",
+      "sources": [
+        "https://www.saga-nyc.com/private-dining-and-events",
+        "https://www.overstory-nyc.com/",
+        "https://eventup.com/venue/kent-hospitality-group-at-70-pine/"
+      ]
+    },
+    {
+      "id": "cote",
+      "name": "COTE Korean Steakhouse",
+      "space": "Undercote · main room group dining",
+      "cuisine": "Korean steakhouse — Michelin-starred",
+      "address": "16 W 22nd St, New York, NY 10010",
+      "neighborhood": "Flatiron",
+      "proximity_rank": 6,
+      "proximity": "≈13 min car from Javits",
+      "website": "https://www.cotekoreansteakhouse.com/events",
+      "phone": "(212) 401-7986",
+      "email": "event@cotenyc.com",
+      "email_confidence": "verified",
+      "seated_max": 100,
+      "reception_max": 55,
+      "fits": [
+        "sunday",
+        "saturday"
+      ],
+      "accent": "#D4E157",
+      "why": "Undercote — the subterranean room with its own bar — holds 55, and group dining upstairs runs to 100. Tabletop grills make an exec dinner participatory rather than ceremonial, which is the right energy for night one of a conference. America's first Michelin-starred Korean steakhouse and a reliable crowd-pleaser across nationalities.",
+      "sources": [
+        "https://www.cotekoreansteakhouse.com/events",
+        "https://thevendry.com/venue/22678/cote-korean-steakhouse-new-york-ny/space/1234"
+      ]
+    },
+    {
+      "id": "gramercy-tavern",
+      "name": "Gramercy Tavern",
+      "space": "Vault Room · Private Dining Room",
+      "cuisine": "New American (Union Square Hospitality Group)",
+      "address": "42 E 20th St, New York, NY 10003",
+      "neighborhood": "Flatiron / Union Square",
+      "proximity_rank": 8,
+      "proximity": "≈15 min car from Javits",
+      "website": "https://www.gramercytavern.com/private-dining/",
+      "phone": "(212) 477-0777",
+      "email": "",
+      "email_confidence": "form_only",
+      "booking_note": "\"Inquire Now\" form on gramercytavern.com; Vault Room needs 28 days' notice.",
+      "seated_max": 40,
+      "reception_max": 120,
+      "fits": [
+        "sunday",
+        "saturday"
+      ],
+      "accent": "#3DD499",
+      "why": "Already flagged on your sheet, and it holds up: the semi-private Vault Room seats up to 40 — comfortable at 30–35 rather than maxed out — with the Private Dining Room at 20 and a full buyout to 120. A New York institution that doesn't require anyone to be adventurous, which matters on an executive night.",
+      "sources": [
+        "https://www.gramercytavern.com/private-events-venue/the-vault-room/",
+        "https://www.gramercytavern.com/private-dining/"
+      ]
+    },
+    {
+      "id": "torrisi",
+      "name": "Torrisi",
+      "space": "Private dining room · semi-private main room · buyout",
+      "cuisine": "Italian-American (Major Food Group)",
+      "address": "275 Mulberry St, New York, NY 10012",
+      "neighborhood": "Nolita / SoHo",
+      "proximity_rank": 11,
+      "proximity": "≈20 min car from Javits",
+      "website": "https://torrisinyc.com/contact",
+      "phone": "(212) 254-3000",
+      "email": "reservations@torrisinyc.com",
+      "email_confidence": "verified",
+      "seated_max": 45,
+      "reception_max": 125,
+      "fits": [
+        "sunday",
+        "saturday"
+      ],
+      "accent": "#C4B5E3",
+      "why": "On your sheet already. Confirmed range is 9–45 seated and up to 125 for a cocktail reception, in the Puck Building — so it is one of the few venues here that genuinely covers both nights at your numbers. Major Food Group's events desk is fast to respond.",
+      "sources": [
+        "https://torrisinyc.com/contact",
+        "https://thevendry.com/venue/167952/torrisi-bar-restaurant-new-york-ny"
+      ]
+    },
+    {
+      "id": "jungsik",
+      "name": "Jungsik",
+      "space": "Private dining room (16) · full buyout (35)",
+      "cuisine": "Contemporary Korean — two Michelin stars",
+      "address": "2 Harrison St, New York, NY 10013",
+      "neighborhood": "Tribeca",
+      "proximity_rank": 12,
+      "proximity": "≈18 min car from Javits",
+      "website": "https://www.jungsik.com/private-dining/",
+      "phone": "(212) 219-0900",
+      "email": "events@jungsik.com",
+      "email_confidence": "verified",
+      "seated_max": 35,
+      "reception_max": 35,
+      "fits": [
+        "sunday"
+      ],
+      "accent": "#264CD7",
+      "why": "From your sheet — and the buyout number is exactly 35, so a Sunday exec dinner takes the entire two-Michelin-star restaurant with no other diners in the room. That total-privacy quality is hard to buy at this level. Note the correct groups address is events@jungsik.com, not the general info@ line on your sheet.",
+      "sources": [
+        "https://www.jungsik.com/private-dining/",
+        "https://thevendry.com/venue/55508/jungsik-new-york-ny/space/1001"
+      ]
+    },
+    {
+      "id": "milos-hudson-yards",
+      "name": "Estiatorio Milos — Hudson Yards",
+      "space": "Terrace (50 seated) · Milos Wine Bar (40) · Porfyra Room",
+      "cuisine": "Greek seafood",
+      "address": "20 Hudson Yards, New York, NY 10001",
+      "neighborhood": "Hudson Yards",
+      "proximity_rank": 4,
+      "proximity": "≈10 min walk from Javits",
+      "website": "https://www.estiatoriomilos.com/location/nyhudsonyards/events/",
+      "phone": "(646) 907-1970",
+      "email": "",
+      "email_confidence": "form_only",
+      "booking_note": "Events address not published in the clear — inquire via the Hudson Yards events page or phone; ask them to reply from the direct events address.",
+      "seated_max": 50,
+      "reception_max": 90,
+      "fits": [
+        "saturday",
+        "sunday"
+      ],
+      "accent": "#3A5EE3",
+      "why": "Walkable from Javits, and the terrace looking over the Hudson and the Vessel seats 50 — the reception number, with a view. The Milos Wine Bar (40) is a natural standing space. Greek seafood is the safest possible common denominator for a mixed international table, and the Midtown sibling scales to 400 if this one is committed.",
+      "sources": [
+        "https://www.estiatoriomilos.com/location/nyhudsonyards/events/",
+        "https://eventup.com/venue/estiatorio-milos-hudson-yards/"
+      ]
+    },
+    {
+      "id": "peak-hudson-yards",
+      "name": "Peak",
+      "space": "3,500 sq ft event space · Sky Cellar (18)",
+      "cuisine": "Contemporary American (Tao Group)",
+      "address": "30 Hudson Yards, 101st Floor, New York, NY 10001",
+      "neighborhood": "Hudson Yards",
+      "proximity_rank": 4,
+      "proximity": "≈10 min walk from Javits",
+      "website": "https://www.peaknyc.com/private-events/",
+      "phone": "(917) 725-6100",
+      "email": "",
+      "email_confidence": "form_only",
+      "booking_note": "Tao Group event inquiry form on peaknyc.com — no public events address.",
+      "seated_max": 250,
+      "reception_max": 300,
+      "fits": [
+        "saturday"
+      ],
+      "accent": "#17375E",
+      "why": "101st floor, walking distance from the show floor, and a 3,500 sq ft event space that holds 300 standing — a 50-person reception sits in it comfortably rather than filling it. This is the pure spectacle play for Saturday; guests who have flown in get the skyline on night one. Note the Sky Cellar private room only seats 18, so it is a reception venue here, not a dinner one.",
+      "sources": [
+        "https://www.peaknyc.com/private-events/",
+        "https://taogroup.com/venues/peak-restaurant-new-york/private-dining/"
+      ]
+    },
+    {
+      "id": "semma",
+      "name": "Semma",
+      "space": "Semi-private room · full buyout",
+      "cuisine": "South Indian — one Michelin star",
+      "address": "60 Greenwich Ave, New York, NY 10011",
+      "neighborhood": "West Village",
+      "proximity_rank": 13,
+      "proximity": "≈15 min car from Javits",
+      "website": "https://www.semma.nyc/private-events",
+      "phone": "",
+      "email": "events@semma.nyc",
+      "email_confidence": "verified",
+      "seated_max": 28,
+      "reception_max": 40,
+      "fits": [
+        "sunday"
+      ],
+      "accent": "#D4E157",
+      "why": "On your sheet. The right address for groups is events@semma.nyc (anything over 6), not the general hello@ line. Realistic seated buyout is around 28 with roughly 38–40 for a reception, so 30–35 seated is a stretch worth confirming in writing before you build a night around it — but few rooms in New York are harder to get a table in.",
+      "sources": [
+        "https://www.semma.nyc/private-events",
+        "https://thevendry.com/venue/165004/semma-new-york-ny/space/67411"
+      ]
+    },
+    {
+      "id": "tatiana",
+      "name": "Tatiana by Kwame Onwuachi",
+      "space": "Main-floor space with adjustable partition",
+      "cuisine": "Afro-Caribbean",
+      "address": "10 Lincoln Center Plaza, New York, NY 10023",
+      "neighborhood": "Lincoln Square",
+      "proximity_rank": 14,
+      "proximity": "≈15 min car from Javits",
+      "website": "https://www.tatiananyc.com/private-events/",
+      "phone": "(212) 875-5222",
+      "email": "info@tatiananyc.com",
+      "email_confidence": "verified",
+      "seated_max": 40,
+      "reception_max": 60,
+      "fits": [
+        "sunday",
+        "saturday"
+      ],
+      "accent": "#3DD499",
+      "why": "On your sheet. The private space sits on the main floor with a movable partition, so it goes semi-private or fully private depending on your count — and it is inside David Geffen Hall at Lincoln Center, which frames the evening as a New York cultural occasion. Confirm the exact partitioned capacity for 30–35; they publish it only on request.",
+      "sources": [
+        "https://www.tatiananyc.com/private-events/",
+        "https://www.tatiananyc.com/location/tatiana-by-kwame-onwuachi/"
+      ]
+    },
+    {
+      "id": "kabawa",
+      "name": "Kabawa",
+      "space": "Private dining room · full buyout",
+      "cuisine": "Caribbean (Momofuku, Paul Carmichael)",
+      "address": "8 Extra Pl, New York, NY 10003",
+      "neighborhood": "Bowery / East Village",
+      "proximity_rank": 15,
+      "proximity": "≈20 min car from Javits",
+      "website": "https://www.momofuku.com/restaurants/kabawa/events",
+      "phone": "",
+      "email": "hello@kabawa.com",
+      "email_confidence": "verified",
+      "seated_max": 48,
+      "reception_max": 60,
+      "fits": [
+        "saturday",
+        "sunday"
+      ],
+      "accent": "#C4B5E3",
+      "why": "On your sheet — with one correction: buyout inquiries go to hello@kabawa.com, not events@kabawa.com. The room seats 48 total and they explicitly offer both multi-course seated menus and passed-plate cocktail receptions, so it is one of the few venues that can flip format between your two nights.",
+      "sources": [
+        "https://www.momofuku.com/restaurants/kabawa/events",
+        "https://www.momofuku.com/restaurants/kabawa"
+      ]
+    },
+    {
+      "id": "aska",
+      "name": "Aska",
+      "space": "Main dining room privatized (50) · cellar lounge (16)",
+      "cuisine": "Nordic — two Michelin stars",
+      "address": "47 S 5th St, Brooklyn, NY 11249",
+      "neighborhood": "Williamsburg, Brooklyn",
+      "proximity_rank": 16,
+      "proximity": "≈25 min car from Javits",
+      "website": "https://www.askanyc.com/",
+      "phone": "(929) 337-6792",
+      "email": "events@askanyc.com",
+      "email_confidence": "verified",
+      "seated_max": 50,
+      "reception_max": 50,
+      "fits": [
+        "saturday",
+        "sunday"
+      ],
+      "accent": "#1C1B1B",
+      "why": "On your sheet, and the numbers work: the main dining room privatizes for up to 50, the cellar lounge seats 16, and the whole place can be taken. The trade is distance — Williamsburg is a real car ride from Javits, so this is the option if you want the evening to feel like an escape from the conference rather than an extension of it.",
+      "sources": [
+        "https://www.askanyc.com/",
+        "https://thevendry.com/venue/43463/atomix-new-york-ny"
+      ]
+    },
+    {
+      "id": "eleven-madison-park",
+      "name": "Eleven Madison Park",
+      "space": "Balcony private dining room",
+      "cuisine": "Plant-based tasting — three Michelin stars",
+      "address": "11 Madison Ave, New York, NY 10010",
+      "neighborhood": "Flatiron / NoMad",
+      "proximity_rank": 17,
+      "proximity": "≈15 min car from Javits",
+      "website": "https://www.elevenmadisonpark.com/events",
+      "phone": "(212) 889-0905",
+      "email": "info@elevenmadisonpark.com",
+      "email_confidence": "unconfirmed",
+      "booking_note": "Private Dining & Special Events form on elevenmadisonpark.com/events; info@ is the general guest-relations line.",
+      "seated_max": 32,
+      "reception_max": 50,
+      "fits": [
+        "sunday"
+      ],
+      "accent": "#264CD7",
+      "why": "The stretch option for Sunday. Post-renovation the balcony private dining room seats roughly 24 at one table or 27 on rounds — so 30–35 needs confirming, and historically the balcony rooms combined to 50. Worth one email for the name alone, but the menu is entirely plant-based: decide whether that reads as a bold host or a constraint for your exec group before you send.",
+      "sources": [
+        "https://www.elevenmadisonpark.com/events",
+        "https://www.elevenmadisonpark.com/contact"
+      ]
+    }
+  ]
+}

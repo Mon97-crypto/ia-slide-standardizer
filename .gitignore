@@ -5,3 +5,7 @@ outputs/
 .env
 *.pptx
 !brand_assets/
+
+# venue RFP tracker (local state)
+venue_rfp/data/*.db
+.venv-test/
