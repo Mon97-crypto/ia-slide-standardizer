@@ -73,6 +73,22 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_entry ON chunks(entry_id);
 
+CREATE TABLE IF NOT EXISTS usage (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts            TEXT NOT NULL,
+    feature       TEXT NOT NULL DEFAULT '',
+    model         TEXT NOT NULL DEFAULT '',
+    user_email    TEXT NOT NULL DEFAULT '',
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read    INTEGER NOT NULL DEFAULT 0,
+    cache_write   INTEGER NOT NULL DEFAULT 0,
+    web_searches  INTEGER NOT NULL DEFAULT 0,
+    cost_usd      REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_feature ON usage(feature);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
     entry_id UNINDEXED, competitor, title, note, content,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -127,6 +143,22 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_entry  ON chunks(entry_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_search ON chunks USING GIN(search_vector);
+
+CREATE TABLE IF NOT EXISTS usage (
+    id            BIGSERIAL PRIMARY KEY,
+    ts            TEXT NOT NULL,
+    feature       TEXT NOT NULL DEFAULT '',
+    model         TEXT NOT NULL DEFAULT '',
+    user_email    TEXT NOT NULL DEFAULT '',
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read    INTEGER NOT NULL DEFAULT 0,
+    cache_write   INTEGER NOT NULL DEFAULT 0,
+    web_searches  INTEGER NOT NULL DEFAULT 0,
+    cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_feature ON usage(feature);
 """
 
 
@@ -655,3 +687,51 @@ def stats(store: Store) -> dict[str, Any]:
         "entries": total, "competitors": competitors, "by_category": by_cat,
         "analysed": analysed, "chunks": indexed, "backend": store.dialect,
     }
+
+
+# ─── usage metering ────────────────────────────────────────────────────────
+
+def record_usage(store: Store, row: dict[str, Any]) -> None:
+    """Store one API call's cost. Never let metering break the feature."""
+    try:
+        store.execute(
+            "INSERT INTO usage (ts, feature, model, user_email, input_tokens,"
+            " output_tokens, cache_read, cache_write, web_searches, cost_usd)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (_now(), row.get("feature", ""), row.get("model", ""),
+             row.get("user_email", ""), row.get("input_tokens", 0),
+             row.get("output_tokens", 0), row.get("cache_read", 0),
+             row.get("cache_write", 0), row.get("web_searches", 0),
+             float(row.get("cost_usd", 0))))
+        store.commit()
+    except Exception:
+        pass
+
+
+def usage_summary(store: Store, days: int = 30) -> dict[str, Any]:
+    """Spend broken down by feature, by day and by person."""
+    def rows(sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+        return [dict(r) for r in store.execute(sql, params).fetchall()]
+
+    totals = rows(
+        "SELECT COUNT(*) AS calls, COALESCE(SUM(cost_usd),0) AS cost,"
+        " COALESCE(SUM(input_tokens),0) AS input_tokens,"
+        " COALESCE(SUM(output_tokens),0) AS output_tokens,"
+        " COALESCE(SUM(cache_read),0) AS cache_read,"
+        " COALESCE(SUM(web_searches),0) AS web_searches FROM usage")
+    by_feature = rows(
+        "SELECT feature, COUNT(*) AS calls, COALESCE(SUM(cost_usd),0) AS cost"
+        " FROM usage GROUP BY feature ORDER BY cost DESC")
+    by_day = rows(
+        "SELECT substr(ts,1,10) AS day, COUNT(*) AS calls,"
+        " COALESCE(SUM(cost_usd),0) AS cost FROM usage"
+        " GROUP BY substr(ts,1,10) ORDER BY day DESC LIMIT ?", (days,))
+    by_user = rows(
+        "SELECT user_email, COUNT(*) AS calls, COALESCE(SUM(cost_usd),0) AS cost"
+        " FROM usage WHERE user_email <> '' GROUP BY user_email"
+        " ORDER BY cost DESC LIMIT 25")
+    recent = rows(
+        "SELECT ts, feature, model, user_email, input_tokens, output_tokens,"
+        " web_searches, cost_usd FROM usage ORDER BY ts DESC LIMIT 25")
+    return {"totals": totals[0] if totals else {}, "by_feature": by_feature,
+            "by_day": by_day, "by_user": by_user, "recent": recent}

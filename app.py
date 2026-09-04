@@ -33,10 +33,20 @@ app.secret_key = Config.secret_key()
 # Generated decks, held briefly so the browser can fetch the file it was
 # just offered. Small and short lived by design.
 DECK_CACHE: dict[str, tuple] = {}
+BATTLECARD_CACHE: dict[str, dict] = {}
 
 
 def store():
     return db.connect(Config.store_target())
+
+
+def _record_usage(row: dict) -> None:
+    """Attribute each API call to the person who triggered it."""
+    user = current_user() or {}
+    db.record_usage(store(), {**row, "user_email": user.get("email", "")})
+
+
+llm.set_usage_sink(_record_usage)
 
 
 def fail(message: str, status: int = 400):
@@ -269,21 +279,23 @@ def api_chat():
     if not messages or not (messages[-1].get("content") or "").strip():
         return fail("Ask a question.")
     # Keep the window bounded so a long thread cannot grow without limit.
+    # Every turn resends the whole window, so cost grows with the square of
+    # the conversation length. Six turns keeps context without that.
     messages = [{"role": m["role"], "content": m["content"]}
-                for m in messages[-12:]
+                for m in messages[-6:]
                 if m.get("role") in ("user", "assistant") and m.get("content")]
 
     conn = store()
     question = messages[-1]["content"]
     competitor = payload.get("competitor") or parse_query(question).competitor
-    passages = retrieve_passages(conn, question, competitor=competitor, limit=10)
+    passages = retrieve_passages(conn, question, competitor=competitor, limit=6)
     if not passages:
         # Nothing competitor specific, so fall back to the whole library.
-        passages = retrieve_passages(conn, question, limit=10)
+        passages = retrieve_passages(conn, question, limit=6)
 
     try:
         result = llm.chat(messages, passages,
-                          research=bool(payload.get("research", True)))
+                          research=bool(payload.get("research", Config.RESEARCH_BY_DEFAULT)))
     except llm.LLMUnavailable as exc:
         return fail(str(exc), 503)
     return jsonify({"ok": True, "competitor": competitor,
@@ -306,7 +318,7 @@ def api_deck():
 
     research = None
     research_error = ""
-    if payload.get("research", True) and competitor:
+    if payload.get("research", Config.RESEARCH_BY_DEFAULT) and competitor:
         try:
             research = llm.research_competitor(
                 competitor, "\n\n".join(p["text"] for p in passages[:6]))
@@ -355,9 +367,14 @@ def api_battlecard():
         return fail("Name a competitor.")
     # Research is on by default and can be turned off for a faster, cheaper
     # card built purely from uploaded documents.
-    want_research = payload.get("research", True)
+    want_research = payload.get("research", Config.RESEARCH_BY_DEFAULT)
 
     conn = store()
+    cache_key = f"{competitor.lower()}|{bool(want_research)}"
+    if not payload.get("refresh") and cache_key in BATTLECARD_CACHE:
+        cached = BATTLECARD_CACHE[cache_key]
+        return jsonify({**cached, "cached": True})
+
     passages = gather_passages(conn, llm.BATTLECARD_THEMES, competitor)
 
     research, research_error = None, ""
@@ -377,14 +394,20 @@ def api_battlecard():
     except llm.LLMUnavailable as exc:
         return fail(str(exc), 503)
 
-    return jsonify({
+    result = {
         "ok": True,
         "battlecard": card,
         "threatens": threatened_products(competitor),
         "passages_used": len(passages),
         "themes_covered": sorted({p["theme"] for p in passages}),
         "research_error": research_error,
-    })
+    }
+    # A battlecard is expensive and rarely changes between two people asking
+    # for it in the same session, so it is reused unless a refresh is asked for.
+    BATTLECARD_CACHE[cache_key] = result
+    for stale in list(BATTLECARD_CACHE)[:-12]:
+        BATTLECARD_CACHE.pop(stale, None)
+    return jsonify({**result, "cached": False})
 
 
 # ─── admin ─────────────────────────────────────────────────────────────────
@@ -510,6 +533,16 @@ def api_diagnose():
     database, and never the password.
     """
     return jsonify({"ok": True, "report": diag.diagnose()})
+
+
+@app.route("/api/usage")
+@login_required
+def api_usage():
+    """What the Anthropic key has actually been spent on."""
+    return jsonify({"ok": True, "model": Config.MODEL,
+                    "effort": Config.EFFORT,
+                    "research_by_default": Config.RESEARCH_BY_DEFAULT,
+                    **db.usage_summary(store())})
 
 
 @app.route("/api/keycheck")

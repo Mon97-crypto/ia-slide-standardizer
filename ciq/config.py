@@ -92,6 +92,13 @@ class Config:
     # in the wrong one would otherwise look simply absent, so both are checked.
     SECRET_FILE_DIR = os.environ.get("CIQ_SECRET_FILE_DIR", "/etc/secrets")
     MODEL = os.environ.get("CIQ_MODEL", "claude-opus-5")
+    # Effort trades thoroughness for tokens. medium matches the default's
+    # accuracy on knowledge work at roughly three quarters of the cost.
+    EFFORT = os.environ.get("CIQ_EFFORT", "medium").strip().lower() or None
+    # Research is the dominant cost, so it is opt in per request.
+    RESEARCH_BY_DEFAULT = _bool("CIQ_RESEARCH_BY_DEFAULT", False)
+    # Repeat research on the same competitor is the easiest saving of all.
+    RESEARCH_CACHE_HOURS = float(os.environ.get("CIQ_RESEARCH_CACHE_HOURS", 24))
     MAX_UPLOAD_BYTES = int(os.environ.get("CIQ_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
 
     # Access is by company identity through Google, not a shared passcode.

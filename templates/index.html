@@ -370,6 +370,16 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 .deck-slides{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
 .deck-slide{display:flex;gap:9px;font-size:12.5px;color:#55534f;align-items:baseline}
 .deck-slide .n{width:19px;color:var(--g3);font-variant-numeric:tabular-nums;flex:none}
+.use-top{display:flex;gap:26px;flex-wrap:wrap;align-items:baseline;
+  padding:16px 0 14px;border-bottom:1px solid var(--g1);margin-bottom:12px}
+.use-fig{display:flex;flex-direction:column}
+.use-fig .n{font-family:Spectral,Georgia,serif;font-size:29px;font-weight:300;color:var(--blue)}
+.use-fig .l{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--g3)}
+.use-bar{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px}
+.use-bar .nm{width:110px;flex:none;font-weight:600}
+.use-bar .track{flex:1;height:8px;background:var(--off-white);border-radius:4px;overflow:hidden}
+.use-bar .fill{height:100%;background:var(--blue);border-radius:4px}
+.use-bar .amt{width:74px;text-align:right;font-variant-numeric:tabular-nums;color:#55534f}
 .deck-slide .ty{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
   background:var(--off-white);border-radius:100px;padding:1px 8px;color:#6c6a66;flex:none}
 /* Ephemeral storage has to be unmissable. A quiet field on a health endpoint
@@ -501,7 +511,7 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
           </button>
         </div>
         <div class="chat-opts">
-          <label><input type="checkbox" id="chatResearch" checked> Research public sources</label>
+          <label><input type="checkbox" id="chatResearch"> Research public sources <span style="color:var(--g3)">(slower, and the main cost)</span></label>
           <button class="link muted" onclick="clearChat()">Clear conversation</button>
         </div>
       </div>
@@ -573,10 +583,12 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
       <button class="btn sm ghost" onclick="document.getElementById('jsonIn').click()">Import JSON</button>
       <button class="btn sm" onclick="selfTest()">Run AI self test</button>
       <button class="btn sm ghost" onclick="keyCheck()">Why is AI off?</button>
+      <button class="btn sm" onclick="showUsage()">API spend</button>
       <button class="btn sm danger" onclick="clearLib()">Clear all</button>
     </div>
     <input type="file" id="jsonIn" accept=".json" class="hidden">
     <div id="selfTestOut"></div>
+    <div id="usageOut"></div>
   </div>
 </section>
 
@@ -1040,6 +1052,54 @@ async function keyCheck(){
          + 'If the key was added as a Render <strong>Secret File</strong> rather than an <strong>Environment Variable</strong>, name the file exactly ANTHROPIC_API_KEY. '
          + 'Environment changes need a restart to take effect.</div>';
     }
+    out.innerHTML = h + '</div>';
+  }catch(err){ out.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
+}
+
+async function showUsage(){
+  const out = $('usageOut');
+  out.innerHTML = '<div class="a-loading"><span class="spin"></span> Reading usage...</div>';
+  try{
+    const d = await api('/api/usage');
+    const t = d.totals || {};
+    const money = n => '$' + (Number(n)||0).toFixed(2);
+    let h = '<div class="analysis"><div class="use-top">'
+      + `<div class="use-fig"><span class="n">${money(t.cost)}</span><span class="l">Total spend</span></div>`
+      + `<div class="use-fig"><span class="n">${(t.calls||0).toLocaleString()}</span><span class="l">API calls</span></div>`
+      + `<div class="use-fig"><span class="n">${(t.web_searches||0).toLocaleString()}</span><span class="l">Web searches</span></div>`
+      + `<div class="use-fig"><span class="n">${(((t.input_tokens||0)+(t.output_tokens||0))/1e6).toFixed(2)}M</span><span class="l">Tokens</span></div>`
+      + '</div>';
+
+    const feats = d.by_feature || [];
+    const max = Math.max(...feats.map(f=>f.cost), 0.0001);
+    if(feats.length){
+      h += '<div class="a-label">Spend by feature</div>';
+      feats.forEach(f=>{
+        h += `<div class="use-bar"><span class="nm">${esc(f.feature||'other')}</span>`
+           + `<span class="track"><span class="fill" style="width:${Math.max(2,(f.cost/max)*100)}%"></span></span>`
+           + `<span class="amt">${money(f.cost)}</span></div>`;
+      });
+    }
+    const days = d.by_day || [];
+    if(days.length){
+      h += '<div class="a-label">By day</div>';
+      const dmax = Math.max(...days.map(x=>x.cost), 0.0001);
+      days.slice(0,10).forEach(x=>{
+        h += `<div class="use-bar"><span class="nm">${esc(x.day)}</span>`
+           + `<span class="track"><span class="fill" style="width:${Math.max(2,(x.cost/dmax)*100)}%"></span></span>`
+           + `<span class="amt">${money(x.cost)}</span></div>`;
+      });
+    }
+    const users = d.by_user || [];
+    if(users.length){
+      h += '<div class="a-label">By person</div>';
+      users.forEach(u=>{
+        h += `<div class="use-bar"><span class="nm" style="width:auto;flex:1">${esc(u.user_email)}</span>`
+           + `<span class="amt">${money(u.cost)}</span></div>`;
+      });
+    }
+    h += `<div class="bc-meta">Model ${esc(d.model)} at ${esc(d.effort||'default')} effort. `
+       + `Public sources research is ${d.research_by_default?'on':'off'} by default, and is the largest single cost when on.</div>`;
     out.innerHTML = h + '</div>';
   }catch(err){ out.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
 }

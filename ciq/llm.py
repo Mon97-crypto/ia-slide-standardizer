@@ -263,6 +263,68 @@ ANALYST_SYSTEM = (
 )
 
 
+# Published list prices per million tokens. Cache writes bill at 1.25x input
+# and cache reads at 0.1x. Web search bills per search, not per token.
+PRICING: dict[str, tuple[float, float]] = {
+    "claude-opus-5": (5.0, 25.0),
+    "claude-fable-5-1": (10.0, 50.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-haiku-4-5-20251001": (1.0, 5.0),
+}
+DEFAULT_PRICE = (5.0, 25.0)
+WEB_SEARCH_USD = 0.01
+
+# Set by the application so every call is metered. Kept as a hook rather than a
+# parameter so metering cannot be forgotten at a call site.
+_usage_sink = None
+
+
+def set_usage_sink(sink) -> None:
+    global _usage_sink
+    _usage_sink = sink
+
+
+def price_call(model: str, input_tokens: int, output_tokens: int,
+               cache_read: int = 0, cache_write: int = 0,
+               web_searches: int = 0) -> float:
+    """Cost of one call in dollars, at list price."""
+    per_in, per_out = PRICING.get(model, DEFAULT_PRICE)
+    return round(
+        (input_tokens * per_in
+         + cache_write * per_in * 1.25
+         + cache_read * per_in * 0.1
+         + output_tokens * per_out) / 1e6
+        + web_searches * WEB_SEARCH_USD, 6)
+
+
+def _meter(feature: str, response: Any) -> None:
+    """Record what a call actually cost, from the API's own counters."""
+    if _usage_sink is None:
+        return
+    try:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        server = getattr(usage, "server_tool_use", None)
+        searches = int(getattr(server, "web_search_requests", 0) or 0) if server else 0
+        row = {
+            "feature": feature,
+            "model": Config.MODEL,
+            "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
+            "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
+            "cache_read": int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+            "cache_write": int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+            "web_searches": searches,
+        }
+        row["cost_usd"] = price_call(
+            row["model"], row["input_tokens"], row["output_tokens"],
+            row["cache_read"], row["cache_write"], row["web_searches"])
+        _usage_sink(row)
+    except Exception:
+        # Metering must never break the feature it is measuring.
+        pass
+
+
 class LLMUnavailable(Exception):
     """Raised when the model cannot be reached or is not configured."""
 
@@ -307,7 +369,8 @@ def _extract_sources(response: Any) -> list[dict[str, str]]:
 def _call(system: str, prompt: str, max_tokens: int = 4000,
           schema: dict[str, Any] | None = None,
           tools: list[dict[str, Any]] | None = None,
-          return_response: bool = False) -> Any:
+          return_response: bool = False, feature: str = "other",
+          effort: str | None = None) -> Any:
     """One Claude call. Returns parsed JSON when a schema is supplied."""
     client = _client()   # raises LLMUnavailable before anthropic is needed
     import anthropic
@@ -330,6 +393,11 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
         # Server-side tools execute on Anthropic's infrastructure, so the
         # response returns complete and there is no tool loop to run here.
         kwargs["tools"] = tools
+    # Effort trades thoroughness for tokens. Lower settings consolidate tool
+    # calls and cut preamble, which is most of the cost on a research loop.
+    chosen_effort = effort or Config.EFFORT
+    if chosen_effort:
+        kwargs.setdefault("output_config", {})["effort"] = chosen_effort
 
     try:
         response = client.messages.create(**kwargs)
@@ -354,6 +422,7 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
     if getattr(response, "stop_reason", None) == "refusal":
         raise LLMUnavailable("The model declined to answer this request.")
 
+    _meter(feature, response)
     text = "".join(b.text for b in response.content
                    if getattr(b, "type", "") == "text").strip()
     payload = text if schema is None else _parse_json(text)
@@ -477,7 +546,8 @@ def analyse_document(text: str, competitor: str = "",
         f"DOCUMENT:\n{text}\n\n"
         "Analyse this competitor document for an Impact Analytics seller."
     )
-    result = _call(ANALYST_SYSTEM, prompt, max_tokens=4000, schema=ANALYSIS_SCHEMA)
+    result = _call(ANALYST_SYSTEM, prompt, max_tokens=3000, schema=ANALYSIS_SCHEMA,
+                  feature="analyze")
 
     # The registry knows the product mapping, so fill it in when the model
     # leaves it empty rather than making the seller work it out.
@@ -506,7 +576,7 @@ def answer_question(question: str, passages: list[dict[str, Any]]) -> dict[str, 
         "their bracketed numbers, like [1] or [2]. If the passages do not "
         "answer the question, say exactly what is missing."
     )
-    answer = _call(ANALYST_SYSTEM, prompt, max_tokens=2000)
+    answer = _call(ANALYST_SYSTEM, prompt, max_tokens=1500, feature="ask")
 
     cited = sorted({int(n) for n in re.findall(r"\[(\d+)\]", answer)
                     if 0 < int(n) <= len(passages)})
@@ -522,8 +592,30 @@ def answer_question(question: str, passages: list[dict[str, Any]]) -> dict[str, 
     }
 
 
+_RESEARCH_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def cached_research(competitor: str) -> dict[str, Any] | None:
+    """Return recent research on a competitor, if any.
+
+    Public facts about a vendor do not change hour to hour, and the research
+    call is the most expensive thing this application does, so repeating it
+    for the same competitor within the window buys nothing.
+    """
+    import time
+    key = competitor.strip().lower()
+    entry = _RESEARCH_CACHE.get(key)
+    if not entry:
+        return None
+    stored_at, payload = entry
+    if time.time() - stored_at > Config.RESEARCH_CACHE_HOURS * 3600:
+        _RESEARCH_CACHE.pop(key, None)
+        return None
+    return {**payload, "cached": True}
+
+
 def research_competitor(competitor: str, library_context: str = "",
-                        max_tokens: int = 8000) -> dict[str, Any]:
+                        max_tokens: int = 6000) -> dict[str, Any]:
     """Phase one: research the competitor against live public sources.
 
     Kept separate from synthesis on purpose. Tool use needs several model turns
@@ -551,12 +643,26 @@ def research_competitor(competitor: str, library_context: str = "",
         + (f"The internal library already holds the following. Treat it as "
            f"context to extend and verify, not as fact to repeat:\n"
            f"{library_context[:6000]}\n\n" if library_context else "")
-        + "Write a factual brief. Attribute each claim to its source."
+        + "Write a compact factual brief, under 600 words. Attribute each "
+          "claim to its source. Prefer a few authoritative sources over many "
+          "shallow ones."
     )
 
+    reused = cached_research(competitor)
+    if reused is not None:
+        return reused
+
     brief, response = _call(RESEARCHER_SYSTEM, prompt, max_tokens=max_tokens,
-                            tools=RESEARCH_TOOLS, return_response=True)
-    return {"brief": brief, "sources": _extract_sources(response)}
+                            tools=RESEARCH_TOOLS, return_response=True,
+                            feature="research")
+    payload = {"brief": brief, "sources": _extract_sources(response),
+               "cached": False}
+    import time
+    _RESEARCH_CACHE[competitor.strip().lower()] = (time.time(), payload)
+    # Keep the cache small; this is a convenience, not a store.
+    for stale in list(_RESEARCH_CACHE)[:-24]:
+        _RESEARCH_CACHE.pop(stale, None)
+    return payload
 
 
 def normalise_scorecard(scorecard: Any) -> list[dict[str, Any]]:
@@ -675,8 +781,8 @@ def build_battlecard(competitor: str, passages: list[dict[str, Any]],
         "confidence rather than inventing detail."
     )
 
-    card = _call(ANALYST_SYSTEM, prompt, max_tokens=12000,
-                 schema=BATTLECARD_SCHEMA)
+    card = _call(ANALYST_SYSTEM, prompt, max_tokens=8000,
+                 schema=BATTLECARD_SCHEMA, feature="battlecard")
 
     rows = normalise_scorecard(card.get("scorecard"))
     card["scorecard"] = rows
@@ -743,14 +849,14 @@ def self_test() -> dict[str, Any]:
     # and report a failure the real feature would not have hit.
     probes = (
         ("plain message", lambda: _call(
-            "Reply with the single word: ready.", "Say ready.", max_tokens=1024)),
+            "Reply with the single word: ready.", "Say ready.", max_tokens=1024, feature="selftest")),
         ("structured output", lambda: _call(
             "Return JSON only.", 'Return {"ok": true}.',
-            max_tokens=1024, schema=_PROBE_SCHEMA)),
+            max_tokens=1024, schema=_PROBE_SCHEMA, feature="selftest")),
         ("web search (research)", lambda: _call(
             "Answer in one short sentence.",
             "Search the web for the founding year of Blue Yonder.",
-            max_tokens=4096, tools=RESEARCH_TOOLS)),
+            max_tokens=3000, tools=RESEARCH_TOOLS, feature="selftest")),
     )
 
     for name, run in probes:
@@ -822,8 +928,8 @@ def chat(messages: list[dict[str, str]], passages: list[dict[str, Any]],
 
     kwargs_tools = RESEARCH_TOOLS if research else None
     answer, response = _call_messages(
-        CHAT_SYSTEM, turns, max_tokens=6000, tools=kwargs_tools,
-        return_response=True)
+        CHAT_SYSTEM, turns, max_tokens=4000, tools=kwargs_tools,
+        return_response=True, feature="chat")
 
     cited = sorted({int(n) for n in re.findall(r"\[(\d+)\]", answer)
                     if 0 < int(n) <= len(passages)})
@@ -840,7 +946,8 @@ def chat(messages: list[dict[str, str]], passages: list[dict[str, Any]],
 def _call_messages(system: str, messages: list[dict[str, str]],
                    max_tokens: int = 4000,
                    tools: list[dict[str, Any]] | None = None,
-                   return_response: bool = False) -> Any:
+                   return_response: bool = False,
+                   feature: str = "chat") -> Any:
     """Like _call, but for a multi-turn conversation."""
     client = _client()
     import anthropic
@@ -854,6 +961,8 @@ def _call_messages(system: str, messages: list[dict[str, str]],
     }
     if tools:
         kwargs["tools"] = tools
+    if Config.EFFORT:
+        kwargs["output_config"] = {"effort": Config.EFFORT}
 
     try:
         response = client.messages.create(**kwargs)
@@ -872,6 +981,7 @@ def _call_messages(system: str, messages: list[dict[str, str]],
     if getattr(response, "stop_reason", None) == "refusal":
         raise LLMUnavailable("The model declined to answer this request.")
 
+    _meter(feature, response)
     text = "".join(b.text for b in response.content
                    if getattr(b, "type", "") == "text").strip()
     return (text, response) if return_response else text
@@ -916,7 +1026,8 @@ def draft_deck(brief: str, passages: list[dict[str, Any]],
         "and a quote slide only when the material contains a real quote. "
         "Add a speaker note to every slide saying what to say out loud."
     )
-    spec = _call(DECK_SYSTEM, prompt, max_tokens=10000, schema=DECK_SCHEMA)
+    spec = _call(DECK_SYSTEM, prompt, max_tokens=7000, schema=DECK_SCHEMA,
+                 feature="deck")
     spec["slides"] = [s for s in (spec.get("slides") or []) if s.get("heading")
                       or s.get("quote") or s.get("stats")]
     return spec

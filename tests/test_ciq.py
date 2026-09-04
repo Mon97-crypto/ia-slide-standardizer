@@ -803,3 +803,38 @@ def test_the_deck_schema_avoids_unsupported_keywords():
     from ciq.deck import DECK_SCHEMA
     from ciq.llm import sanitise_schema
     assert _walk(sanitise_schema(DECK_SCHEMA)) == []
+
+
+# ─── pricing ───────────────────────────────────────────────────────────────
+
+def test_pricing_matches_the_published_rates():
+    from ciq.llm import price_call
+    # Opus 5 is $5 per MTok in and $25 per MTok out.
+    assert price_call("claude-opus-5", 1_000_000, 0) == 5.0
+    assert price_call("claude-opus-5", 0, 1_000_000) == 25.0
+    # Web search is $10 per 1000 searches.
+    assert price_call("claude-opus-5", 0, 0, web_searches=100) == 1.0
+
+
+def test_cache_reads_are_a_tenth_and_writes_are_a_quarter_more():
+    from ciq.llm import price_call
+    assert price_call("claude-opus-5", 0, 0, cache_read=1_000_000) == 0.5
+    assert price_call("claude-opus-5", 0, 0, cache_write=1_000_000) == 6.25
+
+
+def test_an_unknown_model_falls_back_rather_than_reporting_zero():
+    """A zero cost would silently understate spend."""
+    from ciq.llm import price_call
+    assert price_call("some-future-model", 1_000_000, 0) > 0
+
+
+def test_research_is_reused_within_the_window(monkeypatch):
+    import time
+    from ciq import llm
+    llm._RESEARCH_CACHE.clear()
+    llm._RESEARCH_CACHE["blue yonder"] = (time.time(), {"brief": "b", "sources": []})
+    assert llm.cached_research("Blue Yonder")["cached"] is True
+    # Expired entries are dropped rather than served stale.
+    llm._RESEARCH_CACHE["blue yonder"] = (time.time() - 999999, {"brief": "b"})
+    assert llm.cached_research("Blue Yonder") is None
+    llm._RESEARCH_CACHE.clear()

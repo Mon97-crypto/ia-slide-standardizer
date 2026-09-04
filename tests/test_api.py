@@ -212,7 +212,8 @@ def test_a_research_failure_still_produces_a_card(client, monkeypatch):
                             "researched": bool(research)})
     add(client, note="Blue Yonder notes.", competitor="Blue Yonder",
         title="BY", category="information")
-    body = client.post("/api/battlecard", json={"competitor": "jda"}).get_json()
+    body = client.post("/api/battlecard",
+                       json={"competitor": "jda", "research": True}).get_json()
     assert body["ok"] is True
     assert "search is down" in body["research_error"]
     assert body["battlecard"]["researched"] is False
@@ -327,3 +328,76 @@ def test_diagnose_never_reveals_the_password(client, monkeypatch):
     body = client.get("/api/diagnose").get_data(as_text=True)
     assert "TopSecretValue123" not in body
     assert "postgres.abc" in body        # the user is shown, the password is not
+
+
+# ─── cost control ──────────────────────────────────────────────────────────
+
+def test_research_is_off_by_default(client, monkeypatch):
+    """Research is the dominant cost, so it must be opt in per request."""
+    import ciq.llm as llm
+    called = {"n": 0}
+    monkeypatch.setattr(llm, "research_competitor",
+                        lambda *a, **k: called.__setitem__("n", called["n"] + 1) or {})
+    monkeypatch.setattr(llm, "build_battlecard",
+                        lambda competitor, passages, research: {"competitor": competitor,
+                                                                "scorecard": []})
+    add(client, note="Blue Yonder notes.", competitor="Blue Yonder",
+        title="BY", category="information")
+    client.post("/api/battlecard", json={"competitor": "jda"})
+    assert called["n"] == 0
+    client.post("/api/battlecard", json={"competitor": "jda", "research": True,
+                                         "refresh": True})
+    assert called["n"] == 1
+
+
+def test_a_battlecard_is_reused_rather_than_regenerated(client, monkeypatch):
+    import ciq.llm as llm
+    built = {"n": 0}
+
+    def fake_build(competitor, passages, research):
+        built["n"] += 1
+        return {"competitor": competitor, "scorecard": []}
+
+    monkeypatch.setattr(llm, "build_battlecard", fake_build)
+    add(client, note="notes", competitor="Blue Yonder", title="BY",
+        category="information")
+    first = client.post("/api/battlecard", json={"competitor": "jda"}).get_json()
+    second = client.post("/api/battlecard", json={"competitor": "jda"}).get_json()
+    assert built["n"] == 1
+    assert first["cached"] is False and second["cached"] is True
+    # An explicit refresh must still rebuild.
+    client.post("/api/battlecard", json={"competitor": "jda", "refresh": True})
+    assert built["n"] == 2
+
+
+def test_the_chat_window_is_bounded(client, monkeypatch):
+    """Each turn resends the window, so an unbounded one grows cost with the
+    square of the conversation length."""
+    import ciq.llm as llm
+    seen = {}
+
+    def fake_chat(messages, passages, research=True):
+        seen["count"] = len(messages)
+        seen["research"] = research
+        return {"answer": "ok", "citations": [], "web_sources": []}
+
+    monkeypatch.setattr(llm, "chat", fake_chat)
+    history = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"m{i}"}
+               for i in range(30)]
+    client.post("/api/chat", json={"messages": history})
+    assert seen["count"] <= 6
+    assert seen["research"] is False       # opt in, not default
+
+
+def test_usage_is_recorded_and_reported(client):
+    from ciq import db
+    import app as application
+    conn = db.connect(application.Config.store_target())
+    db.record_usage(conn, {"feature": "battlecard", "model": "claude-opus-5",
+                           "input_tokens": 60000, "output_tokens": 5000,
+                           "web_searches": 5, "cost_usd": 0.49})
+    body = client.get("/api/usage").get_json()
+    assert body["totals"]["calls"] == 1
+    assert round(body["totals"]["cost"], 2) == 0.49
+    assert body["by_feature"][0]["feature"] == "battlecard"
+    assert body["research_by_default"] is False
