@@ -11,6 +11,8 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
+  /* Grain: a texture over solid colour, visible close up, never distracting. */
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
   --blue:#264CD7; --blue-bright:#3A5EE3; --blue-deep:#16267A;
   --off-white:#F4F4F6; --white:#fff; --black:#1C1B1B;
   --g1:#E4E4E4; --g2:#D7D6D2; --g3:#B3B2AD;
@@ -49,27 +51,45 @@ nav{position:sticky;top:0;z-index:100;background:rgba(244,244,246,.82);
 .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
 
 /* hero */
-.hero{position:relative;padding:74px 0 34px;overflow:hidden}
-.hero-grid{position:absolute;inset:0;opacity:.5;
-  background-image:linear-gradient(rgba(38,76,215,.06) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(38,76,215,.06) 1px,transparent 1px);
-  background-size:56px 56px;mask-image:radial-gradient(ellipse 70% 60% at 50% 40%,#000,transparent)}
-.hero-glow{position:absolute;border-radius:50%;filter:blur(90px);opacity:.3;pointer-events:none}
-.hero-glow.a{width:520px;height:520px;background:var(--blue);top:-260px;left:-130px}
-.hero-glow.b{width:400px;height:400px;background:var(--purple);top:-190px;right:-110px}
-.hero-content{position:relative}
-.eyebrow{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--blue);margin-bottom:18px}
-.hero h1{font-size:clamp(40px,6vw,68px);line-height:1.04;margin-bottom:20px}
-.hero h1 em{font-style:italic;color:var(--blue)}
-.hero-sub{font-size:19px;color:#55534f;max-width:620px}
-.hero-sub code{background:rgba(38,76,215,.09);color:var(--blue-deep);padding:2px 8px;
+.hero{position:relative;padding:0;overflow:hidden;background:var(--blue);
+  border-bottom:1px solid rgba(22,38,122,.25)}
+/* Grid pattern: thin off-white lines at 10% on Impact Blue, always running
+   off the edge so its boundary is never visible. */
+.hero-grid{position:absolute;inset:-2px;pointer-events:none;
+  background-image:linear-gradient(rgba(244,244,246,.10) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(244,244,246,.10) 1px,transparent 1px);
+  background-size:64px 64px}
+.hero-grain{position:absolute;inset:0;pointer-events:none;opacity:.10;
+  background-image:var(--grain);mix-blend-mode:overlay}
+.hero-glow{position:absolute;border-radius:50%;filter:blur(110px);opacity:.5;pointer-events:none}
+.hero-glow.a{width:560px;height:560px;background:#5B7BEA;top:-300px;left:-140px}
+.hero-glow.b{width:420px;height:420px;background:var(--blue-deep);bottom:-260px;right:-120px}
+.hero-content{position:relative;padding:76px 0 84px}
+/* Clarifying glass: pattern and colour beneath, a blur layer, then a sharp
+   module that reads as a lens over the surface. */
+.glass{position:relative;background:rgba(255,255,255,.07);
+  backdrop-filter:blur(13px) saturate(140%);-webkit-backdrop-filter:blur(13px) saturate(140%);
+  border:1px solid rgba(255,255,255,.16);border-radius:18px;padding:22px 26px;
+  box-shadow:0 20px 60px rgba(11,20,64,.28)}
+.glass-row{display:flex;gap:34px;flex-wrap:wrap}
+.glass-fig{display:flex;flex-direction:column;gap:3px}
+.glass-fig .n{font-family:Spectral,Georgia,serif;font-weight:300;font-size:31px;
+  line-height:1;color:#fff}
+.glass-fig .l{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:rgba(244,244,246,.72)}
+.eyebrow{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.13em;
+  text-transform:uppercase;color:rgba(244,244,246,.78);margin-bottom:20px}
+.hero h1{font-size:clamp(42px,6.2vw,70px);line-height:1.02;margin-bottom:20px;color:#fff;
+  letter-spacing:-.02em}
+.hero h1 em{font-style:italic;color:#BFD0FF}
+.hero-sub{font-size:18.5px;color:rgba(244,244,246,.86);max-width:600px;margin-bottom:30px}
+.hero-sub code{background:rgba(255,255,255,.16);color:#fff;padding:2px 9px;
   border-radius:6px;font-size:15px;font-weight:600;font-family:inherit}
 
 /* console */
-.console{max-width:1240px;margin:0 auto 46px;padding:0 32px}
+.console{max-width:1240px;margin:-52px auto 52px;padding:0 32px;position:relative;z-index:5}
 .console-card{background:var(--white);border:1px solid var(--g1);border-radius:20px;
-  box-shadow:var(--sh-lg);overflow:hidden}
+  box-shadow:0 32px 80px rgba(22,38,122,.16),0 8px 24px rgba(22,38,122,.07);overflow:hidden}
 .console-top{display:flex;align-items:center;justify-content:space-between;gap:16px;
   padding:18px 26px;border-bottom:1px solid var(--g1);flex-wrap:wrap}
 .console-top h2{font-size:19px;display:flex;align-items:center;gap:11px;font-weight:400}
@@ -139,42 +159,66 @@ textarea{resize:vertical;min-height:82px}
 /* results */
 .results{max-width:1240px;margin:0 auto;padding:0 32px 60px}
 .res-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px;flex-wrap:wrap}
-.res-head h3{font-size:23px;font-weight:400}
+.res-head h3{font-size:25px;font-weight:300;letter-spacing:-.01em}
+.res-head h3::before{content:"";display:inline-block;width:26px;height:2px;
+  background:var(--blue);vertical-align:middle;margin-right:12px;border-radius:2px}
 .count{font-size:13px;color:#6c6a66;font-weight:500}
 .intent{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
 .tag{display:inline-flex;align-items:center;gap:6px;background:rgba(38,76,215,.07);
   color:var(--blue-deep);border-radius:100px;padding:5px 13px;font-size:12.5px;font-weight:600}
 .tag.muted{background:var(--white);border:1px solid var(--g1);color:#6c6a66}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(370px,1fr));gap:18px}
-.card{background:var(--white);border:1px solid var(--g1);border-radius:16px;padding:20px;
-  box-shadow:var(--sh-sm);transition:all .22s var(--ease);display:flex;flex-direction:column}
-.card:hover{box-shadow:var(--sh-md);border-color:var(--g2);transform:translateY(-2px)}
-.card-top{display:flex;gap:13px;margin-bottom:12px}
-.card-ico{width:38px;height:38px;border-radius:10px;background:rgba(38,76,215,.09);color:var(--blue);
-  display:grid;place-items:center;flex:none}
-.card-ico svg{width:18px;height:18px}
-.card-ico.green{background:rgba(61,212,153,.16);color:#0d7a53}
-.card-ico.orange{background:rgba(255,111,28,.12);color:#b34a10}
-.card-ico.purple{background:rgba(190,168,239,.24);color:#5b3fa8}
-.card-title{font-size:15.5px;font-weight:600;line-height:1.34}
-.card-meta{display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap}
-.badge{font-size:11px;font-weight:600;background:var(--off-white);border:1px solid var(--g1);
-  border-radius:100px;padding:2px 9px;color:#55534f}
-.vs{font-size:12.5px;color:#6c6a66;font-weight:500}
-.card-note{font-size:13.5px;color:#55534f;margin-bottom:13px;line-height:1.55}
-.why{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:13px}
-.why span{font-size:11px;background:rgba(61,212,153,.13);color:#0d7a53;border-radius:100px;
-  padding:2px 9px;font-weight:600}
-.card-foot{display:flex;gap:14px;flex-wrap:wrap;margin-top:auto;padding-top:13px;
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(372px,1fr));gap:20px}
+.card{position:relative;background:var(--white);border:1px solid var(--g1);border-radius:18px;
+  padding:0;overflow:hidden;box-shadow:var(--sh-sm);display:flex;flex-direction:column;
+  transition:transform .24s var(--ease),box-shadow .24s var(--ease),border-color .24s var(--ease)}
+.card:hover{transform:translateY(-3px);box-shadow:0 18px 44px rgba(22,38,122,.13);
+  border-color:var(--g2)}
+/* A single solution-colour rule identifies the area a competitor threatens.
+   The primary palette still leads; the colour is an indicator, not a wash. */
+.card-rule{height:3px;width:100%;flex:none}
+.card-in{padding:20px 22px 18px;display:flex;flex-direction:column;flex:1}
+.card-top{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+/* A monogram gives each competitor a stable identity in a grid of cards. */
+.mono{width:46px;height:46px;border-radius:13px;flex:none;display:grid;place-items:center;
+  font-size:15px;font-weight:700;letter-spacing:-.02em;color:var(--blue-deep);
+  background:rgba(38,76,215,.08);border:1px solid rgba(38,76,215,.13)}
+.card-h{min-width:0;flex:1}
+.card-title{font-size:16.5px;font-weight:600;line-height:1.32;letter-spacing:-.01em;
+  margin-bottom:6px}
+.card-meta{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.badge{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  background:var(--off-white);border:1px solid var(--g1);border-radius:100px;
+  padding:3px 10px;color:#55534f}
+.badge.sol{border:0;color:var(--blue-deep)}
+.vs{font-size:12.5px;color:#6c6a66;font-weight:600}
+.card-note{font-size:13.5px;color:#55534f;line-height:1.6;margin-bottom:14px}
+.card-facts{display:flex;gap:14px;font-size:11.5px;color:var(--g3);margin-bottom:14px;
+  font-weight:600;white-space:nowrap;overflow:hidden}
+.card-facts span{flex:none}
+.card-facts span{display:inline-flex;align-items:center;gap:5px}
+.card-facts svg{width:12px;height:12px}
+.why{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.why span{font-size:11px;background:rgba(61,212,153,.14);color:#0b6b48;border-radius:100px;
+  padding:3px 10px;font-weight:600}
+.card-foot{display:flex;gap:16px;flex-wrap:wrap;margin-top:auto;padding-top:14px;
   border-top:1px solid var(--g1)}
 .link{display:inline-flex;align-items:center;gap:6px;background:0;border:0;padding:0;
   color:var(--blue);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none}
 .link:hover{text-decoration:underline}
 .link svg{width:14px;height:14px}
 .link.muted{color:var(--g3)}
+.stamp{margin-left:auto;font-size:11.5px;color:var(--g3);font-weight:600;align-self:center}
 .link.muted:hover{color:#d93636}
-
-/* analysis */
+/* Overview strip: the library at a glance, above the results. */
+.overview{display:flex;gap:0;background:var(--white);border:1px solid var(--g1);
+  border-radius:16px;overflow:hidden;margin-bottom:22px;box-shadow:var(--sh-sm)}
+.ov{flex:1;padding:16px 20px;border-right:1px solid var(--g1);min-width:0}
+.ov:last-child{border-right:0}
+.ov .n{font-family:Spectral,Georgia,serif;font-weight:300;font-size:26px;line-height:1.1;
+  color:var(--blue-deep)}
+.ov .l{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--g3);margin-top:3px}
+@media(max-width:760px){.overview{flex-wrap:wrap}.ov{flex:1 1 50%;border-bottom:1px solid var(--g1)}}
 .analysis{margin-top:16px;padding-top:16px;border-top:1px solid var(--g1)}
 .a-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;
   letter-spacing:.07em;text-transform:uppercase;color:var(--blue);margin:15px 0 8px}
@@ -204,10 +248,17 @@ textarea{resize:vertical;min-height:82px}
 .a-info{background:rgba(255,111,28,.07);border:1px solid rgba(255,111,28,.22);color:#8a3d0d;
   border-radius:10px;padding:12px 14px;font-size:13px;margin-top:12px}
 
-.empty{grid-column:1/-1;text-align:center;padding:64px 24px;background:var(--white);
-  border:1px dashed var(--g2);border-radius:16px}
-.empty .ei{width:52px;height:52px;border-radius:14px;background:var(--off-white);color:var(--g3);
-  display:grid;place-items:center;margin:0 auto 16px}
+.empty{grid-column:1/-1;text-align:center;padding:72px 24px;background:var(--white);
+  border:1px solid var(--g1);border-radius:18px;position:relative;overflow:hidden}
+.empty::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(28,27,27,.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(28,27,27,.05) 1px,transparent 1px);
+  background-size:44px 44px;
+  mask-image:radial-gradient(ellipse 60% 70% at 50% 40%,#000,transparent)}
+.empty>*{position:relative}
+.empty .ei{width:56px;height:56px;border-radius:16px;background:rgba(38,76,215,.07);
+  color:var(--blue);display:grid;place-items:center;margin:0 auto 18px;
+  border:1px solid rgba(38,76,215,.12)}
 .empty .ei svg{width:24px;height:24px}
 .empty h4{font-size:17px;font-weight:600;margin-bottom:6px}
 .empty p{font-size:14px;color:#6c6a66;max-width:420px;margin:0 auto}
@@ -416,9 +467,22 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 @media(max-width:820px){
   .wrap,.console,.results,section.panel{padding-left:20px;padding-right:20px}
   .nav-inner{padding:12px 20px}
+  .console{margin-top:-36px}
+  .hero-content{padding:56px 0 66px}
+  .glass{padding:18px}
+  .glass-row{gap:22px}
+  .glass-fig .n{font-size:25px}
   .form-grid{grid-template-columns:1fr}
   .grid{grid-template-columns:1fr}
-  .hero{padding:48px 0 26px}
+}
+/* Below this the nav label and the status pills compete for the same row and
+   overlap, so the label gives way and the pills tighten. */
+@media(max-width:640px){
+  .nav-div,.nav-label{display:none}
+  .nav-inner{gap:10px}
+  .pill{padding:6px 11px;font-size:12px}
+  .pill.who{max-width:120px}
+  .storage-warn{padding:12px 20px;font-size:12.5px}
 }
 </style>
 </head>
@@ -449,11 +513,20 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 </nav>
 
 <section class="hero">
-  <div class="hero-grid"></div><div class="hero-glow a"></div><div class="hero-glow b"></div>
+  <div class="hero-glow a"></div><div class="hero-glow b"></div>
+  <div class="hero-grid"></div><div class="hero-grain"></div>
   <div class="wrap hero-content">
     <div class="eyebrow">Impact Analytics · Market Intelligence</div>
     <h1>Every competitor.<br><em>One</em> search.</h1>
     <p class="hero-sub">One shared library for the whole team. Search a company and what you need, like <code>o9 battlecard</code>, and the workspace surfaces the right file in seconds.</p>
+    <div class="glass" id="heroStats">
+      <div class="glass-row">
+        <div class="glass-fig"><span class="n" id="hsEntries">&mdash;</span><span class="l">Documents</span></div>
+        <div class="glass-fig"><span class="n" id="hsComp">&mdash;</span><span class="l">Competitors</span></div>
+        <div class="glass-fig"><span class="n" id="hsAnalysed">&mdash;</span><span class="l">Analysed</span></div>
+        <div class="glass-fig"><span class="n" id="hsChunks">&mdash;</span><span class="l">Passages indexed</span></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -706,31 +779,66 @@ function render(list, q){
   grid.innerHTML = list.map(e=>{
     const canAnalyze = AI_ENABLED && e.content_chars > 40;
     const why = (e.why||[]).map(w=>`<span>${esc(w)}</span>`).join('');
+    const sol = e.solution || {};
+    const rule = sol.color || '#264CD7';
     return `<div class="card" id="card-${e.id}">
-      <div class="card-top">
-        <div class="card-ico ${ICO_CLASS[e.category]||''}">${ICONS[e.category]||ICONS.information}</div>
-        <div style="min-width:0">
-          <div class="card-title">${esc(e.title)}</div>
-          <div class="card-meta"><span class="badge">${esc(CAT_LABEL[e.category]||'File')}</span>
-            ${e.competitor?`<span class="vs">vs ${esc(e.competitor)}</span>`:''}
-            ${e.content_chars?`<span class="vs">· ${e.content_chars.toLocaleString()} chars indexed</span>`:''}
+      <div class="card-rule" style="background:${esc(rule)}"></div>
+      <div class="card-in">
+        <div class="card-top">
+          <div class="mono">${esc(monogram(e.competitor || e.title))}</div>
+          <div class="card-h">
+            <div class="card-title">${esc(e.title)}</div>
+            <div class="card-meta">
+              <span class="badge">${esc(CAT_LABEL[e.category]||'File')}</span>
+              ${e.competitor?`<span class="vs">${esc(e.competitor)}</span>`:''}
+            </div>
           </div>
         </div>
+        ${e.note?`<div class="card-note">${esc(e.note)}</div>`:''}
+        <div class="card-facts">
+          ${sol.label?`<span><i style="width:8px;height:8px;border-radius:50%;background:${esc(rule)};display:inline-block"></i>${esc(sol.label)}</span>`:''}
+          ${e.content_chars?`<span>${svgDoc()}${fmtChars(e.content_chars)} indexed</span>`:'<span>No document text</span>'}
+          ${e.analysis?`<span>${svgSpark()}Analysed</span>`:''}
+        </div>
+        ${why?`<div class="why">${why}</div>`:''}
+        <div class="card-foot">
+          ${canAnalyze?`<button class="link" onclick="analyze('${e.id}')">${svgSpark()}${e.analysis?'View analysis':'Analyze'}</button>`:''}
+          ${e.file_url?`<a class="link" href="${esc(e.file_url)}" target="_blank" rel="noopener">${svgOpen()}Open file</a>`:''}
+          ${e.lovable_url?`<a class="link" href="${esc(e.lovable_url)}" target="_blank" rel="noopener">${svgOpen()}Project</a>`:''}
+          ${e.created_at?`<span class="stamp">${fmtDate(e.created_at)}</span>`:''}
+          <button class="link muted" onclick="del('${e.id}')">Delete</button>
+        </div>
+        <div id="an-${e.id}"></div>
       </div>
-      ${e.note?`<div class="card-note">${esc(e.note)}</div>`:''}
-      ${why?`<div class="why">${why}</div>`:''}
-      <div class="card-foot">
-        ${canAnalyze?`<button class="link" onclick="analyze('${e.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0-6 6c0 1.7.7 3.2 1.8 4.3.7.7 1.2 1.6 1.2 2.7v1h6v-1c0-1.1.5-2 1.2-2.7A6 6 0 0 0 12 3z"/><path d="M9 21h6"/></svg>${e.analysis?'View analysis':'Analyze'}</button>`:''}
-        ${e.file_url?`<a class="link" href="${esc(e.file_url)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>Open file</a>`:''}
-        ${e.lovable_url?`<a class="link" href="${esc(e.lovable_url)}" target="_blank" rel="noopener">Project</a>`:''}
-        <button class="link muted" onclick="del('${e.id}')">Delete</button>
-      </div>
-      <div id="an-${e.id}"></div>
     </div>`;
   }).join('');
 }
 
-/* ---------- add ---------- */
+/* Initials for a competitor, so a grid of cards has stable visual anchors. */
+function monogram(name){
+  const words = (name||'?').replace(/[^A-Za-z0-9 ]/g,' ').trim().split(/\s+/).filter(Boolean);
+  if(!words.length) return '?';
+  // A name carrying a digit is usually the brand itself, like o9, so keep it
+  // whole rather than pairing it with the next word's initial.
+  if(/\d/.test(words[0])) return words[0].slice(0,2).toUpperCase();
+  if(words.length === 1) return words[0].slice(0,2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+function fmtChars(n){
+  return n >= 1000 ? (n/1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/,'') + 'k' : String(n);
+}
+function fmtDate(iso){
+  try{
+    const d = new Date(iso);
+    if(isNaN(d)) return '';
+    return d.toLocaleDateString(undefined,{month:'short', day:'numeric', year:'numeric'});
+  }catch(e){ return ''; }
+}
+const svgDoc = () => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
+const svgSpark = () => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0-6 6c0 1.7.7 3.2 1.8 4.3.7.7 1.2 1.6 1.2 2.7v1h6v-1c0-1.1.5-2 1.2-2.7A6 6 0 0 0 12 3z"/><path d="M9 21h6"/></svg>';
+const svgOpen = () => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>';
+
+/* ---------- add ---------- *//* ---------- add ---------- */
 $('fFile').addEventListener('change', e=>{
   const n = e.target.files[0]?.name || '';
   $('fName').textContent = n ? 'Selected: ' + n : '';
@@ -756,13 +864,13 @@ async function saveEntry(){
   try{
     const data = await api('/api/entries', {method:'POST', body:fd});
     toast(data.status || 'Added to the library');
-    resetForm(); setMode('search'); $('q').value=''; doSearch();
+    resetForm(); setMode('search'); $('q').value=''; doSearch(); loadStats();
   }catch(err){ toastError(err.message); }
   finally{ btn.disabled=false; btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add to library'; }
 }
 async function del(id){
   if(!confirm('Delete this entry?')) return;
-  try{ await api('/api/entries/'+id, {method:'DELETE'}); toast('Deleted'); doSearch(); }
+  try{ await api('/api/entries/'+id, {method:'DELETE'}); toast('Deleted'); doSearch(); loadStats(); }
   catch(err){ toastError(err.message); }
 }
 
@@ -1253,7 +1361,17 @@ async function whyAi(){
   }
 }
 
+async function loadStats(){
+  try{
+    const d = await api('/api/stats');
+    const set = (id,v)=>{ const el=$(id); if(el) el.textContent = (v||0).toLocaleString(); };
+    set('hsEntries', d.entries); set('hsComp', d.competitors);
+    set('hsAnalysed', d.analysed); set('hsChunks', d.chunks);
+  }catch(e){ /* the hero figures are decoration; never block the page for them */ }
+}
+
 checkStorage();
+loadStats();
 doSearch();
 </script>
 </body>

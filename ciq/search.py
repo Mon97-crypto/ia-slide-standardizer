@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from .competitors import ALIAS_INDEX, normalise, resolve
+from .competitors import ALIAS_INDEX, normalise, resolve, solution_for
 from .db import Store, entries_where, passage_scores, text_scores
 
 # Phrases an analyst actually types, mapped to the stored category.
@@ -218,6 +218,7 @@ def search(store: Store, query: str = "", category: str = "",
         entry = dict(entry)
         entry["score"] = round(score, 4)
         entry["why"] = why
+        entry["solution"] = solution_for(entry.get("competitor", ""))
         results.append(entry)
 
     if intent.is_empty:

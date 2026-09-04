@@ -591,6 +591,7 @@ def api_library_clear():
 
 
 @app.route("/api/stats")
+@login_required
 def api_stats():
     return jsonify({"ok": True, "ai_enabled": llm.available(), **db.stats(store())})
 

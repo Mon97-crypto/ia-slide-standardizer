@@ -112,6 +112,36 @@ COMPETITORS: dict[str, dict] = {
     },
 }
 
+# The four Impact Analytics solution areas and their brand colours. Used as a
+# small indicator on a result, never as a wash over the whole card: the primary
+# palette leads, and a solution colour appears only where it means something.
+SOLUTIONS: dict[str, dict[str, str]] = {
+    "merchandising": {"label": "Merchandising", "color": "#BEA8EF"},
+    "inventory": {"label": "Inventory and replenishment", "color": "#E3F576"},
+    "pricing": {"label": "Pricing and promotions", "color": "#3DD499"},
+    "data": {"label": "Data and intelligence", "color": "#B3C9F7"},
+}
+
+PRODUCT_SOLUTION: dict[str, str] = {
+    "ItemSmart": "merchandising", "SizeSmart": "merchandising",
+    "AssortSmart": "merchandising", "AttributeSmart": "merchandising",
+    "InventorySmart": "inventory", "ForecastSmart": "inventory",
+    "StoreSmart": "inventory",
+    "PlanSmart": "pricing", "PromoSmart": "pricing",
+    "PriceSmart": "pricing", "MarkSmart": "pricing",
+    "MondaySmart": "data", "CortexEye": "data",
+}
+
+
+def solution_for(competitor: str) -> dict[str, str]:
+    """The solution area a competitor most threatens, with its brand colour."""
+    for product in threatened_products(competitor):
+        key = PRODUCT_SOLUTION.get(product)
+        if key:
+            return {"key": key, **SOLUTIONS[key]}
+    return {"key": "data", **SOLUTIONS["data"]}
+
+
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
 
