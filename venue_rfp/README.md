@@ -14,6 +14,8 @@ at **`/venues`**.
 NRF Retail's Big Show 2027 runs 10–12 January at the Javits Center, so venues
 are ranked by walking distance from Javits (`proximity_rank` in the data file).
 
+See **[DEPLOY.md](DEPLOY.md)** for the Resend and Render setup runbook.
+
 ## Configuration
 
 All optional — without them the tool still drafts, copies and hands off RFPs to

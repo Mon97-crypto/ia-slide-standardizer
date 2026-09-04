@@ -7,3 +7,43 @@ services:
     envVars:
       - key: PORT
         value: 10000
+
+      # ── Venue RFP tool (served at /venues) ──────────────────────────────────
+      # Secret: set the value in the Render dashboard (Environment → Add
+      # Environment Variable). `sync: false` keeps it out of git. Note that
+      # Render only prompts for sync:false vars when a Blueprint is first
+      # created — on an existing service, add it in the dashboard by hand.
+      - key: RESEND_API_KEY
+        sync: false
+
+      # Must be an address on a domain verified in Resend. Use a `send.`
+      # subdomain so Resend's MX record cannot disturb the root domain's
+      # existing corporate email.
+      - key: RESEND_FROM
+        value: "Impact Analytics Events <events@send.impactanalytics.co>"
+
+      # Where restaurants' replies land. This can be a normal mailbox on the
+      # root domain — it is a Reply-To header, not a sending identity.
+      - key: RFP_REPLY_TO
+        value: "marketing@impactanalytics.co"
+
+      - key: RFP_SENDER_NAME
+        value: "Impact Analytics — Events Team"
+      - key: RFP_SENDER_ORG
+        value: "Impact Analytics"
+      # - key: RFP_SENDER_PHONE
+      #   value: "+1 555 0100"
+
+      # Outreach tracker (SQLite). Free instances cannot mount a disk, so the
+      # file sits on ephemeral container storage and resets on redeploy or
+      # spin-down. Use the "Export tracker" button before redeploying, or move
+      # to a paid instance and uncomment this plus the `disk:` block below.
+      # - key: VENUE_DB_PATH
+      #   value: /var/data/outreach.db
+
+    # Persistent tracker storage. Requires a paid instance type (Starter+);
+    # a free web service cannot attach a disk.
+    # disk:
+    #   name: venue-tracker
+    #   mountPath: /var/data
+    #   sizeGB: 1
