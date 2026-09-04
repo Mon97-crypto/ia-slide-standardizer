@@ -401,3 +401,57 @@ def test_usage_is_recorded_and_reported(client):
     assert round(body["totals"]["cost"], 2) == 0.49
     assert body["by_feature"][0]["feature"] == "battlecard"
     assert body["research_by_default"] is False
+
+
+def test_the_daily_budget_blocks_further_calls(client, monkeypatch):
+    """A limit that has to be remembered at each call site is not a limit, so
+    it is enforced in one place that every feature passes through."""
+    import ciq.config, ciq.llm as llm
+    from ciq import db
+    import app as application
+
+    monkeypatch.setattr(ciq.config.Config, "DAILY_BUDGET_USD", 1.00)
+    conn = db.connect(ciq.config.Config.store_target())
+
+    assert application._budget_status()["ok"] is True
+    llm._enforce_budget()                      # under budget, no exception
+
+    db.record_usage(conn, {"feature": "battlecard", "cost_usd": 1.20})
+    status = application._budget_status()
+    assert status["ok"] is False
+    assert status["remaining"] == 0
+    with pytest.raises(llm.BudgetExceeded):
+        llm._enforce_budget()
+
+
+def test_an_exceeded_budget_is_reported_as_json_not_a_crash(client, monkeypatch):
+    import ciq.config
+    from ciq import db
+    monkeypatch.setattr(ciq.config.Config, "DAILY_BUDGET_USD", 0.01)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    db.record_usage(db.connect(ciq.config.Config.store_target()),
+                    {"feature": "chat", "cost_usd": 5.0})
+    response = client.post("/api/chat", json={"messages": [
+        {"role": "user", "content": "hello"}]})
+    assert response.status_code == 429
+    body = response.get_json()
+    assert body["budget_exceeded"] is True
+    assert "daily API budget" in body["error"]
+
+
+def test_a_zero_budget_disables_the_guard(client, monkeypatch):
+    """Some deployments want no ceiling; zero must mean off, not block all."""
+    import ciq.config, ciq.llm as llm
+    from ciq import db
+    monkeypatch.setattr(ciq.config.Config, "DAILY_BUDGET_USD", 0)
+    db.record_usage(db.connect(ciq.config.Config.store_target()),
+                    {"feature": "chat", "cost_usd": 999.0})
+    import app as application
+    assert application._budget_status()["enforced"] is False
+    llm._enforce_budget()
+
+
+def test_usage_reports_the_budget(client):
+    body = client.get("/api/usage").get_json()
+    assert "budget" in body
+    assert body["budget"]["limit"] >= 0

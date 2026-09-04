@@ -173,6 +173,28 @@ Each failure carries the message the Anthropic API itself returned, so the
 reason is visible rather than inferred. If the model is unavailable to your
 organisation, set `CIQ_MODEL` to one that is.
 
+## Cost control
+
+Every API call is metered with the token counts the API reports, priced at list
+rates, and attributed to the person who made it. Library tools, then **API
+spend**, shows the total broken down by feature, by day and by person.
+
+Three things keep the bill down:
+
+- **Researching public sources is opt in.** It is an agentic loop that resends
+  its growing context on every turn, which makes it the largest single cost.
+  The toggle sits next to the button that uses it.
+- **Expensive results are reused.** Research on one competitor is cached for
+  `CIQ_RESEARCH_CACHE_HOURS`, battlecards until a refresh is asked for, and a
+  document's analysis is stored with the entry.
+- **`CIQ_DAILY_BUDGET_USD` is a hard stop.** Once the day's spend reaches it,
+  calls are refused with a clear message rather than quietly continuing. It is
+  enforced in the one place every feature passes through, so a new feature is
+  covered the moment it is written. Set it to 0 to remove the ceiling.
+
+Measured against the previous settings, a battlecard costs about a quarter as
+much, a chat message about a ninth, and a deck about a fifth.
+
 ## Configuration
 
 See `.env.example`. Notable settings:

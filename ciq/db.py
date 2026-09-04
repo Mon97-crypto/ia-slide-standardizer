@@ -735,3 +735,12 @@ def usage_summary(store: Store, days: int = 30) -> dict[str, Any]:
         " web_searches, cost_usd FROM usage ORDER BY ts DESC LIMIT 25")
     return {"totals": totals[0] if totals else {}, "by_feature": by_feature,
             "by_day": by_day, "by_user": by_user, "recent": recent}
+
+
+def spend_today(store: Store) -> float:
+    """Total cost recorded so far today, in dollars."""
+    today = _now()[:10]
+    row = store.execute(
+        "SELECT COALESCE(SUM(cost_usd),0) AS spent FROM usage"
+        " WHERE substr(ts,1,10) = ?", (today,)).fetchone()
+    return float(row["spent"] if row else 0)

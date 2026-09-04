@@ -36,3 +36,11 @@ services:
         sync: false
       - key: CIQ_SECRET_KEY
         generateValue: true
+      # Cost controls. Research is the largest single cost and is opt in per
+      # request; the daily cap is a hard stop, not a warning.
+      - key: CIQ_DAILY_BUDGET_USD
+        value: "5.00"
+      - key: CIQ_EFFORT
+        value: medium
+      - key: CIQ_RESEARCH_BY_DEFAULT
+        value: "false"

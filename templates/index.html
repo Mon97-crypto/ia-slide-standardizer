@@ -1099,7 +1099,8 @@ async function showUsage(){
       });
     }
     h += `<div class="bc-meta">Model ${esc(d.model)} at ${esc(d.effort||'default')} effort. `
-       + `Public sources research is ${d.research_by_default?'on':'off'} by default, and is the largest single cost when on.</div>`;
+       + `Public sources research is ${d.research_by_default?'on':'off'} by default, and is the largest single cost when on.`
+       + (b.enforced ? ` Daily cap ${money(b.limit)}.` : ' No daily cap set.') + '</div>';
     out.innerHTML = h + '</div>';
   }catch(err){ out.innerHTML = `<div class="a-error">${esc(err.message)}</div>`; }
 }

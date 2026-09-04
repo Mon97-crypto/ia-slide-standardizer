@@ -46,7 +46,23 @@ def _record_usage(row: dict) -> None:
     db.record_usage(store(), {**row, "user_email": user.get("email", "")})
 
 
+def _budget_status() -> dict:
+    """How much of today's budget is left."""
+    limit = Config.DAILY_BUDGET_USD
+    if limit <= 0:
+        return {"ok": True, "limit": 0, "spent": 0, "remaining": 0, "enforced": False}
+    try:
+        spent = db.spend_today(store())
+    except Exception:
+        # A metering failure must not block the product.
+        return {"ok": True, "limit": limit, "spent": 0, "remaining": limit,
+                "enforced": True}
+    return {"ok": spent < limit, "limit": limit, "spent": round(spent, 4),
+            "remaining": round(max(0.0, limit - spent), 4), "enforced": True}
+
+
 llm.set_usage_sink(_record_usage)
+llm.set_budget_check(_budget_status)
 
 
 def fail(message: str, status: int = 400):
@@ -542,6 +558,7 @@ def api_usage():
     return jsonify({"ok": True, "model": Config.MODEL,
                     "effort": Config.EFFORT,
                     "research_by_default": Config.RESEARCH_BY_DEFAULT,
+                    "budget": _budget_status(),
                     **db.usage_summary(store())})
 
 
@@ -595,6 +612,11 @@ def handle_http_error(exc: HTTPException):
         return exc
     return jsonify({"ok": False, "error": exc.description,
                     "status": exc.code}), exc.code
+
+
+@app.errorhandler(llm.BudgetExceeded)
+def handle_budget_exceeded(exc: llm.BudgetExceeded):
+    return jsonify({"ok": False, "error": str(exc), "budget_exceeded": True}), 429
 
 
 @app.errorhandler(Exception)

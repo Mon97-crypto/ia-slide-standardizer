@@ -274,14 +274,41 @@ PRICING: dict[str, tuple[float, float]] = {
 DEFAULT_PRICE = (5.0, 25.0)
 WEB_SEARCH_USD = 0.01
 
-# Set by the application so every call is metered. Kept as a hook rather than a
-# parameter so metering cannot be forgotten at a call site.
+# Set by the application so every call is metered and budget checked. Kept as
+# hooks rather than parameters so neither can be forgotten at a call site.
 _usage_sink = None
+_budget_check = None
 
 
 def set_usage_sink(sink) -> None:
     global _usage_sink
     _usage_sink = sink
+
+
+def set_budget_check(check) -> None:
+    """Install the guard consulted before every request leaves the process."""
+    global _budget_check
+    _budget_check = check
+
+
+class BudgetExceeded(Exception):
+    """Raised when the day's spending limit has already been reached."""
+
+
+def _enforce_budget() -> None:
+    """Refuse a call once the day's limit is spent.
+
+    Checked here rather than at each feature, so a new feature is covered the
+    moment it is written. A limit that has to be remembered is not a limit.
+    """
+    if _budget_check is None:
+        return
+    verdict = _budget_check()
+    if verdict and not verdict.get("ok", True):
+        raise BudgetExceeded(
+            f"The daily API budget of ${verdict.get('limit', 0):.2f} is spent "
+            f"(${verdict.get('spent', 0):.2f} so far today). Requests resume "
+            "tomorrow, or raise CIQ_DAILY_BUDGET_USD.")
 
 
 def price_call(model: str, input_tokens: int, output_tokens: int,
@@ -373,6 +400,7 @@ def _call(system: str, prompt: str, max_tokens: int = 4000,
           effort: str | None = None) -> Any:
     """One Claude call. Returns parsed JSON when a schema is supplied."""
     client = _client()   # raises LLMUnavailable before anthropic is needed
+    _enforce_budget()
     import anthropic
 
     kwargs: dict[str, Any] = {
@@ -950,6 +978,7 @@ def _call_messages(system: str, messages: list[dict[str, str]],
                    feature: str = "chat") -> Any:
     """Like _call, but for a multi-turn conversation."""
     client = _client()
+    _enforce_budget()
     import anthropic
 
     kwargs: dict[str, Any] = {

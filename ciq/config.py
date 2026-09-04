@@ -99,6 +99,8 @@ class Config:
     RESEARCH_BY_DEFAULT = _bool("CIQ_RESEARCH_BY_DEFAULT", False)
     # Repeat research on the same competitor is the easiest saving of all.
     RESEARCH_CACHE_HOURS = float(os.environ.get("CIQ_RESEARCH_CACHE_HOURS", 24))
+    # A hard ceiling on a day's spend. Zero disables the guard.
+    DAILY_BUDGET_USD = float(os.environ.get("CIQ_DAILY_BUDGET_USD", 5.0))
     MAX_UPLOAD_BYTES = int(os.environ.get("CIQ_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
 
     # Access is by company identity through Google, not a shared passcode.
