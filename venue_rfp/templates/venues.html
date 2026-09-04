@@ -263,6 +263,8 @@ dialog::backdrop{background:rgba(16,24,40,.45)}
 
 <script>
 const NIGHT_LABEL = {{ event.nights|tojson }};
+// Where this blueprint is mounted ('' at the site root, '/venues' when sub-mounted).
+const BASE = {{ url_for('venues.index')|tojson }}.replace(/\/$/, '');
 const dlg = document.getElementById('dlg');
 let current = null;   // {venueId, nightId, row}
 
@@ -326,7 +328,7 @@ document.getElementById('grid').addEventListener('change', async e => {
   btn.textContent = sel.value === 'not_contacted' ? 'Send RFP' : 'Resend';
   btn.classList.toggle('done', sel.value !== 'not_contacted');
   refreshProgress(); applyFilters();
-  try { await post(`/venues/api/outreach/${card.dataset.id}/${row.dataset.night}`, {status: sel.value}); }
+  try { await post(`${BASE}/api/outreach/${card.dataset.id}/${row.dataset.night}`, {status: sel.value}); }
   catch (err) { alert('Could not save status: ' + err.message); }
 });
 
@@ -339,7 +341,7 @@ document.getElementById('grid').addEventListener('click', async e => {
                        '\n(leave blank to go back to the generated cover)');
     if (url === null) return;
     try {
-      await post(`/venues/api/meta/${card.dataset.id}`, {cover_image: url.trim()});
+      await post(`${BASE}/api/meta/${card.dataset.id}`, {cover_image: url.trim()});
       const cover = card.querySelector('[data-cover]');
       cover.style.backgroundImage = url.trim() ? `url('${url.trim()}')` : '';
     } catch (err) { alert('Could not save image: ' + err.message); }
@@ -351,7 +353,7 @@ document.getElementById('grid').addEventListener('click', async e => {
     const email = prompt('Events email for ' + card.querySelector('h3').textContent, cur.includes('@') ? cur : '');
     if (email === null) return;
     try {
-      await post(`/venues/api/meta/${card.dataset.id}`, {email_override: email.trim()});
+      await post(`${BASE}/api/meta/${card.dataset.id}`, {email_override: email.trim()});
       const el = card.querySelector('[data-email]');
       el.textContent = email.trim() || 'No public address';
       el.style.color = email.trim() ? '' : 'var(--muted)';
@@ -376,7 +378,7 @@ async function openDraft(card, nightId){
   document.getElementById('fBody').value = 'Loading…';
   dlg.showModal();
 
-  const r = await fetch(`/venues/api/draft/${venueId}/${nightId}`);
+  const r = await fetch(`${BASE}/api/draft/${venueId}/${nightId}`);
   const d = await r.json();
   if (!r.ok) { msg.className = 'msg err'; msg.textContent = d.error; return; }
   document.getElementById('fTo').value = d.to || '';
@@ -407,7 +409,7 @@ document.getElementById('bSend').addEventListener('click', async () => {
   const btn = document.getElementById('bSend');
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    await post('/venues/api/send', {
+    await post(`${BASE}/api/send`, {
       venue_id: current.venueId, night_id: current.nightId,
       to: document.getElementById('fTo').value,
       subject: document.getElementById('fSubj').value,
