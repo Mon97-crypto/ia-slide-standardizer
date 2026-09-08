@@ -276,8 +276,9 @@ section.panel{max-width:1240px;margin:0 auto 46px;padding:0 32px}
 .bc-out h2,.bc-out h3{font-family:"Inter Tight",sans-serif;font-weight:700;font-size:14px;
   letter-spacing:.05em;text-transform:uppercase;color:var(--blue);margin:18px 0 7px}
 .bc-out h2:first-child,.bc-out h3:first-child{margin-top:0}
-.bc-head{display:flex;align-items:flex-start;gap:14px;justify-content:space-between;
+.bc-head{display:flex;align-items:center;gap:14px;justify-content:space-between;
   flex-wrap:wrap;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--g1)}
+#pdfBtn{white-space:nowrap;flex:none}
 .bc-headline{font-family:Spectral,Georgia,serif;font-size:22px;line-height:1.3;font-weight:300;
   max-width:720px}
 .conf{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
@@ -1013,6 +1014,36 @@ function bcPairs(items, kKey, vKey, cls){
   return items.map(o=>`<div class="bc-pair ${cls||''}"><div class="k">${esc(o[kKey])}</div><div class="v">${esc(o[vKey])}</div></div>`).join('');
 }
 
+/* The card on screen is posted back rather than regenerated, so a download
+   costs nothing and returns exactly what was reviewed. */
+let lastBattlecard = null;
+
+async function downloadPdf(){
+  if(!lastBattlecard) return toastError('Generate a battlecard first.');
+  const btn = document.getElementById('pdfBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Preparing...'; }
+  try{
+    const res = await fetch('/api/battlecard.pdf', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({battlecard: lastBattlecard})});
+    if(!res.ok){
+      let msg = `Could not build the PDF (${res.status}).`;
+      try{ const d = await res.json(); if(d.error) msg = d.error; }catch(e){}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `IA vs ${(lastBattlecard.competitor||'competitor')} battlecard.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    toast('PDF downloaded');
+  }catch(err){ toastError(err.message); }
+  finally{ if(btn){ btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Download PDF'; } }
+}
+
 function renderVerdict(c){
   const rows = c.scorecard || [];
   const t = c.totals || {};
@@ -1120,9 +1151,13 @@ function renderScorecard(c){
 
 function renderBattlecard(data){
   const c = data.battlecard || {};
+  lastBattlecard = c;
   const conf = (c.confidence||'medium').toLowerCase();
   let h = '<div class="bc-out">';
-  h += `<div class="bc-head"><div class="bc-headline">${esc(c.headline||('Impact Analytics vs '+(c.competitor||'')))}</div></div>`;
+  h += `<div class="bc-head"><div class="bc-headline">${esc(c.headline||('Impact Analytics vs '+(c.competitor||'')))}</div>
+        <button class="btn sm ghost" id="pdfBtn" onclick="downloadPdf()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Download PDF</button></div>`;
   h += renderVerdict(c);
   h += `<div id="scDetail" hidden>${renderScorecard(c)}</div>`;
   h += bcSection('Who they are', `<div class="bc-body">${esc(c.who_they_are||'')}</div>`);

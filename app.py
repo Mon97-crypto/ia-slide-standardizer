@@ -19,7 +19,7 @@ from flask import (Flask, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 from werkzeug.exceptions import HTTPException
 
-from ciq import auth, db, deck as deckgen, diagnose as diag, ingest, llm
+from ciq import auth, db, deck as deckgen, diagnose as diag, ingest, llm, pdf_report
 from ciq.competitors import canonical_name, known_names, threatened_products
 from ciq.config import CATEGORIES, Config
 from ciq.auth import current_user, login_required
@@ -402,6 +402,29 @@ def api_deck():
 
     job_id = run_in_background("deck", "Reading the library", work)
     return jsonify({"ok": True, "status": "running", "job_id": job_id}), 202
+
+
+@app.route("/api/battlecard.pdf", methods=["POST"])
+@login_required
+def api_battlecard_pdf():
+    """Render an already generated battlecard as a PDF a seller can forward.
+
+    The card is posted back rather than regenerated, so downloading costs
+    nothing and returns exactly what is on screen.
+    """
+    payload = request.get_json(silent=True) or {}
+    card = payload.get("battlecard")
+    if not isinstance(card, dict) or not card.get("competitor"):
+        return fail("No battlecard to render. Generate one first.")
+    try:
+        buffer = pdf_report.build(card)
+    except Exception as exc:
+        app.logger.exception("PDF render failed")
+        return fail(f"Could not render the PDF: {exc}", 500)
+    name = re.sub(r"[^A-Za-z0-9]+", "-",
+                  f"IA vs {card.get('competitor','')} battlecard").strip("-")[:70]
+    return send_file(buffer, as_attachment=True, download_name=f"{name}.pdf",
+                     mimetype="application/pdf")
 
 
 @app.route("/api/deck/<token>.pptx")

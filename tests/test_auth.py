@@ -160,3 +160,14 @@ def test_no_passcode_remains_anywhere():
         text = (root / name).read_text().lower()
         assert "adminpass" not in text
         assert "admin_passcode" not in text
+
+
+def test_the_pdf_download_needs_a_signed_in_account(client):
+    """The card is competitive material, so the file is gated like the rest."""
+    card = {"competitor": "Blue Yonder"}
+    assert client.post("/api/battlecard.pdf",
+                       json={"battlecard": card}).status_code == 401
+    sign_in(client)
+    response = client.post("/api/battlecard.pdf", json={"battlecard": card})
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"

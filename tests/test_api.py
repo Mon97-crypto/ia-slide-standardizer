@@ -546,3 +546,90 @@ def test_the_anthropic_client_carries_a_timeout():
     from ciq import llm
     source = inspect.getsource(llm._client)
     assert "timeout=" in source
+
+
+# ─── PDF download ──────────────────────────────────────────────────────────
+
+SAMPLE_CARD = {
+    "competitor": "Blue Yonder",
+    "verdict": "They lead on breadth → we lead on depth.",
+    "confidence": "medium",
+    "totals": {"ia": 7.4, "competitor": 6.1},
+    "who_they_are": "An end to end supply chain platform.",
+    "scorecard": [
+        {"dimension": "speed_to_value", "label": "Speed to value",
+         "ia_score": 8.5, "competitor_score": 3.0},
+        {"dimension": "suite_breadth", "label": "Suite breadth",
+         "ia_score": 6.0, "competitor_score": 9.0},
+    ],
+    "where_they_win": ["Mature replenishment."],
+    "where_they_are_weak": ["Thin assortment planning."],
+    "how_we_win": [{"play": "Anchor on merchandising depth",
+                    "why": "Their stack thins out there."}],
+    "discovery_questions": ["How long was your last deployment?"],
+    "objection_handling": [{"objection": "They are the safe choice.",
+                            "response": "Ask how assortment is delivered."}],
+    "landmines": ["Do not attack forecasting head on."],
+    "pricing_and_deployment": "Seven figure annual licences.",
+    "proof_points": ["Named grocery chains."],
+    "ia_products_exposed": ["InventorySmart", "PlanSmart"],
+    "intel_gaps": ["No pricing from a live deal."],
+    "sources": ["Library: Blue Yonder Overview"],
+}
+
+
+def test_a_battlecard_renders_as_a_pdf(client):
+    response = client.post("/api/battlecard.pdf", json={"battlecard": SAMPLE_CARD})
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data[:5] == b"%PDF-"
+    assert "Blue-Yonder" in response.headers["Content-Disposition"]
+
+
+def test_the_pdf_route_refuses_an_empty_request(client):
+    """Downloading before generating must say so, not return a broken file."""
+    for payload in ({}, {"battlecard": {}}, {"battlecard": "nope"}):
+        response = client.post("/api/battlecard.pdf", json=payload)
+        assert response.status_code == 400
+        assert "Generate one first" in response.get_json()["error"]
+
+
+def test_a_sparse_battlecard_still_renders(client):
+    """Sections the model left out must be skipped, not crash the render."""
+    response = client.post("/api/battlecard.pdf",
+                           json={"battlecard": {"competitor": "o9"}})
+    assert response.status_code == 200
+    assert response.data[:5] == b"%PDF-"
+
+
+def test_the_pdf_holds_no_characters_the_font_cannot_draw():
+    """Outside Latin-1 the built-in fonts draw a solid black box rather than
+    failing, so the sanitiser is the only thing standing between generated
+    copy and an unreadable page."""
+    from ciq import pdf_report
+    assert pdf_report._safe("a → b ‘c’ • d") == "a -&gt; b 'c' - d"
+    assert pdf_report._safe("café 中文") == "café ??"
+    assert pdf_report._safe(None) == ""
+    assert pdf_report._safe("<b>&") == "&lt;b&gt;&amp;"
+    text = pdf_report.build(SAMPLE_CARD).getvalue()
+    assert b"\xe2\x86\x92" not in text          # the arrow, as UTF-8
+
+
+def test_a_scorecard_missing_scores_does_not_break_the_download(client):
+    """The card comes back from the browser and the model can omit a score.
+    A download is not worth failing over, so an unusable value reads as zero."""
+    card = dict(SAMPLE_CARD, totals={},
+                scorecard=[{"dimension": "speed_to_value"},
+                           {"label": "Suite breadth", "ia_score": "n/a",
+                            "competitor_score": 9.0}])
+    response = client.post("/api/battlecard.pdf", json={"battlecard": card})
+    assert response.status_code == 200
+    assert response.data[:5] == b"%PDF-"
+
+
+def test_the_pdf_logo_asset_ships_with_the_app():
+    """The render degrades quietly without it, so a missing file would only
+    show up as a header that lost its brand mark."""
+    import os.path
+    from ciq import pdf_report
+    assert os.path.exists(pdf_report.LOGO)
