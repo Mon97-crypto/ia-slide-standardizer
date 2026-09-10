@@ -6,6 +6,14 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# DejaVu is the font the page-capture PDF renders with. ReportLab's built-in
+# fonts cover Latin-1 only and draw a solid black box for anything outside it,
+# and a captured web page routinely carries accents, curly quotes, arrows and
+# currency marks. One megabyte buys a page that is readable instead.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

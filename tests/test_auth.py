@@ -171,3 +171,9 @@ def test_the_pdf_download_needs_a_signed_in_account(client):
     response = client.post("/api/battlecard.pdf", json={"battlecard": card})
     assert response.status_code == 200
     assert response.mimetype == "application/pdf"
+
+
+def test_capturing_a_page_needs_a_signed_in_account(client):
+    """It fetches a URL from inside the deployment, so it is never open."""
+    assert client.post("/api/page.pdf",
+                       json={"url": "https://example.com"}).status_code == 401

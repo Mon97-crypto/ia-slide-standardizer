@@ -19,7 +19,8 @@ from flask import (Flask, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 from werkzeug.exceptions import HTTPException
 
-from ciq import auth, db, deck as deckgen, diagnose as diag, ingest, llm, pdf_report
+from ciq import (auth, db, deck as deckgen, diagnose as diag, ingest, llm,
+                 page_capture, pdf_report)
 from ciq.competitors import canonical_name, known_names, threatened_products
 from ciq.config import CATEGORIES, Config
 from ciq.auth import current_user, login_required
@@ -424,6 +425,30 @@ def api_battlecard_pdf():
     name = re.sub(r"[^A-Za-z0-9]+", "-",
                   f"IA vs {card.get('competitor','')} battlecard").strip("-")[:70]
     return send_file(buffer, as_attachment=True, download_name=f"{name}.pdf",
+                     mimetype="application/pdf")
+
+
+@app.route("/api/page.pdf", methods=["POST"])
+@login_required
+def api_page_pdf():
+    """Capture a web page as a PDF.
+
+    No model is involved, so this costs nothing and is not metered. The URL is
+    user supplied and fetched by the server, which makes it an SSRF surface;
+    every redirect hop is resolved and refused if it is not globally routable.
+    """
+    payload = request.get_json(silent=True) or {}
+    url = (payload.get("url") or "").strip()
+    with_images = payload.get("images", True) is not False
+    try:
+        buffer, title = page_capture.capture(url, with_images=with_images)
+    except page_capture.CaptureError as exc:
+        return fail(str(exc))
+    except Exception as exc:
+        app.logger.exception("Page capture failed")
+        return fail(f"Could not capture that page: {exc}", 500)
+    return send_file(buffer, as_attachment=True,
+                     download_name=page_capture.filename_for(title, url),
                      mimetype="application/pdf")
 
 
