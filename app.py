@@ -7,6 +7,7 @@ a browser.
 """
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -19,8 +20,8 @@ from flask import (Flask, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 from werkzeug.exceptions import HTTPException
 
-from ciq import (auth, db, deck as deckgen, diagnose as diag, ingest, llm,
-                 page_capture, pdf_report)
+from ciq import (auth, db, deck as deckgen, diagnose as diag, files, ingest,
+                 llm, page_capture, pdf_report)
 from ciq.competitors import canonical_name, known_names, threatened_products
 from ciq.config import CATEGORIES, Config
 from ciq.auth import current_user, login_required
@@ -182,6 +183,7 @@ def api_list_entries():
         category=request.args.get("category", ""),
         competitor=request.args.get("competitor", ""),
     )
+    db.mark_files(store(), entries)
     return jsonify({"ok": True, "entries": entries, "total": len(entries)})
 
 
@@ -193,6 +195,7 @@ def api_search():
         query=request.args.get("q", ""),
         category=request.args.get("category", ""),
     )
+    db.mark_files(store(), outcome["results"])
     return jsonify({"ok": True, **outcome})
 
 
@@ -217,6 +220,9 @@ def api_create_entry():
         return fail("Add a file, a link, or a note.")
 
     content, file_name, source_kind, status = "", "", "note", ""
+    # The document itself, kept so it can be opened again. The extracted text
+    # makes it searchable; it does not let anyone read the original deck.
+    blob: bytes = b""
 
     if upload and upload.filename:
         raw = upload.read()
@@ -226,14 +232,14 @@ def api_create_entry():
             content = ingest.extract_text(raw, upload.filename)
         except ingest.ExtractionError as exc:
             return fail(str(exc))
-        file_name, source_kind = upload.filename, "upload"
+        file_name, source_kind, blob = upload.filename, "upload", raw
         status = f"Extracted {len(content):,} characters from {upload.filename}."
     elif file_url:
         source_kind = "link"
         try:
             fetched = fetch(file_url)
             content = ingest.extract_text(fetched.data, fetched.filename)
-            file_name = fetched.filename
+            file_name, blob = fetched.filename, fetched.data
             status = f"Fetched and indexed {len(content):,} characters."
         except (FetchError, ingest.ExtractionError) as exc:
             # A link that cannot be read is still worth keeping. The entry is
@@ -250,6 +256,11 @@ def api_create_entry():
         "extract_status": status,
     }, chunks=ingest.chunk_text(content))
 
+    if blob:
+        db.store_file(store(), entry["id"], file_name,
+                      files.mime_for(file_name), blob)
+    db.mark_files(store(), [entry])
+
     return jsonify({"ok": True, "entry": entry, "status": status}), 201
 
 
@@ -259,7 +270,111 @@ def api_get_entry(entry_id: str):
     entry = db.get_entry(store(), entry_id)
     if entry is None:
         return fail("Entry not found.", 404)
+    db.mark_files(store(), [entry])
     return jsonify({"ok": True, "entry": entry})
+
+
+@app.route("/api/entries/<entry_id>/file")
+@login_required
+def api_entry_file(entry_id: str):
+    """Hand back the document exactly as it was uploaded."""
+    entry = db.get_entry(store(), entry_id)
+    if entry is None:
+        return fail("Entry not found.", 404)
+    held = db.get_file(store(), entry_id)
+    if held is None:
+        return fail(
+            "The original file is not held for this entry. Entries added "
+            "before files were kept, and notes and links, only have their "
+            "extracted text. Open that instead, or upload the file again.",
+            404)
+    name = files.safe_name(held["file_name"] or entry.get("file_name") or "",
+                           f"{entry.get('title') or 'document'}")
+    mime = held["mime_type"] or files.mime_for(name)
+    attach, download_name = files.disposition(name, mime)
+    response = send_file(io.BytesIO(held["data"]), mimetype=mime,
+                         as_attachment=attach, download_name=download_name)
+    # The type above is derived from the filename, so stop the browser
+    # second-guessing it by sniffing the bytes.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@app.route("/api/entries/<entry_id>/file", methods=["POST"])
+@login_required
+def api_attach_file(entry_id: str):
+    """Attach the original document to an entry that has none.
+
+    Entries added before files were kept hold only their extracted text. This
+    lets someone put the document back without losing the entry, its analysis
+    or its place in the library.
+    """
+    entry = db.get_entry(store(), entry_id)
+    if entry is None:
+        return fail("Entry not found.", 404)
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return fail("Choose a file to attach.")
+    raw = upload.read()
+    if not raw:
+        return fail("That file is empty.")
+    if len(raw) > Config.MAX_UPLOAD_BYTES:
+        return fail("That file is over the upload limit.")
+
+    fields = {"file_name": upload.filename}
+    status = f"Attached {upload.filename}."
+    # Read the text only when this entry never had a document of its own - a
+    # note, or a link that could not be fetched. Where text was extracted from
+    # a document before, replacing it would quietly rewrite what searches,
+    # analyses and battlecards were built on.
+    if not (entry.get("file_name") or "").strip():
+        try:
+            content = ingest.extract_text(raw, upload.filename)
+        except ingest.ExtractionError as exc:
+            content = ""
+            status += f" Could not read its text: {exc}"
+        if content:
+            fields["content"] = content
+            fields["extract_status"] = (
+                f"Extracted {len(content):,} characters from {upload.filename}.")
+            status += f" Indexed {len(content):,} characters."
+            db.replace_chunks(store(), entry_id, ingest.chunk_text(content))
+
+    db.store_file(store(), entry_id, upload.filename,
+                  files.mime_for(upload.filename), raw)
+    updated = db.update_entry(store(), entry_id, fields)
+    db.mark_files(store(), [updated])
+    return jsonify({"ok": True, "entry": updated, "status": status})
+
+
+@app.route("/api/entries/<entry_id>/text")
+@login_required
+def api_entry_text(entry_id: str):
+    """The extracted text, for entries whose original file is not held.
+
+    Everything uploaded before files were kept still has this, so every entry
+    in the library can be opened and read even when the document itself is
+    gone.
+    """
+    entry = db.get_entry(store(), entry_id)
+    if entry is None:
+        return fail("Entry not found.", 404)
+    body = entry.get("content") or entry.get("note") or ""
+    if not body.strip():
+        return fail("There is no text held for this entry.", 404)
+    header = [entry.get("title") or "Untitled"]
+    if entry.get("competitor"):
+        header.append(entry["competitor"])
+    if entry.get("file_name"):
+        header.append(entry["file_name"])
+    preamble = " · ".join(header) + "\n" + "-" * 72 + "\n\n"
+    response = send_file(
+        io.BytesIO((preamble + body).encode("utf-8")),
+        mimetype="text/plain", as_attachment=False,
+        download_name=files.safe_name(
+            (entry.get("title") or "document") + ".txt", "document.txt"))
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.route("/api/entries/<entry_id>", methods=["DELETE"])

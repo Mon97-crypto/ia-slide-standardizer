@@ -73,6 +73,19 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_entry ON chunks(entry_id);
 
+-- The document exactly as it was uploaded. The extracted text is what makes a
+-- file searchable, but it is not the file: nobody can open a deck or a
+-- spreadsheet from its plain text. Kept beside the row rather than on disk
+-- because the container's filesystem is wiped on every deploy.
+CREATE TABLE IF NOT EXISTS files (
+    entry_id   TEXT PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+    file_name  TEXT NOT NULL DEFAULT '',
+    mime_type  TEXT NOT NULL DEFAULT '',
+    byte_size  INTEGER NOT NULL DEFAULT 0,
+    data       BLOB NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS usage (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     ts            TEXT NOT NULL,
@@ -156,6 +169,15 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_entry  ON chunks(entry_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_search ON chunks USING GIN(search_vector);
+
+CREATE TABLE IF NOT EXISTS files (
+    entry_id   TEXT PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+    file_name  TEXT NOT NULL DEFAULT '',
+    mime_type  TEXT NOT NULL DEFAULT '',
+    byte_size  BIGINT NOT NULL DEFAULT 0,
+    data       BYTEA NOT NULL,
+    created_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS jobs (
     id         TEXT PRIMARY KEY,
@@ -646,12 +668,75 @@ def delete_entry(store: Store, entry_id: str) -> bool:
 
 def clear_all(store: Store) -> int:
     total = store.execute("SELECT COUNT(*) AS n FROM entries").fetchone()["n"]
-    tables = ("entries", "chunks") if store.is_postgres else (
-        "entries", "entries_fts", "chunks", "chunks_fts")
+    tables = ("entries", "chunks", "files") if store.is_postgres else (
+        "entries", "entries_fts", "chunks", "chunks_fts", "files")
     for table in tables:
         store.execute(f"DELETE FROM {table}")
     store.commit()
     return total
+
+
+def replace_chunks(store: Store, entry_id: str, chunks: Iterable[str]) -> None:
+    """Swap an entry's passages for a new set, index included."""
+    store.execute("DELETE FROM chunks WHERE entry_id = ?", (entry_id,))
+    if not store.is_postgres:
+        store.execute("DELETE FROM chunks_fts WHERE entry_id = ?", (entry_id,))
+    _index_chunks(store, entry_id, chunks)
+    store.commit()
+
+
+# ─── the original documents ────────────────────────────────────────────────
+
+def store_file(store: Store, entry_id: str, file_name: str, mime_type: str,
+               data: bytes) -> None:
+    """Keep the uploaded document itself, so it can be opened again later."""
+    if not data:
+        return
+    store.execute("DELETE FROM files WHERE entry_id = ?", (entry_id,))
+    store.execute(
+        "INSERT INTO files (entry_id, file_name, mime_type, byte_size, data, "
+        "created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (entry_id, file_name or "", mime_type or "", len(data),
+         data if store.is_postgres else sqlite3.Binary(data), _now()))
+    store.commit()
+
+
+def get_file(store: Store, entry_id: str) -> dict[str, Any] | None:
+    row = store.execute(
+        "SELECT file_name, mime_type, byte_size, data FROM files "
+        "WHERE entry_id = ?", (entry_id,)).fetchone()
+    if row is None:
+        return None
+    record = dict(row) if not isinstance(row, sqlite3.Row) else {
+        k: row[k] for k in row.keys()}
+    # psycopg hands back a memoryview for bytea; SQLite hands back bytes.
+    record["data"] = bytes(record["data"])
+    return record
+
+
+def ids_with_files(store: Store, entry_ids: Iterable[str]) -> set[str]:
+    """Which of these entries kept their original document.
+
+    One query for the whole page rather than one per card: the library list is
+    the hottest read in the app and a per-row lookup would show.
+    """
+    ids = [i for i in entry_ids if i]
+    if not ids:
+        return set()
+    placeholders = ", ".join("?" for _ in ids)
+    rows = store.execute(
+        f"SELECT entry_id FROM files WHERE entry_id IN ({placeholders})",
+        ids).fetchall()
+    return {r["entry_id"] for r in rows}
+
+
+def mark_files(store: Store, entries: list[dict[str, Any]]
+               ) -> list[dict[str, Any]]:
+    """Tag each entry with whether its original document is still held."""
+    held = ids_with_files(store, [e.get("id") for e in entries])
+    for entry in entries:
+        entry["has_file"] = entry.get("id") in held
+    return entries
 
 
 # ─── reads ─────────────────────────────────────────────────────────────────

@@ -177,3 +177,14 @@ def test_capturing_a_page_needs_a_signed_in_account(client):
     """It fetches a URL from inside the deployment, so it is never open."""
     assert client.post("/api/page.pdf",
                        json={"url": "https://example.com"}).status_code == 401
+
+
+@pytest.mark.parametrize("path,method", [
+    ("/api/entries/x/file", "get"),
+    ("/api/entries/x/text", "get"),
+    ("/api/entries/x/file", "post"),
+])
+def test_the_documents_themselves_need_a_signed_in_account(client, path, method):
+    """The files are the competitive material. Serving one is the same
+    boundary as listing it."""
+    assert getattr(client, method)(path).status_code == 401

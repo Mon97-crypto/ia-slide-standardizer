@@ -838,3 +838,72 @@ def test_research_is_reused_within_the_window(monkeypatch):
     llm._RESEARCH_CACHE["blue yonder"] = (time.time() - 999999, {"brief": "b"})
     assert llm.cached_research("Blue Yonder") is None
     llm._RESEARCH_CACHE.clear()
+
+
+# ─── the stored documents ──────────────────────────────────────────────────
+
+def _entry(conn, title="Deck"):
+    return db.create_entry(conn, {"competitor": "o9", "title": title,
+                                  "category": "battlecard", "content": "text"},
+                           chunks=["text"])
+
+
+def test_a_document_survives_the_round_trip_byte_for_byte(conn):
+    """Postgres bytea hands back a memoryview and SQLite hands back bytes;
+    a deck that came back as either would be corrupt for whoever opened it."""
+    blob = bytes(range(256)) * 40 + b"PK\x03\x04\x00\xff"
+    entry = _entry(conn)
+    db.store_file(conn, entry["id"], "Q3 Deck.pptx", "application/vnd.x", blob)
+    held = db.get_file(conn, entry["id"])
+    assert isinstance(held["data"], bytes)
+    assert held["data"] == blob
+    assert held["byte_size"] == len(blob)
+    assert held["file_name"] == "Q3 Deck.pptx"
+
+
+def test_storing_twice_replaces_rather_than_duplicates(conn):
+    entry = _entry(conn)
+    db.store_file(conn, entry["id"], "old.txt", "text/plain", b"old")
+    db.store_file(conn, entry["id"], "new.txt", "text/plain", b"new")
+    held = db.get_file(conn, entry["id"])
+    assert held["data"] == b"new" and held["file_name"] == "new.txt"
+
+
+def test_an_entry_without_a_document_reports_nothing(conn):
+    assert db.get_file(conn, _entry(conn)["id"]) is None
+    assert db.get_file(conn, "no-such-entry") is None
+
+
+def test_which_entries_hold_a_document_is_one_query(conn):
+    kept = _entry(conn, "Kept")
+    bare = _entry(conn, "Bare")
+    db.store_file(conn, kept["id"], "d.pptx", "application/vnd.x", b"bytes")
+    assert db.ids_with_files(conn, [kept["id"], bare["id"]]) == {kept["id"]}
+    assert db.ids_with_files(conn, []) == set()
+    marked = {e["id"]: e["has_file"]
+              for e in db.mark_files(conn, db.list_entries(conn))}
+    assert marked[kept["id"]] is True and marked[bare["id"]] is False
+
+
+def test_deleting_an_entry_removes_its_document(conn):
+    """Without the cascade the blob outlives the row and nothing ever
+    reclaims it, which on a one gigabyte database matters."""
+    entry = _entry(conn)
+    db.store_file(conn, entry["id"], "d.pptx", "application/vnd.x", b"bytes")
+    db.delete_entry(conn, entry["id"])
+    assert db.get_file(conn, entry["id"]) is None
+
+
+def test_clearing_the_library_removes_every_document(conn):
+    entry = _entry(conn)
+    db.store_file(conn, entry["id"], "d.pptx", "application/vnd.x", b"bytes")
+    db.clear_all(conn)
+    assert db.get_file(conn, entry["id"]) is None
+
+
+def test_replacing_chunks_reindexes_them(conn):
+    entry = _entry(conn)
+    db.replace_chunks(conn, entry["id"], ["markdown optimisation tiers"])
+    assert db.chunks_for(conn, entry["id"]) == ["markdown optimisation tiers"]
+    passages = retrieve_passages(conn, "markdown optimisation tiers")
+    assert any("markdown optimisation" in p["text"] for p in passages)

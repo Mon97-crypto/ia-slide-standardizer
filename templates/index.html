@@ -889,8 +889,9 @@ function render(list, q){
         ${why?`<div class="why">${why}</div>`:''}
         <div class="card-foot">
           ${canAnalyze?`<button class="link" onclick="analyze('${e.id}')">${svgSpark()}${e.analysis?'View analysis':'Analyze'}</button>`:''}
-          ${e.file_url?`<a class="link" href="${esc(e.file_url)}" target="_blank" rel="noopener">${svgOpen()}Open file</a>`:''}
-          ${e.lovable_url?`<a class="link" href="${esc(e.lovable_url)}" target="_blank" rel="noopener">${svgOpen()}Project</a>`:''}
+          ${openLink(e)}
+          ${e.file_url?`<a class="link muted" href="${esc(e.file_url)}" target="_blank" rel="noopener">${svgOpen()}Source</a>`:''}
+          ${e.lovable_url?`<a class="link muted" href="${esc(e.lovable_url)}" target="_blank" rel="noopener">${svgOpen()}Project</a>`:''}
           ${e.created_at?`<span class="stamp">${fmtDate(e.created_at)}</span>`:''}
           <button class="link muted" onclick="del('${e.id}')">Delete</button>
         </div>
@@ -898,6 +899,41 @@ function render(list, q){
       </div>
     </div>`;
   }).join('');
+}
+
+/* Every entry gets a way in. The document itself when the library still holds
+   it; the text extracted from it otherwise, which is all that exists for
+   anything added before files were kept, and for notes and links. */
+function openLink(e){
+  if(e.has_file)
+    return `<a class="link" href="/api/entries/${e.id}/file" target="_blank"
+      rel="noopener">${svgOpen()}Open file</a>`;
+  const parts = [];
+  if(e.content_chars)
+    parts.push(`<a class="link" href="/api/entries/${e.id}/text" target="_blank"
+      rel="noopener" title="The original file is not held for this entry. This is the text that was extracted from it.">${svgOpen()}Open text</a>`);
+  parts.push(`<button class="link muted" onclick="attachFile('${e.id}')"
+    title="Put the original document back on this entry">${svgClip()}Attach file</button>`);
+  return parts.join('');
+}
+
+/* Re-attach the document to an entry that only has its extracted text. */
+function attachFile(id){
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  picker.accept = '.pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.tsv,.txt,.md,.json,.doc,.ppt,.xls,.png,.jpg,.jpeg';
+  picker.onchange = async () => {
+    const file = picker.files[0];
+    if(!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    try{
+      const data = await api(`/api/entries/${id}/file`, {method:'POST', body: fd});
+      toast(data.status || 'File attached');
+      doSearch(); loadStats();
+    }catch(err){ toastError(err.message); }
+  };
+  picker.click();
 }
 
 /* Initials for a competitor, so a grid of cards has stable visual anchors. */
@@ -922,6 +958,7 @@ function fmtDate(iso){
 }
 const svgDoc = () => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
 const svgSpark = () => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0-6 6c0 1.7.7 3.2 1.8 4.3.7.7 1.2 1.6 1.2 2.7v1h6v-1c0-1.1.5-2 1.2-2.7A6 6 0 0 0 12 3z"/><path d="M9 21h6"/></svg>';
+const svgClip = () => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.4 11.05 12.25 20.2a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.67 3.67 0 1 1 5.18 5.18l-9.2 9.19a1.83 1.83 0 1 1-2.59-2.59l8.49-8.48"/></svg>';
 const svgOpen = () => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>';
 
 /* ---------- add ---------- *//* ---------- add ---------- */
