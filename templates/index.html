@@ -736,16 +736,16 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
 <section class="panel" id="library">
   <div class="panel-card">
     <h3>Library tools</h3>
-    <p>Export the whole library, bring one in from a file, or start again.</p>
+    <p>Download the whole library as a zip &mdash; every entry and every uploaded document &mdash; or restore one. Keep a backup somewhere you control: a managed database can expire or be replaced, and the backup is the only copy that does not depend on this deployment.</p>
     <div class="row">
-      <button class="btn sm ghost" onclick="exportLib()">Export JSON</button>
-      <button class="btn sm ghost" onclick="document.getElementById('jsonIn').click()">Import JSON</button>
+      <button class="btn sm ghost" onclick="exportLib()">Download backup</button>
+      <button class="btn sm ghost" onclick="document.getElementById('jsonIn').click()">Restore backup</button>
       <button class="btn sm" onclick="selfTest()">Run AI self test</button>
       <button class="btn sm ghost" onclick="keyCheck()">Why is AI off?</button>
       <button class="btn sm" onclick="showUsage()">API spend</button>
       <button class="btn sm danger" onclick="clearLib()">Clear all</button>
     </div>
-    <input type="file" id="jsonIn" accept=".json" class="hidden">
+    <input type="file" id="jsonIn" accept=".zip,.json" class="hidden">
     <div id="selfTestOut"></div>
     <div id="usageOut"></div>
   </div>
@@ -1507,7 +1507,8 @@ $('jsonIn').addEventListener('change', async e=>{
   const fd = new FormData(); fd.append('file', file);
   try{
     const data = await api('/api/library/import', {method:'POST', body:fd});
-    toast(`Imported ${data.imported} entries`); doSearch();
+    toast(data.status || `Imported ${data.imported} entries`);
+    doSearch(); loadStats();
   }catch(err){ toastError(err.message); }
   e.target.value='';
 });

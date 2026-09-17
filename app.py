@@ -16,12 +16,12 @@ import threading
 import uuid
 from functools import wraps
 
-from flask import (Flask, jsonify, redirect, render_template, request,
-                   send_file, session, url_for)
+from flask import (Flask, after_this_request, jsonify, redirect,
+                   render_template, request, send_file, session, url_for)
 from werkzeug.exceptions import HTTPException
 
-from ciq import (auth, db, deck as deckgen, diagnose as diag, doc_pdf, files,
-                 ingest, llm, page_capture, pdf_report)
+from ciq import (auth, backup, db, deck as deckgen, diagnose as diag, doc_pdf,
+                 files, ingest, llm, page_capture, pdf_report)
 from ciq.competitors import canonical_name, known_names, threatened_products
 from ciq.config import CATEGORIES, Config
 from ciq.auth import current_user, login_required
@@ -108,6 +108,20 @@ def _budget_status() -> dict:
 
 llm.set_usage_sink(_record_usage)
 llm.set_budget_check(_budget_status)
+
+
+def _durability_note() -> str:
+    """Say where a stored document just landed, and whether it will last.
+
+    Someone attaching a file is entitled to know this at that moment, not from
+    a banner they scrolled past. An ephemeral deployment looks exactly like a
+    permanent one right up until a deploy erases it.
+    """
+    if Config.storage_info()["durable"]:
+        return " Stored in the database, so it survives deploys and restarts."
+    return (" Warning: this deployment has no database configured, so the file "
+            "is inside the container and will be lost on the next deploy. "
+            "Set DATABASE_URL, then import a backup.")
 
 
 def fail(message: str, status: int = 400):
@@ -233,7 +247,8 @@ def api_create_entry():
         except ingest.ExtractionError as exc:
             return fail(str(exc))
         file_name, source_kind, blob = upload.filename, "upload", raw
-        status = f"Extracted {len(content):,} characters from {upload.filename}."
+        status = (f"Extracted {len(content):,} characters from "
+                  f"{upload.filename}." + _durability_note())
     elif file_url:
         source_kind = "link"
         try:
@@ -363,7 +378,9 @@ def api_attach_file(entry_id: str):
                   files.mime_for(upload.filename), raw)
     updated = db.update_entry(store(), entry_id, fields)
     db.mark_files(store(), [updated])
-    return jsonify({"ok": True, "entry": updated, "status": status})
+    return jsonify({"ok": True, "entry": updated,
+                    "status": status + _durability_note(),
+                    "durable": Config.storage_info()["durable"]})
 
 
 @app.route("/api/entries/<entry_id>/text")
@@ -707,11 +724,25 @@ def api_me():
 @app.route("/api/library/export")
 @login_required
 def api_library_export():
-    entries = db.list_entries(store(), limit=100000)
-    buffer = json.dumps(entries, indent=2).encode()
-    from io import BytesIO
-    return send_file(BytesIO(buffer), mimetype="application/json",
-                     as_attachment=True, download_name="ia-competitor-library.json")
+    """The whole library as a zip: the entries, and every stored document.
+
+    This used to be JSON alone. Once uploads were kept that was silently
+    lossy, and it is the first thing anyone reaches for as a backup.
+    """
+    conn = store()
+    entries = db.list_entries(conn, limit=100000)
+    path, name = backup.build(entries, lambda i: db.get_file(conn, i))
+
+    @after_this_request
+    def cleanup(response):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        return response
+
+    return send_file(path, mimetype="application/zip", as_attachment=True,
+                     download_name=name)
 
 
 @app.route("/api/library/import", methods=["POST"])
@@ -719,15 +750,27 @@ def api_library_export():
 def api_library_import():
     upload = request.files.get("file")
     if not upload:
-        return fail("Choose a library JSON file.")
-    try:
-        records = json.loads(upload.read().decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        return fail(f"That is not valid JSON: {exc}")
-    if not isinstance(records, list):
-        return fail("Expected a JSON array of entries.")
+        return fail("Choose a library backup (.zip) or a library JSON file.")
+    raw = upload.read()
 
-    conn, imported = store(), 0
+    # A backup zip carries the documents; plain JSON is the older, lossy shape
+    # and is still accepted so existing exports keep working.
+    archive, records = None, None
+    if raw[:2] == b"PK":
+        try:
+            archive = backup.read(raw)
+        except ValueError as exc:
+            return fail(str(exc))
+        records = archive.records
+    else:
+        try:
+            records = json.loads(raw.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            return fail(f"That is not valid JSON: {exc}")
+        if not isinstance(records, list):
+            return fail("Expected a JSON array of entries.")
+
+    conn, imported, restored = store(), 0, 0
     for record in records:
         if not isinstance(record, dict):
             continue
@@ -744,7 +787,7 @@ def api_library_import():
         if not content:
             content = note
 
-        db.create_entry(conn, {
+        entry = db.create_entry(conn, {
             "competitor": record.get("competitor") or "",
             "title": record.get("title") or "Untitled",
             "category": (record.get("category") if record.get("category")
@@ -759,7 +802,20 @@ def api_library_import():
         }, chunks=ingest.chunk_text(content))
         imported += 1
 
-    return jsonify({"ok": True, "imported": imported, **db.stats(conn)})
+        held = archive.file_for(record) if archive is not None else None
+        if held is not None:
+            name, mime, data = held
+            db.store_file(conn, entry["id"], name,
+                          mime or files.mime_for(name), data)
+            restored += 1
+
+    status = f"Imported {imported} entries"
+    status += (f", {restored} with their documents." if restored
+               else ". No documents were in that file."
+               if archive is not None else
+               ". That was a JSON export, which holds no documents.")
+    return jsonify({"ok": True, "imported": imported, "restored": restored,
+                    "status": status + _durability_note(), **db.stats(conn)})
 
 
 @app.route("/api/diagnose")

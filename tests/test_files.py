@@ -8,6 +8,7 @@ the session cookie, so what it will render inline is a security decision.
 from __future__ import annotations
 
 import io
+import json
 import os
 import sys
 import tempfile
@@ -329,3 +330,153 @@ def test_attaching_nothing_is_refused(client, data, reason):
                            content_type="multipart/form-data")
     assert response.status_code == 400
     assert reason.lower() in response.get_json()["error"].lower()
+
+
+# ─── the backup, which is what makes "forever" the team's to hold ──────────
+
+def _backup(client) -> bytes:
+    response = client.get("/api/library/export")
+    assert response.status_code == 200
+    assert response.mimetype == "application/zip"
+    return response.data
+
+
+def test_the_backup_carries_the_documents_not_just_the_rows(client):
+    """A JSON export of entry rows is the obvious thing to reach for as a
+    backup, and it would have held none of the uploads."""
+    import zipfile
+    entry = upload(client, PPTX, "Q3 Deck.pptx")
+    archive = zipfile.ZipFile(io.BytesIO(_backup(client)))
+    names = archive.namelist()
+    assert "library.json" in names
+    stored = [n for n in names if n.startswith("files/")]
+    assert len(stored) == 1
+    assert archive.read(stored[0]) == PPTX
+    manifest = json.loads(archive.read("library.json"))
+    record = next(r for r in manifest["entries"] if r["id"] == entry["id"])
+    assert record["file"]["name"] == "Q3 Deck.pptx"
+    assert record["file"]["bytes"] == len(PPTX)
+
+
+def test_a_library_survives_a_full_round_trip(client):
+    """The whole point: wipe everything, restore the backup, and the documents
+    are still openable byte for byte."""
+    upload(client, PPTX, "deck.pptx", title="The deck")
+    upload(client, None, title="The note", note="Seven figure licences.")
+    saved = _backup(client)
+
+    client.post("/api/library/clear")
+    assert client.get("/api/entries").get_json()["entries"] == []
+
+    response = client.post("/api/library/import",
+                           data={"file": (io.BytesIO(saved), "backup.zip")},
+                           content_type="multipart/form-data")
+    body = response.get_json()
+    assert body["imported"] == 2 and body["restored"] == 1
+
+    entries = {e["title"]: e for e in
+               client.get("/api/entries").get_json()["entries"]}
+    assert entries["The note"]["has_file"] is False
+    assert entries["The deck"]["has_file"] is True
+    served = client.get(f"/api/entries/{entries['The deck']['id']}/file")
+    assert served.data == PPTX
+    assert "deck.pptx" in served.headers["Content-Disposition"]
+    # The note still opens too, as the PDF built from its text.
+    assert client.get(
+        f"/api/entries/{entries['The note']['id']}/file").data[:5] == b"%PDF-"
+
+
+def test_an_attached_file_is_in_the_next_backup(client):
+    """Attach original has to be covered too, or the recovery path loses
+    exactly the files someone went to the trouble of putting back."""
+    import zipfile
+    entry = upload(client, None, note="Only a note was saved.")
+    client.post(f"/api/entries/{entry['id']}/file",
+                data={"file": (io.BytesIO(PPTX), "recovered.pptx")},
+                content_type="multipart/form-data")
+    archive = zipfile.ZipFile(io.BytesIO(_backup(client)))
+    stored = [n for n in archive.namelist() if n.startswith("files/")]
+    assert len(stored) == 1 and archive.read(stored[0]) == PPTX
+
+
+def test_an_older_json_export_still_imports(client):
+    """Anyone holding one of the old exports must not be stranded by this."""
+    payload = json.dumps([{"competitor": "o9", "title": "Old", "note": "n",
+                           "content": "old text"}]).encode()
+    response = client.post("/api/library/import",
+                           data={"file": (io.BytesIO(payload), "old.json")},
+                           content_type="multipart/form-data")
+    body = response.get_json()
+    assert body["imported"] == 1 and body["restored"] == 0
+    assert "holds no documents" in body["status"]
+
+
+@pytest.mark.parametrize("data,name,reason", [
+    (b"not a zip at all", "x.json", "not valid JSON"),
+    (b"PK\x03\x04garbage", "x.zip", "not a readable zip"),
+])
+def test_a_broken_backup_says_what_is_wrong(client, data, name, reason):
+    response = client.post("/api/library/import",
+                           data={"file": (io.BytesIO(data), name)},
+                           content_type="multipart/form-data")
+    assert response.status_code == 400
+    assert reason in response.get_json()["error"]
+
+
+def test_a_zip_without_a_manifest_is_refused(client):
+    import zipfile
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("files/whatever", b"data")
+    response = client.post(
+        "/api/library/import",
+        data={"file": (io.BytesIO(buffer.getvalue()), "x.zip")},
+        content_type="multipart/form-data")
+    assert response.status_code == 400
+    assert "not a library backup" in response.get_json()["error"]
+
+
+def test_a_backup_cannot_be_made_to_read_outside_itself(client):
+    """The manifest is data from a file someone was handed. A path in it is
+    never followed - only names the archive actually lists are read."""
+    import zipfile
+    from ciq import backup as backup_module
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("library.json", json.dumps({"entries": [
+            {"title": "Evil", "content": "x",
+             "file": {"path": "../../../../etc/passwd", "name": "p"}}]}))
+    parsed = backup_module.read(buffer.getvalue())
+    assert parsed.file_for(parsed.records[0]) is None
+
+
+def test_the_download_is_named_for_the_day_it_was_taken(client):
+    upload(client, PPTX, "deck.pptx")
+    disposition = client.get(
+        "/api/library/export").headers["Content-Disposition"]
+    assert "ia-competitor-library-" in disposition and ".zip" in disposition
+
+
+# ─── saying whether it will actually last ──────────────────────────────────
+
+def test_saving_a_file_says_where_it_went(client, monkeypatch):
+    """An ephemeral deployment looks exactly like a permanent one until a
+    deploy erases it, so the moment of saving is where this belongs."""
+    import ciq.config
+    entry = upload(client, None, note="x")
+
+    monkeypatch.setattr(ciq.config.Config, "storage_info",
+                        classmethod(lambda cls: {"durable": True}))
+    body = client.post(f"/api/entries/{entry['id']}/file",
+                       data={"file": (io.BytesIO(PPTX), "a.pptx")},
+                       content_type="multipart/form-data").get_json()
+    assert body["durable"] is True
+    assert "survives deploys" in body["status"]
+
+    monkeypatch.setattr(ciq.config.Config, "storage_info",
+                        classmethod(lambda cls: {"durable": False}))
+    body = client.post(f"/api/entries/{entry['id']}/file",
+                       data={"file": (io.BytesIO(PPTX), "b.pptx")},
+                       content_type="multipart/form-data").get_json()
+    assert body["durable"] is False
+    assert "lost on the next deploy" in body["status"]
