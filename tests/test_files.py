@@ -190,11 +190,89 @@ def test_the_extracted_text_opens_when_the_file_is_not_held(client):
     assert "T" in body                       # the title, as a heading
 
 
-def test_asking_for_a_file_that_was_never_kept_explains_itself(client):
+def test_an_entry_without_an_original_still_serves_a_file(client):
+    """Every entry opens. Where the document is gone, what comes back is a PDF
+    built from the text the library does hold, not a dead link."""
+    import pypdf
+    entry = upload(client, None, note="Seven figure licences, per node.")
+    response = client.get(f"/api/entries/{entry['id']}/file")
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data[:5] == b"%PDF-"
+    text = pypdf.PdfReader(io.BytesIO(response.data)).pages[0].extract_text()
+    assert "Seven figure licences" in text
+    assert "T" in text                              # the entry title
+
+
+def test_the_generated_file_says_it_is_not_the_original(client):
+    """It gets forwarded to people who never saw the entry, so the page has to
+    carry the caveat rather than the card it came from."""
+    import pypdf
     entry = upload(client, None, note="A note.")
     response = client.get(f"/api/entries/{entry['id']}/file")
-    assert response.status_code == 404
-    assert "extracted text" in response.get_json()["error"]
+    text = pypdf.PdfReader(io.BytesIO(response.data)).pages[0].extract_text()
+    assert "note written into the library" in text
+
+
+def test_an_entry_whose_upload_predates_storage_explains_the_gap(client):
+    import pypdf
+    from ciq import db
+    import app as application
+    entry = upload(client, b"Extracted deck text about markdowns.", "old.txt")
+    db.delete_file(application.store(), entry["id"])      # as an old row looks
+    response = client.get(f"/api/entries/{entry['id']}/file")
+    text = pypdf.PdfReader(io.BytesIO(response.data)).pages[0].extract_text()
+    assert "old.txt" in text and "not held" in text
+    assert "Extracted deck text about markdowns." in text
+
+
+def test_an_entry_with_nothing_in_it_still_renders(client):
+    """A link that failed to fetch leaves a title and not much else. It must
+    still produce a file rather than a 500."""
+    import pypdf
+    entry = upload(client, None, note="x")
+    from ciq import db
+    import app as application
+    db.update_entry(application.store(), entry["id"], {"content": "", "note": ""})
+    response = client.get(f"/api/entries/{entry['id']}/file")
+    assert response.status_code == 200
+    text = pypdf.PdfReader(io.BytesIO(response.data)).pages[0].extract_text()
+    assert "No text was extracted" in text
+
+
+# ─── downloading ───────────────────────────────────────────────────────────
+
+def test_every_entry_can_be_downloaded(client):
+    """Both kinds: the stored original and the generated stand-in."""
+    stored = upload(client, PPTX, "deck.pptx")
+    generated = upload(client, None, note="Just a note.")
+    for entry in (stored, generated):
+        response = client.get(f"/api/entries/{entry['id']}/file?download=1")
+        assert response.status_code == 200
+        assert "attachment" in response.headers["Content-Disposition"]
+        assert response.data
+
+
+def test_download_forces_a_save_on_a_file_that_would_open_in_place(client):
+    """A PDF opens in the tab on Open file. Download has to override that or
+    the two actions do the same thing."""
+    entry = upload(client, PDF, "brief.pdf")
+    opened = client.get(f"/api/entries/{entry['id']}/file")
+    saved = client.get(f"/api/entries/{entry['id']}/file?download=1")
+    assert "inline" in opened.headers["Content-Disposition"]
+    assert "attachment" in saved.headers["Content-Disposition"]
+    assert opened.data == saved.data == PDF
+
+
+def test_a_downloaded_file_keeps_its_own_name(client):
+    stored = upload(client, PPTX, "Q3 Deck.pptx")
+    generated = upload(client, None, note="x", title="Pricing note")
+    assert "Q3 Deck.pptx" in client.get(
+        f"/api/entries/{stored['id']}/file?download=1"
+    ).headers["Content-Disposition"]
+    assert "Pricing-note.pdf" in client.get(
+        f"/api/entries/{generated['id']}/file?download=1"
+    ).headers["Content-Disposition"]
 
 
 def test_a_missing_entry_is_a_404_not_a_crash(client):

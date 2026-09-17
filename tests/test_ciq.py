@@ -907,3 +907,12 @@ def test_replacing_chunks_reindexes_them(conn):
     assert db.chunks_for(conn, entry["id"]) == ["markdown optimisation tiers"]
     passages = retrieve_passages(conn, "markdown optimisation tiers")
     assert any("markdown optimisation" in p["text"] for p in passages)
+
+
+def test_a_document_can_be_dropped_without_losing_the_entry(conn):
+    entry = _entry(conn)
+    db.store_file(conn, entry["id"], "d.pptx", "application/vnd.x", b"bytes")
+    assert db.delete_file(conn, entry["id"]) is True
+    assert db.get_file(conn, entry["id"]) is None
+    assert db.get_entry(conn, entry["id"]) is not None
+    assert db.delete_file(conn, entry["id"]) is False

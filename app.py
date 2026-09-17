@@ -20,8 +20,8 @@ from flask import (Flask, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 from werkzeug.exceptions import HTTPException
 
-from ciq import (auth, db, deck as deckgen, diagnose as diag, files, ingest,
-                 llm, page_capture, pdf_report)
+from ciq import (auth, db, deck as deckgen, diagnose as diag, doc_pdf, files,
+                 ingest, llm, page_capture, pdf_report)
 from ciq.competitors import canonical_name, known_names, threatened_products
 from ciq.config import CATEGORIES, Config
 from ciq.auth import current_user, login_required
@@ -277,23 +277,42 @@ def api_get_entry(entry_id: str):
 @app.route("/api/entries/<entry_id>/file")
 @login_required
 def api_entry_file(entry_id: str):
-    """Hand back the document exactly as it was uploaded."""
+    """Hand back a file for this entry, whatever kind of entry it is.
+
+    The original document when the library still holds it. Otherwise a PDF
+    built from the text that was extracted from it, so that entries added
+    before uploads were kept - and notes, and links that could not be fetched
+    - can still be opened and forwarded rather than being dead ends.
+
+    ?download=1 forces the save dialog. Without it a PDF or an image opens in
+    the tab, which is what someone clicking "Open file" expects.
+    """
     entry = db.get_entry(store(), entry_id)
     if entry is None:
         return fail("Entry not found.", 404)
+    forced = request.args.get("download") in ("1", "true", "yes")
+
     held = db.get_file(store(), entry_id)
-    if held is None:
-        return fail(
-            "The original file is not held for this entry. Entries added "
-            "before files were kept, and notes and links, only have their "
-            "extracted text. Open that instead, or upload the file again.",
-            404)
-    name = files.safe_name(held["file_name"] or entry.get("file_name") or "",
-                           f"{entry.get('title') or 'document'}")
-    mime = held["mime_type"] or files.mime_for(name)
-    attach, download_name = files.disposition(name, mime)
-    response = send_file(io.BytesIO(held["data"]), mimetype=mime,
-                         as_attachment=attach, download_name=download_name)
+    if held is not None:
+        name = files.safe_name(
+            held["file_name"] or entry.get("file_name") or "",
+            entry.get("title") or "document")
+        mime = held["mime_type"] or files.mime_for(name)
+        attach, download_name = files.disposition(name, mime)
+        payload = io.BytesIO(held["data"])
+    else:
+        try:
+            payload = doc_pdf.build(entry)
+        except Exception as exc:
+            app.logger.exception("Entry PDF render failed")
+            return fail(f"Could not build a file for this entry: {exc}", 500)
+        mime, attach = "application/pdf", False
+        download_name = files.safe_name(doc_pdf.filename_for(entry),
+                                        "entry.pdf")
+
+    response = send_file(payload, mimetype=mime,
+                         as_attachment=attach or forced,
+                         download_name=download_name)
     # The type above is derived from the filename, so stop the browser
     # second-guessing it by sniffing the bytes.
     response.headers["X-Content-Type-Options"] = "nosniff"

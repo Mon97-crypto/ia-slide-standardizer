@@ -714,6 +714,13 @@ def get_file(store: Store, entry_id: str) -> dict[str, Any] | None:
     return record
 
 
+def delete_file(store: Store, entry_id: str) -> bool:
+    """Drop an entry's stored document, keeping the entry itself."""
+    cur = store.execute("DELETE FROM files WHERE entry_id = ?", (entry_id,))
+    store.commit()
+    return bool(getattr(cur, "rowcount", 0))
+
+
 def ids_with_files(store: Store, entry_ids: Iterable[str]) -> set[str]:
     """Which of these entries kept their original document.
 
