@@ -12,9 +12,18 @@ unchanged in PowerPoint, Keynote and Google Slides.
 
 ```bash
 pip install -r requirements.txt
-python3 app.py            # http://127.0.0.1:5000
+python3 app.py                                  # http://127.0.0.1:5000
+python3 build_battlecards.py                    # build every card in content/
 python3 -m pytest tests -q
 ```
+
+### Access control
+
+Set `IA_AUTH_USER` and `IA_AUTH_PASSWORD` to gate every route behind HTTP basic
+auth. Battlecards hold competitive intelligence and unpublished customer numbers,
+so a deployment with real content needs both. `/healthz` and `/static/` stay open
+so the platform probe keeps working. With the variables unset the app runs open
+and logs a warning. No credential lives in this repository.
 
 Docker and Render configuration already exist in `Dockerfile` and `render.yaml`.
 
@@ -23,7 +32,7 @@ Docker and Render configuration already exist in `Dockerfile` and `render.yaml`.
 ### What it produces
 
 A battlecard deck of up to 16 sections. Long sections paginate on their own, so seven
-objections become three slides without any manual work.
+objections become four slides without any manual work.
 
 | Section | Slide |
 |---|---|
@@ -37,7 +46,7 @@ objections become three slides without any manual work.
 | `objections` | They say, we say, proof |
 | `landmines` | Trap questions with why each one lands |
 | `discovery` | Questions grouped by theme |
-| `proof_points` | Stat cards with source links |
+| `proof_points` | Stat cards with a source link or an internal citation |
 | `talk_track` | Positioning statement, pitch, opener, trap |
 | `dos_donts` | Selling hygiene |
 | `pricing` | Commercial models plus ground rules |
@@ -77,6 +86,27 @@ curl -X POST localhost:5000/api/battlecard/build \
 `build` returns the download URL, the slide count, brand warnings and the Google Slides
 compatibility report.
 
+### AttributeSmart cards
+
+`battlecards/attributesmart.py` holds a deep card set for AttributeSmart against
+Oracle Retail, Blue Yonder, RELEX Solutions and o9 Solutions. The four rendered
+payloads live in `content/battlecards/`, so they version in git and rebuild on
+demand with `build_battlecards.py`.
+
+Two rules govern that module. The Impact Analytics side is specific, drawn from
+the AttributeSmart NRF 2026 deck and cited to it. The competitor side states only
+what public material supports, with a source on every card; where the record is
+silent the capability rating is `Unclear` and the seller is told to ask rather
+than handed a guess. `test_unsourced_competitor_capabilities_stay_unknown` enforces
+that. A card that overstates a rival's gap loses the deal the moment the buyer
+corrects it.
+
+**Category note.** AttributeSmart *generates* attributes from images, labels and
+text. Those four vendors mostly *consume* attributes for planning, and Oracle is
+the only one shipping a directly competing extraction product. The vendors that
+actually compete on generation are listed in `DIRECT_RIVALS`: Lily AI, Vue.ai,
+Pixyle AI, Syndigo, Salsify and Akeneo.
+
 ### Using it from Python
 
 ```python
@@ -100,9 +130,18 @@ which picks the accent. Accent Orange appears in one place only, the `Gap` ratin
 matrix, which keeps it an accent. `tests/test_battlecard.py` scans the generated XML and fails
 on any colour outside this set.
 
-**Typography.** Inter Tight everywhere, set on every run and in the theme font scheme. ABC Otto
-is licensed and rarely installed, so the guide specifies Inter Tight for PPTX. Spectral is
-available as the serif headline option through `options.serif_headings`.
+**Typography.** Inter Tight everywhere, set on every run and in the theme font scheme, with
+Lato for the footer. Both were confirmed against the house deck, which uses 1357 Inter Tight
+runs and 813 Lato runs. ABC Otto is licensed and rarely installed, so the guide specifies
+Inter Tight for PPTX. Spectral is available as the serif headline option through
+`options.serif_headings`.
+
+**House template devices**, measured from the IA AttributeSmart deck and reproduced here: the
+10 by 5.625in canvas, two tone titles that split a Black phrase from an Impact Blue emphasis,
+whitespace rather than a rule under the title, white rounded cards with a soft shadow and no
+edge stripe, blue pill headers, and stat cards with an inner tinted panel under an italic
+label. The Data and Intelligence accent follows the shipping theme at `#BFD1F5`, which
+disagrees with `visual-specs.md`; the theme wins.
 
 **Logo.** The bundled logo is the primary horizontal mark, Impact Blue plus Black on
 transparency. On Impact Blue fills the builder generates the white variant the guide requires,
@@ -115,13 +154,16 @@ hairline shapes.
 
 **Voice.** `battlecards/schema.py` strips em dashes and en dashes on the way in, then flags
 sentences that end with a preposition, `FAQ` used as a heading, and statistics dated before
-2025. Warnings surface in the UI and in the `validate` response.
+2025. Warnings surface in the UI and in the `validate` response. A proof point may cite an
+internal source that names its year, such as a deck title; a card marked
+`meta.distribution: customer` still demands a public link.
 
 ## Google Slides compatibility
 
 Google Slides imports a subset of OOXML. The builder stays inside it:
 
-- Exact 16:9 canvas, 12192000 by 6858000 EMU.
+- Exact 16:9 canvas, 9144000 by 5143500 EMU, which is the 10 by 5.625in size the IA
+  template uses, so a slide pastes into a house deck without rescaling.
 - Every slide is drawn on the blank layout with explicit geometry and fills. Nothing inherits
   from a master or a theme.
 - Every run names its typeface on the latin, east asian and complex script slots.
@@ -130,7 +172,9 @@ Google Slides imports a subset of OOXML. The builder stays inside it:
   written.
 - Tables carry explicit cell fills, borders and fonts, and the theme table style is removed so
   Slides cannot substitute its own banding.
-- Preset shapes only. No custom geometry, no 3-D, no shadows, no glow, no reflections.
+- Preset shapes only. No custom geometry, no 3-D, no glow, no reflections. An outer shadow
+  is the one effect used, because Google Slides both imports it and exposes it in its own
+  editor.
 - Bullets use `buChar` with an explicit hanging indent rather than an inherited list style.
 - Links are limited to `http` and `https`. A `javascript:` URL never reaches a slide.
 
@@ -148,7 +192,12 @@ battlecards/
   library.py     IA portfolio, capability and question banks, competitor presets, scaffold
   builder.py     slide builders, pagination, the deck assembler
   compat.py      Google Slides compatibility audit
+  attributesmart.py  deep AttributeSmart card set, IA facts plus sourced rivals
+  auth.py        optional HTTP basic auth over every route
   service.py     glue for the Flask routes
+content/battlecards/
+  *.json            versioned battlecard payloads
+build_battlecards.py  build every card from content/
 templates/
   battlecard.html   the builder UI
 tests/

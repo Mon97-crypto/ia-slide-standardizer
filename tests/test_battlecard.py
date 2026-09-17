@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from battlecards import brand, compat, library, schema, service  # noqa: E402
+from battlecards import attributesmart, brand, compat, library, schema, service  # noqa: E402
 from battlecards.builder import build_presentation  # noqa: E402
 
 
@@ -92,9 +92,12 @@ def test_only_palette_colours_reach_the_deck(deck_path):
         brand.ACCENT_ORANGE, brand.GRAY_1, brand.GRAY_2, brand.GRAY_3,
     ]}
     allowed |= {str(color) for color in brand.SOLUTION_COLORS.values()}
-    # Tints of White over Impact Blue are the only derived values the builder uses.
+    # Two families of derived tint, and nothing else: White over Impact Blue for
+    # text on blue fills, and the solution accent toward White for the stat panel.
     allowed |= {str(brand.mix(brand.WHITE, brand.IMPACT_BLUE, weight))
-                for weight in (0.12, 0.35, 0.6)}
+                for weight in (0.12, 0.35, 0.4, 0.45)}
+    allowed |= {str(brand.mix(accent, brand.WHITE, 0.45))
+                for accent in brand.SOLUTION_COLORS.values()}
 
     import re
     used = set()
@@ -114,11 +117,12 @@ def test_deck_builds_every_selected_section(deck_path):
     assert len(presentation.slides._sldIdLst) >= 15
 
 
-def test_slide_size_is_widescreen():
+def test_slide_size_matches_the_house_template():
+    """10 x 5.625in, the canvas the IA template uses, exactly."""
     card = schema.normalize(library.scaffold('Acme'))
     presentation = build_presentation(card)
-    assert presentation.slide_width == 12192000
-    assert presentation.slide_height == 6858000
+    assert presentation.slide_width == 9144000
+    assert presentation.slide_height == 5143500
 
 
 def test_long_content_paginates():
@@ -132,7 +136,7 @@ def test_long_content_paginates():
         for shape in slide.shapes:
             if shape.has_text_frame and shape.text_frame.text.strip() == 'Objection handling':
                 titles.append(shape.text_frame.text)
-    assert len(titles) == 3  # seven objections spread over three slides
+    assert len(titles) == 4  # seven objections, two per slide on the house canvas
 
 
 def test_sections_can_be_narrowed():
@@ -215,3 +219,172 @@ def test_presets_cover_every_solution():
     presets = service.presets()
     assert {entry['key'] for entry in presets['solutions']} == set(brand.SOLUTION_COLORS)
     assert len(presets['sections']) == len(schema.SECTION_ORDER)
+
+# ── house template conformance ──────────────────────────────────────────────
+
+def test_data_intelligence_accent_matches_the_shipping_theme():
+    """The IA theme carries BFD1F5, which wins over the written spec."""
+    assert str(brand.SOLUTION_COLORS['data_intelligence']) == 'BFD1F5'
+
+
+def test_titles_are_two_tone(deck_path):
+    """Every content slide splits its title into Black then Impact Blue."""
+    import re
+    with zipfile.ZipFile(deck_path) as archive:
+        two_tone = 0
+        for name in sorted(archive.namelist()):
+            if not name.startswith('ppt/slides/slide'):
+                continue
+            xml = archive.read(name).decode('utf-8')
+            has_black = 'srgbClr val="1C1B1B"' in xml
+            has_blue = 'srgbClr val="264CD7"' in xml
+            if has_black and has_blue:
+                two_tone += 1
+    assert two_tone >= 10, 'expected most slides to carry a two tone title'
+
+
+def test_no_accent_rule_under_titles():
+    """The house template separates title from body with whitespace only.
+
+    A rule would show up as a wide, very short filled rectangle sitting just
+    below the title band.
+    """
+    from pptx.util import Inches
+    card = schema.normalize(library.scaffold('Acme', 'PriceSmart'))
+    presentation = build_presentation(card)
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            if shape.height is None or shape.width is None or shape.top is None:
+                continue
+            thin = shape.height <= Inches(0.06)
+            wide = shape.width >= Inches(1.0)
+            in_header = Inches(0.8) <= shape.top <= Inches(1.0)
+            assert not (thin and wide and in_header), 'accent rule found under a title'
+
+
+def test_footer_uses_the_secondary_font(deck_path):
+    with zipfile.ZipFile(deck_path) as archive:
+        xml = archive.read('ppt/slides/slide2.xml').decode('utf-8')
+    assert '<a:latin typeface="Lato"' in xml
+
+
+def test_cards_carry_a_soft_shadow(deck_path):
+    with zipfile.ZipFile(deck_path) as archive:
+        xml = archive.read('ppt/slides/slide2.xml').decode('utf-8')
+    assert '<a:outerShdw' in xml
+    # Reflection, glow and soft edge do not survive a Google Slides import.
+    for unsupported in ('<a:reflection', '<a:glow', '<a:softEdge'):
+        assert unsupported not in xml
+
+
+# ── citations ───────────────────────────────────────────────────────────────
+
+def test_citation_kinds():
+    assert schema.citation_kind('https://example.com/x') == 'link'
+    assert schema.citation_kind('IA AttributeSmart NRF 2026 deck') == 'internal'
+    assert schema.citation_kind('') == 'missing'
+    assert schema.citation_kind('internal') == 'unclear'
+
+
+def test_internal_citation_satisfies_an_internal_card():
+    card = schema.normalize({
+        'meta': {'competitor': 'Acme', 'distribution': 'internal'},
+        'their_strengths': ['Broad suite'],
+        'proof_points': [{'stat': '60%', 'label': 'Saving',
+                          'source': 'IA AttributeSmart NRF 2026 deck'}],
+    })
+    rules = {warning['rule'] for warning in schema.validate(card)['warnings']}
+    assert 'source_link' not in rules and 'external_source' not in rules
+
+
+def test_customer_facing_card_still_demands_a_link():
+    card = schema.normalize({
+        'meta': {'competitor': 'Acme', 'distribution': 'customer'},
+        'their_strengths': ['Broad suite'],
+        'proof_points': [{'stat': '60%', 'label': 'Saving',
+                          'source': 'IA AttributeSmart NRF 2026 deck'}],
+    })
+    rules = {warning['rule'] for warning in schema.validate(card)['warnings']}
+    assert 'external_source' in rules
+
+
+# ── AttributeSmart cards ────────────────────────────────────────────────────
+
+def test_every_attributesmart_card_is_clean():
+    for name in attributesmart.COMPETITORS:
+        card = schema.normalize(attributesmart.card_for(name))
+        checks = schema.validate(card)
+        assert checks['errors'] == [], (name, checks['errors'])
+        assert checks['warnings'] == [], (name, checks['warnings'])
+
+
+def test_unsourced_competitor_capabilities_stay_unknown():
+    """The cards must never assert a gap the public record does not support."""
+    card = attributesmart.card_for('o9 Solutions')
+    sourced = set(attributesmart.COMPETITORS['o9 Solutions']['ratings'])
+    for row in card['comparison']:
+        if row['capability'] not in sourced:
+            assert row['competitor'] == 'unknown', row['capability']
+            assert 'do not assert' in row['note']
+
+
+def test_attributesmart_cards_cite_their_sources():
+    for name in attributesmart.COMPETITORS:
+        card = attributesmart.card_for(name)
+        urls = [row['url'] for row in card['resources'] if row.get('url')]
+        assert len(urls) >= 2, name
+        for row in card['proof_points']:
+            assert schema.citation_kind(row['source']) in ('link', 'internal')
+
+
+def test_unknown_competitor_is_rejected():
+    with pytest.raises(KeyError):
+        attributesmart.card_for('Not A Real Vendor')
+
+
+def test_attributesmart_cards_build(tmp_path):
+    for name in attributesmart.COMPETITORS:
+        result = service.build(attributesmart.card_for(name), str(tmp_path))
+        assert result['compatibility']['ok'], (name, result['compatibility']['findings'])
+        assert result['slide_count'] >= 15
+
+
+# ── auth gate ───────────────────────────────────────────────────────────────
+
+def test_auth_is_off_without_credentials(monkeypatch):
+    from battlecards import auth
+    monkeypatch.delenv('IA_AUTH_USER', raising=False)
+    monkeypatch.delenv('IA_AUTH_PASSWORD', raising=False)
+    assert auth.credentials() is None
+    assert auth.is_enabled() is False
+
+
+def test_auth_gate_rejects_and_accepts(monkeypatch):
+    import base64
+    from flask import Flask
+    from battlecards import auth
+
+    monkeypatch.setenv('IA_AUTH_USER', 'ia')
+    monkeypatch.setenv('IA_AUTH_PASSWORD', 'secret')
+    app = Flask(__name__)
+    auth.install(app)
+
+    @app.route('/private')
+    def private():
+        return 'ok'
+
+    @app.route('/healthz')
+    def healthz():
+        return 'alive'
+
+    client = app.test_client()
+    assert client.get('/private').status_code == 401
+    assert client.get('/healthz').status_code == 200  # probe stays open
+
+    def header(user, password):
+        token = base64.b64encode(('%s:%s' % (user, password)).encode()).decode()
+        return {'Authorization': 'Basic ' + token}
+
+    assert client.get('/private', headers=header('ia', 'wrong')).status_code == 401
+    assert client.get('/private', headers=header('nope', 'secret')).status_code == 401
+    assert client.get('/private', headers=header('ia', 'secret')).status_code == 200

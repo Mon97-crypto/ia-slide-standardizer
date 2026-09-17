@@ -1,0 +1,274 @@
+{
+  "comparison": [
+    {
+      "capability": "Attribute generation from product images",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "OCR extraction from packaging and labels",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "NLP extraction from product descriptions",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "Pre-trained attribute library at retail depth",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "Derived attributes beyond on-pack facts",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "Synonym and search term tagging",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "Trend and SEO driven attribute capture",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "Confidence scored review workflow",
+      "competitor": "partial",
+      "ia": "strong",
+      "note": "Partial. Ask what it does not cover, then scope that."
+    },
+    {
+      "capability": "Custom taxonomy and client mapping",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "Push into PIM, MDM and e-commerce",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "Time to a tagged catalogue",
+      "competitor": "unknown",
+      "ia": "strong",
+      "note": "Not claimed publicly. Ask the question, do not assert the gap."
+    },
+    {
+      "capability": "Attributes feeding downstream planning",
+      "competitor": "strong",
+      "ia": "strong",
+      "note": "Match. Move to depth and inputs rather than the capability itself."
+    }
+  ],
+  "discovery": [
+    {
+      "questions": [
+        "Which team creates a new product attribute today?",
+        "How many minutes per product does that take?",
+        "What happens when a supplier sends an image and nothing else?"
+      ],
+      "theme": "Where attributes come from"
+    },
+    {
+      "questions": [
+        "What share of your attributes carry at least one error?",
+        "How much of your product data goes unused because it is not standardised?",
+        "Who notices first when an attribute is wrong?"
+      ],
+      "theme": "Data quality"
+    },
+    {
+      "questions": [
+        "Which decision breaks first when attributes are thin, forecast or search?",
+        "What did poor product discovery cost you in conversion last quarter?"
+      ],
+      "theme": "Downstream cost"
+    }
+  ],
+  "donts": [
+    "Do not claim a rival lacks a capability you have not verified on the call.",
+    "Do not position against the planning suite. Most of these deals sit alongside one.",
+    "Do not quote competitor pricing or roadmap.",
+    "Do not send this card outside Impact Analytics.",
+    "Do not present a comparison row marked Unclear as though it were a gap."
+  ],
+  "dos": [
+    "Lead with the attribute error rate the buyer already measures.",
+    "Separate generating attributes from consuming them. That line is the deal.",
+    "Offer the two week proof on their own catalogue, 100,000 products.",
+    "Name the downstream decision the bad data is breaking, then price that.",
+    "Cite the source for every number, including ours."
+  ],
+  "how_to_use": [
+    "Read the mechanism slide before the call. The technical detail is the wedge.",
+    "Establish whether they generate attributes or only consume them.",
+    "Use the matrix only when the buyer asks for a direct comparison.",
+    "Treat every Unclear rating as a question to ask, never as a gap to assert.",
+    "Log what the buyer confirms, so the next card carries fact instead of prompt."
+  ],
+  "landmines": [
+    {
+      "listen_for": "Two systems, or two teams.",
+      "question": "Are the attributes driving your forecast the same ones on your product pages?",
+      "why": "Planning attributes and catalogue attributes are rarely the same set, and the gap is usually manual."
+    },
+    {
+      "listen_for": "A planogram tool, or nothing.",
+      "question": "What in your stack reads a product image?",
+      "why": "Planogram image recognition is not product attribution."
+    },
+    {
+      "listen_for": "A planner picking a reference by hand.",
+      "question": "How does a new product get attributed when there is no comparable reference product?",
+      "why": "Reference matching degrades exactly where novelty is highest."
+    }
+  ],
+  "meta": {
+    "audience": "Sales and solution consulting",
+    "competitor": "RELEX Solutions",
+    "competitor_category": "Retail planning and replenishment platform with a product attribute AI agent",
+    "date": "September 2026",
+    "distribution": "internal",
+    "headline": "AttributeSmart generates the attributes. RELEX Solutions consumes them.",
+    "ia_product": "AttributeSmart",
+    "owner": "Competitive Marketing",
+    "solution": "data_intelligence",
+    "win_theme": "Their agent exists to make a forecast work. Ask whether the same attributes are good enough to publish on the website."
+  },
+  "next_steps": [
+    "Run the two week proof: 100,000 products from their own catalogue.",
+    "Agree the accuracy metric and the readout date before the test starts.",
+    "Confirm which downstream system consumes the attributes first, PIM or planning."
+  ],
+  "objections": [
+    {
+      "objection": "RELEX already has a product attribute agent.",
+      "proof": "A 10,000 plus attribute library for fashion and home. IA AttributeSmart NRF 2026 deck",
+      "response": "Ask which job the attributes serve. Reference matching for a forecast needs a handful of attributes. A product page needs forty. Offer to show that gap on their catalogue."
+    },
+    {
+      "objection": "We do not want another data vendor.",
+      "proof": "Attributes become the basis of forecasting and allocation downstream. IA AttributeSmart NRF 2026 deck",
+      "response": "AttributeSmart is upstream of RELEX, not beside it. Better attributes make their forecast agent better."
+    }
+  ],
+  "options": {
+    "include_notes": true,
+    "sanitize_copy": true
+  },
+  "our_advantages": [
+    {
+      "detail": "CNN models take multiple product images, assign weights and biases, and identify attributes from the image itself. OCR reads packaging and label images, so attributes already printed on the pack never get retyped.",
+      "proof": "Accuracy of 65 to 96 percent once all three inputs ran. IA AttributeSmart NRF 2026 deck",
+      "title": "Three inputs, not one"
+    },
+    {
+      "detail": "A pre-trained library of 10,000 plus fashion and home attributes, curated by retail experts, plus 400 plus food tags maintained against FDA packaging guidance. Derived attributes go beyond what the pack states, using FDA labelling guidance and external data to infer diet, allergen, wellness and clean label attributes.",
+      "proof": "10,000 plus attributes for fashion and home, 400 plus food tags. IA AttributeSmart NRF 2026 deck",
+      "title": "A library, not a mapper"
+    },
+    {
+      "detail": "Reviews are prioritised by model confidence, so merchants spend their time on the tags the model ranks as least certain. APIs and file exports push into PIM, MDM, ERP, CMS and e-commerce systems, or a single API serves the attributes.",
+      "proof": "60 percent cost saving on manual attribution. IA AttributeSmart NRF 2026 deck",
+      "title": "Built for the merchant, not the model"
+    }
+  ],
+  "positioning": {
+    "our_claim": "CNN models take multiple product images, assign weights and biases, and identify attributes from the image itself. OCR reads packaging and label images, so attributes already printed on the pack never get retyped. NLP parses existing product descriptions and e-commerce copy, then harmonises the result when two sources disagree.",
+    "their_claim": "The Product Attribute AI agent identifies relevant product attributes and automatically finds best matched reference products for new product introductions, continuously enriching and validating product data.",
+    "wedge": "Their agent exists to make a forecast work. Ask whether the same attributes are good enough to publish on the website."
+  },
+  "pricing": {
+    "competitor_model": "Record only what the buyer states or the vendor publishes. Nothing here is sourced.",
+    "ia_model": "Subscription scoped by category and catalogue size, with services scoped per phase. Confirm the current model with deal desk before you quote.",
+    "notes": [
+      "Never quote a rival price you cannot source.",
+      "Price the cost of staying: manual hours plus the margin the bad data is losing."
+    ]
+  },
+  "proof_points": [
+    {
+      "detail": "Automating attribute creation and management cut man hours on a 500,000 image catalogue.",
+      "label": "Cost saving on manual attribution",
+      "source": "IA AttributeSmart NRF 2026 deck",
+      "stat": "60%"
+    },
+    {
+      "detail": "Accuracy moved from 65 percent to 96 percent after the AI models took over tagging.",
+      "label": "Attribute accuracy",
+      "source": "IA AttributeSmart NRF 2026 deck",
+      "stat": "65% to 96%"
+    },
+    {
+      "detail": "Better product discovery raised average order value.",
+      "label": "AOV uplift",
+      "source": "IA AttributeSmart NRF 2026 deck",
+      "stat": "5-10%"
+    },
+    {
+      "detail": "Richer attributes and synonyms improved on-site search conversion.",
+      "label": "E-commerce search conversion",
+      "source": "IA AttributeSmart NRF 2026 deck",
+      "stat": "5-6%"
+    }
+  ],
+  "resources": [
+    {
+      "label": "RELEX AI agents for retail",
+      "url": "https://www.relexsolutions.com/resources/introducing-relex-ai-agents-for-retail/"
+    },
+    {
+      "label": "RELEX demand planning",
+      "url": "https://www.relexsolutions.com/solutions/demand-planning-software/"
+    },
+    {
+      "label": "AttributeSmart product page",
+      "url": "https://www.impactanalytics.ai/solutions/product-tagging"
+    }
+  ],
+  "snapshot": {
+    "deployment": "",
+    "employees": "",
+    "founded": "",
+    "funding": "",
+    "go_to_market": "",
+    "headquarters": "",
+    "notable_customers": "Research and cite before naming anyone on a call.",
+    "ownership": "",
+    "recent_moves": [
+      "Category: Retail planning and replenishment platform with a product attribute AI agent",
+      "Their public claim: The Product Attribute AI agent identifies relevant product attributes and automatically finds best matched reference products for new product introductions, continuously enriching and validating product data.",
+      "Refresh this quarterly. Every line needs a dated source."
+    ],
+    "target_segment": ""
+  },
+  "talk_track": {
+    "discovery_open": "How many minutes does a merchant spend per product today entering and correcting attributes?",
+    "elevator": "AttributeSmart reads your product images, your pack labels and your descriptions, then writes back a standardised attribute set. Accuracy went from 65 percent to 96 percent at one retailer, and manual attribution cost dropped 60 percent.",
+    "positioning": "For retailers whose product data blocks every downstream decision, AttributeSmart generates deep, standardised attributes from images, labels and text, so forecasting, assortment and search all run on data merchants trust.",
+    "trap": "Ask where their attributes come from when a supplier sends an image and nothing else."
+  },
+  "their_strengths": [
+    "The Product Attribute AI agent gives day one forecasts for new products by matching reference products automatically.",
+    "Agents run with human in the loop governance, and attribute assignment is explicitly listed as a low oversight routine decision.",
+    "Enriched attributes feed assortment, pricing and promotion decisions inside one platform."
+  ],
+  "their_weaknesses": [
+    "The agent is positioned for forecasting and reference matching. It is not described as generating a catalogue grade attribute set. Verify.",
+    "Image recognition in the RELEX ecosystem appears through a planogram partner, not product attribution. Ask what reads product images.",
+    "No published attribute library depth, synonym tagging or SEO attribute capability. Ask how e-commerce search benefits."
+  ]
+}

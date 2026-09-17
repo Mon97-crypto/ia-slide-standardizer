@@ -3,7 +3,13 @@ services:
     name: ia-slide-standardizer
     runtime: docker
     plan: free
-    healthCheckPath: /
+    healthCheckPath: /healthz
     envVars:
       - key: PORT
         value: 10000
+      # Set both in the Render dashboard to gate the app. Without them every
+      # route is open, which is unsafe for a deck holding competitive content.
+      - key: IA_AUTH_USER
+        sync: false
+      - key: IA_AUTH_PASSWORD
+        sync: false

@@ -14,6 +14,7 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.ns import qn
 
+from battlecards import auth as battlecard_auth
 from battlecards import service as battlecard_service
 
 app = Flask(__name__)
@@ -23,6 +24,16 @@ app.config['OUTPUT_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__fil
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+
+# Gate every route when IA_AUTH_USER and IA_AUTH_PASSWORD are set. Battlecards
+# carry competitive intelligence, so a deployment holding real content needs both.
+battlecard_auth.install(app)
+
+
+@app.route('/healthz')
+def healthz():
+    """Unauthenticated health check, so the platform probe keeps working."""
+    return jsonify({'status': 'ok', 'auth': battlecard_auth.is_enabled()})
 
 # ─── Brand Constants ────────────────────────────────────────────────────────────
 BRAND = {

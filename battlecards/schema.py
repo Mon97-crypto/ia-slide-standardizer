@@ -73,6 +73,23 @@ _TERMINAL_PREPOSITIONS = {
     'under', 'up', 'upon', 'with', 'within', 'without',
 }
 _STAT_YEAR = re.compile(r'\b(19\d{2}|20[0-2]\d)\b')
+# An internal citation names where the number came from and when, for example
+# "IA AttributeSmart NRF 2026 deck". It is not a link, so it never leaves the
+# building, which is why customer facing cards still demand a URL.
+_INTERNAL_CITATION = re.compile(r'20\d{2}')
+DISTRIBUTIONS = ('internal', 'customer')
+
+
+def citation_kind(source: str) -> str:
+    """Classify a proof point source as a link, an internal citation or missing."""
+    text = (source or '').strip()
+    if not text:
+        return 'missing'
+    if re.match(r'^https?://', text, re.I):
+        return 'link'
+    if len(text) >= 8 and _INTERNAL_CITATION.search(text):
+        return 'internal'
+    return 'unclear'
 
 
 def sanitize_text(value) -> str:
@@ -188,6 +205,9 @@ def normalize(payload: dict) -> dict:
         'confidentiality': _clean_str(meta_in.get('confidentiality'), sanitize) or 'Internal use only',
         'headline': _clean_str(meta_in.get('headline'), sanitize),
         'win_theme': _clean_str(meta_in.get('win_theme'), sanitize),
+        'distribution': (_clean_str(meta_in.get('distribution'), False).lower()
+                         if _clean_str(meta_in.get('distribution'), False).lower() in DISTRIBUTIONS
+                         else 'internal'),
     }
 
     snapshot = payload.get('snapshot') if isinstance(payload.get('snapshot'), dict) else {}
@@ -312,10 +332,23 @@ def validate(card: dict) -> dict:
     if not card['proof_points']:
         warnings.append({'where': 'proof_points', 'rule': 'evidence',
                          'message': 'Add proof points. The brand voice leads with data.'})
+
+    customer_facing = card['meta'].get('distribution') == 'customer'
     for row in card['proof_points']:
-        if not row.get('source'):
+        name = row.get('stat') or row.get('label') or 'a proof point'
+        kind = citation_kind(row.get('source'))
+        if kind == 'missing':
             warnings.append({'where': 'proof_points', 'rule': 'source_link',
-                             'message': 'Add a source link for "%s".' % (row.get('stat') or row.get('label'))})
+                             'message': 'Cite a source for "%s". A link, or an internal '
+                                        'source with its year.' % name})
+        elif kind == 'unclear':
+            warnings.append({'where': 'proof_points', 'rule': 'source_link',
+                             'message': 'Name the year in the source for "%s", so the '
+                                        'next reader knows how current it is.' % name})
+        elif kind == 'internal' and customer_facing:
+            warnings.append({'where': 'proof_points', 'rule': 'external_source',
+                             'message': '"%s" cites an internal source. A customer facing '
+                                        'card needs a public link.' % name})
 
     for key, label in (('their_strengths', 'their_strengths'), ('their_weaknesses', 'their_weaknesses'),
                        ('dos', 'dos'), ('donts', 'donts'), ('next_steps', 'next_steps')):

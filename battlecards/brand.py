@@ -36,7 +36,9 @@ SOLUTION_COLORS = {
     'inventory_replenishment': RGBColor(0xE3, 0xF5, 0x76),   # Yellow
     'merchandising': RGBColor(0xBE, 0xA8, 0xEF),             # Purple
     'pricing_promotions': RGBColor(0x3D, 0xD4, 0x99),        # Green
-    'data_intelligence': RGBColor(0xB3, 0xC9, 0xF7),         # Blue
+    # The shipping IA theme (theme3/theme4 of the house deck) carries BFD1F5
+    # here. The written spec says B3C9F7. The theme wins.
+    'data_intelligence': RGBColor(0xBF, 0xD1, 0xF5),        # Blue
 }
 
 SOLUTION_LABELS = {
@@ -113,32 +115,32 @@ def mix(color: RGBColor, other: RGBColor, weight: float) -> RGBColor:
 # Slides font list, so either choice survives the round trip.
 HEADING_FONT = 'Inter Tight'
 BODY_FONT = 'Inter Tight'
+SECONDARY_FONT = 'Lato'      # the house deck's secondary face, used for footers
 SERIF_HEADING_FONT = 'Spectral'
 
+# Sizes measured from the house deck on its 10 x 5.625in canvas.
 TYPE_SCALE = {
-    'display': Pt(40),
-    'h1': Pt(32),
-    'h2': Pt(24),
-    'h3': Pt(18),
-    'h4': Pt(15),
-    'h5': Pt(13),
-    'body': Pt(12),
-    'body_small': Pt(10.5),
+    'display': Pt(40),      # cover title
+    'title': Pt(24),        # slide title, bold, two tone
+    'pill': Pt(16),         # blue column header pill
+    'subhead': Pt(12),      # card subhead and product pill, bold
+    'stat_label': Pt(15),   # stat card label, italic
+    'body': Pt(11),         # body copy
+    'body_small': Pt(10),
     'caption': Pt(9),
     'micro': Pt(8),
-    'stat': Pt(34),
+    'footer': Pt(5),        # Lato, matching the house footer
+    'stat': Pt(28),
 }
 
 # ─── Geometry ───────────────────────────────────────────────────────────────────
-SLIDE_WIDTH = Emu(12192000)   # exactly 13.333in, the 16:9 canvas both renderers use
-SLIDE_HEIGHT = Emu(6858000)   # exactly 7.5in
-MARGIN = Inches(0.5)
+# The house canvas: 10 x 5.625in, Google Slides' native 16:9. Authoring at this
+# size lets a battlecard slide paste into an IA deck without rescaling.
+SLIDE_WIDTH = Emu(9144000)    # exactly 10.000in
+SLIDE_HEIGHT = Emu(5143500)   # exactly 5.625in
+MARGIN = Inches(0.3)
 CONTENT_WIDTH = SLIDE_WIDTH - 2 * MARGIN
-HEADER_HEIGHT = Inches(1.05)
-FOOTER_TOP = SLIDE_HEIGHT - Inches(0.42)
-BODY_TOP = HEADER_HEIGHT + Inches(0.22)
-BODY_HEIGHT = FOOTER_TOP - BODY_TOP - Inches(0.12)
-CORNER_RADIUS = 6500  # prstGeom adjustment, roughly 0.1in on a 1in tall card
+CORNER_RADIUS = 9000  # the generous corner radius the house deck uses
 
 ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'static', 'images')
 LOGO_PATH = os.path.normpath(os.path.join(ASSET_DIR, 'ia_logo.png'))
@@ -356,6 +358,56 @@ def strip_shape_effects(shape):
     style = shape._element.find(qn('p:style'))
     if style is not None:
         shape._element.remove(style)
+
+
+def add_soft_shadow(shape, blur_pt=9.0, distance_pt=1.5, alpha_pct=9):
+    """Apply the house deck's soft card shadow.
+
+    An outer shadow is one of the few effects Google Slides both imports and
+    exposes in its own editor, so it survives the round trip. Reflection, glow
+    and soft edge do not, and the builder uses none of them.
+    """
+    spPr = shape._element.spPr
+    for node in spPr.findall(qn('a:effectLst')):
+        spPr.remove(node)
+    effectLst = spPr.makeelement(qn('a:effectLst'), {})
+    shadow = effectLst.makeelement(qn('a:outerShdw'), {
+        'blurRad': str(int(blur_pt * 12700)),
+        'dist': str(int(distance_pt * 12700)),
+        'dir': '5400000',          # straight down
+        'rotWithShape': '0',
+    })
+    color = shadow.makeelement(qn('a:srgbClr'), {'val': str(BLACK)})
+    alpha = color.makeelement(qn('a:alpha'), {'val': str(int(alpha_pct * 1000))})
+    color.append(alpha)
+    shadow.append(color)
+    effectLst.append(shadow)
+    # effectLst follows the fill and line in the CT_ShapeProperties sequence.
+    spPr.append(effectLst)
+    return shape
+
+
+def write_two_tone(tf, lead, emphasis, size, *, lead_color=BLACK,
+                   emphasis_color=IMPACT_BLUE, font=None, bold=True,
+                   align=PP_ALIGN.LEFT, line_spacing=1.08):
+    """Write a title as the house deck does: one phrase in Black, one in Impact Blue.
+
+    Every content slide in the IA template splits its title this way. The blue
+    phrase carries the point, so callers pass the emphasis, not a fixed slice.
+    """
+    p = tf.paragraphs[0]
+    p.alignment = align
+    p.space_before = Pt(0)
+    p.space_after = Pt(0)
+    p.line_spacing = line_spacing
+    clear_bullet(p)
+    for text, color in ((lead, lead_color), (emphasis, emphasis_color)):
+        if not text:
+            continue
+        run = p.add_run()
+        run.text = text
+        set_run_font(run, size, bold, color, font or HEADING_FONT)
+    return p
 
 
 def add_textbox(slide, left, top, width, height, anchor=MSO_ANCHOR.TOP, margin=Inches(0.0)):
