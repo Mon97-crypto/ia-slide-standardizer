@@ -270,6 +270,18 @@ section.panel{max-width:1240px;margin:0 auto 46px;padding:0 32px}
 .panel-card h3{font-size:20px;font-weight:400;margin-bottom:6px}
 .panel-card>p{font-size:14px;color:#6c6a66;margin-bottom:18px;max-width:640px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.st-grid{display:flex;flex-wrap:wrap;gap:10px}
+.st{flex:1 1 130px;background:var(--off-white);border-radius:12px;padding:13px 15px}
+.st b{display:block;font-size:20px;font-weight:600;line-height:1.2}
+.st b.good{color:#1f9c6c}
+.st b.bad{color:#c2410c}
+.st span{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6c6a66}
+.st-tbl{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}
+.st-tbl th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+  color:#6c6a66;padding:0 10px 7px;border-bottom:1px solid var(--g1)}
+.st-tbl td{padding:8px 10px;border-bottom:1px solid var(--g1)}
+.st-tbl .mut{color:#6c6a66}
+.st-tbl .num,.st-tbl th.num{text-align:right}
 .notice{display:flex;gap:11px;margin-top:16px;padding:14px 16px;border-radius:12px;
   background:var(--off-white);border-left:3px solid var(--blue);font-size:13px;
   line-height:1.55;color:#55534f}
@@ -743,11 +755,13 @@ footer{border-top:1px solid var(--g1);padding:30px 0 46px;text-align:center;
       <button class="btn sm" onclick="selfTest()">Run AI self test</button>
       <button class="btn sm ghost" onclick="keyCheck()">Why is AI off?</button>
       <button class="btn sm" onclick="showUsage()">API spend</button>
+      <button class="btn sm" onclick="showStorage()">Storage</button>
       <button class="btn sm danger" onclick="clearLib()">Clear all</button>
     </div>
     <input type="file" id="jsonIn" accept=".zip,.json" class="hidden">
     <div id="selfTestOut"></div>
     <div id="usageOut"></div>
+    <div id="storageOut"></div>
   </div>
 </section>
 
@@ -1512,6 +1526,42 @@ $('jsonIn').addEventListener('change', async e=>{
   }catch(err){ toastError(err.message); }
   e.target.value='';
 });
+/* Answers "are my uploads really being stored" with a count taken from the
+   database, not a reassurance. A build that predates document storage has no
+   files table, which tells you a deploy never happened rather than that
+   something is broken. */
+async function showStorage(){
+  const box = $('storageOut');
+  box.innerHTML = '<div class="analysis"><div class="a-loading"><span class="spin"></span> Asking the database...</div></div>';
+  let d;
+  try{ d = await api('/api/storage'); }
+  catch(err){
+    box.innerHTML = `<div class="analysis"><div class="a-err"><b>Could not read storage.</b> ${esc(err.message)}
+      ${/404|not found/i.test(err.message) ? '<br><br>A 404 here means the running build predates document storage. Redeploy the branch in Render.' : ''}</div></div>`;
+    return;
+  }
+  const mb = n => n >= 1048576 ? (n/1048576).toFixed(1)+' MB'
+            : n >= 1024 ? (n/1024).toFixed(0)+' KB' : n+' bytes';
+  const rows = (d.largest||[]).map(f=>
+    `<tr><td>${esc(f.title||'')}</td><td class="mut">${esc(f.file_name||'')}</td><td class="num">${mb(f.bytes)}</td></tr>`).join('');
+  box.innerHTML = `<div class="analysis"><div class="a-body">
+    <div class="st-grid">
+      <div class="st"><b>${esc(d.backend)}</b><span>Database</span></div>
+      <div class="st"><b class="${d.durable?'good':'bad'}">${d.durable?'Permanent':'Ephemeral'}</b><span>Survives deploys</span></div>
+      <div class="st"><b>${d.entries}</b><span>Entries</span></div>
+      <div class="st"><b class="${d.documents?'good':''}">${d.documents}</b><span>Documents held</span></div>
+      <div class="st"><b>${mb(d.document_bytes)}</b><span>Stored</span></div>
+    </div>
+    ${!d.documents_supported ? `<div class="a-err" style="margin-top:14px"><b>This build cannot store documents.</b>
+      There is no files table in the database, which means the deployed code predates the feature. Redeploy the branch in Render.</div>` : ''}
+    ${d.documents_supported && !d.documents ? `<div class="notice" style="margin-top:14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <div>The database can hold documents and is holding none yet. Files uploaded before this build was deployed were never kept &mdash; upload one now, or use <b>Attach original</b>, and this count will move.</div></div>` : ''}
+    ${!d.durable ? `<div class="a-err" style="margin-top:14px"><b>Nothing here is permanent.</b>
+      No DATABASE_URL is set, so the library lives in the container at <code>${esc(d.path||'')}</code> and is erased on every deploy.</div>` : ''}
+    ${rows ? `<table class="st-tbl"><thead><tr><th>Entry</th><th>File</th><th class="num">Size</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+  </div></div>`;
+}
+
 async function clearLib(){
   if(!confirm('Delete every entry? This cannot be undone.')) return;
   try{

@@ -668,8 +668,13 @@ def delete_entry(store: Store, entry_id: str) -> bool:
 
 def clear_all(store: Store) -> int:
     total = store.execute("SELECT COUNT(*) AS n FROM entries").fetchone()["n"]
-    tables = ("entries", "chunks", "files") if store.is_postgres else (
-        "entries", "entries_fts", "chunks", "chunks_fts", "files")
+    tables = ["entries", "chunks"] if store.is_postgres else [
+        "entries", "entries_fts", "chunks", "chunks_fts"]
+    # Only when the database has been migrated that far. A database created
+    # before documents were stored has no files table, and naming it anyway
+    # turns a clear into an error that also aborts the transaction.
+    if has_files_table(store):
+        tables.append("files")
     for table in tables:
         store.execute(f"DELETE FROM {table}")
     store.commit()
@@ -712,6 +717,46 @@ def get_file(store: Store, entry_id: str) -> dict[str, Any] | None:
     # psycopg hands back a memoryview for bytea; SQLite hands back bytes.
     record["data"] = bytes(record["data"])
     return record
+
+
+def has_files_table(store: Store) -> bool:
+    """Whether this database has been migrated to hold documents at all.
+
+    Asked before counting, because on Postgres a query against a missing table
+    aborts the transaction, turning a diagnostic into a broken connection.
+    """
+    if store.is_postgres:
+        row = store.execute(
+            "SELECT COUNT(*) AS n FROM information_schema.tables "
+            "WHERE table_schema = current_schema() AND table_name = 'files'"
+        ).fetchone()
+    else:
+        row = store.execute(
+            "SELECT COUNT(*) AS n FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'files'").fetchone()
+    return bool(row["n"])
+
+
+def file_stats(store: Store) -> dict[str, Any]:
+    """How many documents this database is actually holding, and how big."""
+    if not has_files_table(store):
+        return {"supported": False, "documents": 0, "document_bytes": 0}
+    row = store.execute(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(byte_size), 0) AS total FROM files"
+    ).fetchone()
+    return {"supported": True, "documents": int(row["n"] or 0),
+            "document_bytes": int(row["total"] or 0)}
+
+
+def largest_files(store: Store, limit: int = 5) -> list[dict[str, Any]]:
+    """The biggest documents held, so a database filling up has a cause."""
+    if not has_files_table(store):
+        return []
+    rows = store.execute(
+        "SELECT f.file_name, f.byte_size, e.title FROM files f "
+        "JOIN entries e ON e.id = f.entry_id "
+        "ORDER BY f.byte_size DESC LIMIT ?", (limit,)).fetchall()
+    return [row_to_dict(r) for r in rows]
 
 
 def delete_file(store: Store, entry_id: str) -> bool:
@@ -804,6 +849,7 @@ def stats(store: Store) -> dict[str, Any]:
     return {
         "entries": total, "competitors": competitors, "by_category": by_cat,
         "analysed": analysed, "chunks": indexed, "backend": store.dialect,
+        **file_stats(store),
     }
 
 

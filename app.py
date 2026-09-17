@@ -818,6 +818,38 @@ def api_library_import():
                     "status": status + _durability_note(), **db.stats(conn)})
 
 
+@app.route("/api/storage")
+@login_required
+def api_storage():
+    """What the database is actually holding, and whether it will keep it.
+
+    The question this answers is "are my uploads really being stored", and the
+    only honest answer is a count taken from the database itself. It also says
+    which build is running: an older deployment has no documents table, which
+    is the difference between a bug and a deploy that never happened.
+    """
+    info = Config.storage_info()
+    conn = store()
+    counts = db.stats(conn)
+    largest = [
+        {"title": r["title"], "file_name": r["file_name"],
+         "bytes": r["byte_size"]}
+        for r in db.largest_files(conn, 5)
+    ]
+    return jsonify({
+        "ok": True,
+        "backend": counts["backend"],
+        "durable": info["durable"],
+        "configured": info["configured"],
+        "path": info.get("path"),
+        "entries": counts["entries"],
+        "documents": counts["documents"],
+        "document_bytes": counts["document_bytes"],
+        "documents_supported": counts["supported"],
+        "largest": largest,
+    })
+
+
 @app.route("/api/diagnose")
 def api_diagnose():
     """Walk the database connection stage by stage and name what failed.

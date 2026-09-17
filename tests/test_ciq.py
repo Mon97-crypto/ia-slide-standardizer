@@ -916,3 +916,30 @@ def test_a_document_can_be_dropped_without_losing_the_entry(conn):
     assert db.get_file(conn, entry["id"]) is None
     assert db.get_entry(conn, entry["id"]) is not None
     assert db.delete_file(conn, entry["id"]) is False
+
+
+def test_counting_documents_on_a_database_that_has_none_yet(conn):
+    """A database created before documents were stored has no files table.
+    On Postgres a query against a missing table aborts the whole transaction,
+    so asking whether the table exists has to come before counting - otherwise
+    a diagnostic breaks the connection it was run to diagnose."""
+    conn.execute("DROP TABLE IF EXISTS files")
+    conn.commit()
+    assert db.has_files_table(conn) is False
+    assert db.file_stats(conn)["supported"] is False
+    assert db.largest_files(conn) == []
+    # Still usable: the next read must not fail because of the one before it.
+    assert isinstance(db.stats(conn)["entries"], int)
+    _entry(conn, "After")
+    assert db.stats(conn)["entries"] == 1
+
+
+def test_documents_are_counted_and_sized(conn):
+    first, second = _entry(conn, "One"), _entry(conn, "Two")
+    db.store_file(conn, first["id"], "small.txt", "text/plain", b"x" * 100)
+    db.store_file(conn, second["id"], "big.pptx", "application/vnd.x", b"y" * 5000)
+    counts = db.file_stats(conn)
+    assert counts == {"supported": True, "documents": 2, "document_bytes": 5100}
+    biggest = db.largest_files(conn, 1)
+    assert biggest[0]["file_name"] == "big.pptx"
+    assert biggest[0]["title"] == "Two"

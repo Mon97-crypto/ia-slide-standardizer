@@ -480,3 +480,36 @@ def test_saving_a_file_says_where_it_went(client, monkeypatch):
                        content_type="multipart/form-data").get_json()
     assert body["durable"] is False
     assert "lost on the next deploy" in body["status"]
+
+
+# ─── proving to the user that storage is real ──────────────────────────────
+
+def test_storage_reports_what_the_database_actually_holds(client):
+    """"Are my uploads being stored" deserves a count read out of the
+    database, not a reassurance."""
+    before = client.get("/api/storage").get_json()
+    assert before["documents"] == 0 and before["documents_supported"] is True
+    upload(client, PPTX, "deck.pptx")
+    after = client.get("/api/storage").get_json()
+    assert after["documents"] == 1
+    assert after["document_bytes"] == len(PPTX)
+    assert after["largest"][0]["file_name"] == "deck.pptx"
+    assert after["backend"] in ("sqlite", "postgres")
+
+
+def test_storage_survives_a_database_that_predates_documents(client):
+    """A build older than the files table must report that plainly instead of
+    failing: it is the difference between a bug and a deploy that never
+    happened. On Postgres a query against a missing table also aborts the
+    transaction, so the check has to come first."""
+    import app as application
+    from ciq import db
+    conn = application.store()
+    conn.execute("DROP TABLE IF EXISTS files")
+    conn.commit()
+    assert db.has_files_table(conn) is False
+    assert db.file_stats(conn) == {"supported": False, "documents": 0,
+                                   "document_bytes": 0}
+    assert db.largest_files(conn) == []
+    # The connection is still usable afterwards, not left in an aborted state.
+    assert db.stats(conn)["entries"] == 0
