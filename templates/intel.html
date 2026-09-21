@@ -110,6 +110,8 @@
         .flash { margin-top: 16px; padding: 14px 16px; border-radius: var(--r-sm); font-size: 14.5px; line-height: 1.55; }
         .flash.ok { background: rgba(61,212,153,.16); color: #126046; }
         .flash.bad { background: rgba(255,111,28,.12); color: #a8490d; }
+        .flash.tell { background: rgba(38,76,215,.08); color: var(--blue-ink); }
+        .flash a { color: inherit; font-weight: 600; }
 
         @media (max-width: 760px) {
             .hero { padding: 42px 20px 132px; }
@@ -207,6 +209,7 @@
                 <span class="note">Two or three sentences per note works best. Split a long brain dump into a few.</span>
             </div>
         </div>
+        <div id="storeState"></div>
         <div id="flash"></div>
         <div class="review" id="review" hidden></div>
     </section>
@@ -236,6 +239,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 let proposals = [];
+let storeReady = true;
 
 function flash(message, kind) {
     $('flash').innerHTML = message
@@ -282,6 +286,7 @@ function drawProposals() {
         <div id="props"></div>
         <div class="acts">
             <button class="btn btn-primary" id="save">Save <span id="keepCount"></span></button>
+            <button class="btn btn-ghost" id="grab">Download to commit</button>
             <button class="btn btn-ghost" id="scrap">Discard all</button>
         </div>`;
 
@@ -323,6 +328,10 @@ function drawProposals() {
     });
     $('scrap').onclick = () => { proposals = []; drawProposals(); };
     $('save').onclick = save;
+    $('grab').onclick = download;
+    if (!storeReady) {
+        $('save').title = 'No database is attached. Download the file instead.';
+    }
 }
 
 function countKeepers() {
@@ -334,14 +343,9 @@ function countKeepers() {
 }
 
 async function save() {
-    const claims = proposals.filter(p => p.keep).map(p => ({
-        // A claim read out of a document already knows which page it came from.
-        // Only fall back to the form for one the form produced.
-        competitor: p.competitor || $('competitor').value.trim(),
-        ia_product: p.ia_product || $('product').value,
-        kind: p.kind, claim: p.claim, detail: p.detail,
-        confidence: p.confidence, source: p.source,
-    }));
+    // A claim read out of a document already knows which page it came from, so
+    // pending() only falls back to the form for one the form produced.
+    const claims = pending();
     $('save').disabled = true;
     try {
         const res = await fetch('/api/intel', {
@@ -350,8 +354,11 @@ async function save() {
         });
         const data = await res.json();
         if (!res.ok && !(data.saved || []).length) {
-            flash(data.error || (data.failed || []).map(f => f.problem).join(' ')
-                  || 'Nothing was saved.', 'bad');
+            const why = data.error || (data.failed || []).map(f => f.problem).join(' ')
+                        || 'Nothing was saved.';
+            flash(why + (res.status === 503
+                ? ' Nothing was lost: press "Download to commit" to keep these as '
+                  + 'a file for content/intel/ instead.' : ''), 'bad');
             return;
         }
         const kept = (data.saved || []).length;
@@ -372,12 +379,53 @@ async function save() {
     }
 }
 
+function pending() {
+    return proposals.filter(p => p.keep).map(p => ({
+        competitor: p.competitor || $('competitor').value.trim(),
+        ia_product: p.ia_product || $('product').value,
+        kind: p.kind, claim: p.claim, detail: p.detail,
+        confidence: p.confidence, source: p.source,
+    }));
+}
+
+function download() {
+    // Exactly the shape content/intel/*.json expects, so the file can be dropped
+    // into the repository and committed. This is the path that survives a free
+    // database expiring, so it is offered whether or not one is attached.
+    const claims = pending();
+    if (!claims.length) { flash('Keep at least one claim first.', 'bad'); return; }
+    const who = (claims[0].competitor || 'rival').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'rival';
+    const blob = new Blob([JSON.stringify({ intel: claims }, null, 2) + '\n'],
+                          { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = who + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+    flash(claims.length + ' claim' + (claims.length === 1 ? '' : 's')
+          + ' downloaded as ' + who + '.json. Commit it to content/intel/ and '
+          + 'every card built after that carries it, with or without a database.',
+          'ok');
+}
+
 // ── Browse ─────────────────────────────────────────────────────────────────
 async function load() {
     const res = await fetch('/api/intel?competitor='
                             + encodeURIComponent($('filter').value));
     const data = await res.json();
     const stats = data.stats || {};
+    storeReady = stats.enabled !== false;
+    // Say it up front. Finding out the store is missing after reviewing fifteen
+    // claims is the worst moment to learn it.
+    $('storeState').innerHTML = storeReady ? '' : `<div class="flash tell">
+        <b>No database is attached</b>, so claims cannot be saved on the server
+        yet. You can still read documents and download the result as a file to
+        commit into <code>content/intel/</code>, which is the durable store
+        either way. To attach one, set <code>DATABASE_URL</code> on the service.
+        </div>`;
     $('cClaims').textContent = stats.claims || 0;
     $('cRivals').textContent = stats.competitors || 0;
     $('cVerified').textContent = stats.verified || 0;

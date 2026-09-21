@@ -2010,3 +2010,62 @@ def test_the_committed_claims_reach_a_pricesmart_card():
     assert 'PriceSmart: our assessment' in block
     # A claim for another product must not leak into this one.
     assert 'AssortSmart:' not in block
+
+
+# ── when no database is attached ────────────────────────────────────────────
+# The 503 told people to "commit the claim to content/intel instead" while
+# giving them no way to get the claim out of the browser.
+
+def test_the_page_says_up_front_when_nothing_can_be_saved():
+    page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
+        __file__))), 'templates', 'intel.html')).read()
+    assert 'No database is attached' in page
+    assert 'storeState' in page and 'storeReady' in page
+
+
+def test_the_page_can_write_the_seed_file_shape():
+    """The download has to match what content/intel/*.json is read as."""
+    page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
+        __file__))), 'templates', 'intel.html')).read()
+    assert "JSON.stringify({ intel: claims }" in page
+    assert 'Download to commit' in page
+    # One builder for both paths, so the saved and downloaded shapes cannot drift.
+    assert page.count('function pending()') == 1
+    assert 'const claims = pending();' in page
+
+
+def test_the_stats_say_whether_the_store_is_attached(monkeypatch):
+    from battlecards import intel
+    monkeypatch.setattr(intel, 'enabled', lambda: False)
+    assert intel.stats()['enabled'] is False
+    # Committed seeds still count, because they work with no database at all.
+    assert intel.stats()['claims'] >= 25
+
+
+def test_the_health_check_reports_the_stores(client):
+    """What to look at first when the Teach page says nothing can be saved."""
+    body = client.get('/healthz').get_json()
+    assert 'library' in body and 'intel' in body
+    assert body['status'] == 'ok'
+
+
+def test_a_downloaded_file_loads_back_as_committed_claims(tmp_path, monkeypatch):
+    """The round trip the fallback depends on: browser file to seed file."""
+    from battlecards import intel
+    # The exact shape templates/intel.html writes.
+    downloaded = {'intel': [{
+        'competitor': 'o9 Solutions', 'ia_product': 'AttributeSmart',
+        'kind': 'gap', 'claim': 'Tagging is delivered as a services engagement.',
+        'detail': 'Their engineer said so on the technical call.',
+        'confidence': 'documented',
+        'source': 'Q3 competitive review.pptx, slide 2',
+    }]}
+    (tmp_path / 'o9-solutions.json').write_text(json.dumps(downloaded, indent=2))
+    monkeypatch.setattr(intel, 'SEED_DIR', str(tmp_path))
+    rows = intel.seeds()
+    assert len(rows) == 1
+    assert rows[0]['confidence'] == 'documented'
+    assert rows[0]['seed'] is True
+    # And it reaches the prompt with its rule attached.
+    assert 'IN A DOCUMENT WE HOLD' in intel.prompt_block('o9 Solutions', '',
+                                                         entries=rows)
