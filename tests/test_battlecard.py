@@ -525,8 +525,20 @@ def test_battlecard_builder_owns_the_landing_page(client):
 
 
 def test_standardizer_still_reachable(client):
+    """Off the nav, not deleted. The URL still works for anyone who has it."""
     assert client.get('/standardizer').status_code == 200
     assert 'Standardize Now' in client.get('/standardizer').data.decode()
+
+
+@pytest.mark.parametrize('route', ['/', '/library', '/intel'])
+def test_the_nav_is_the_three_battlecard_pages(client, route):
+    """The standardizer is not part of this tool, so it is not in the nav."""
+    page = client.get(route).data.decode()
+    nav = page[page.index('<nav>'):page.index('</nav>')]
+    assert 'Standardizer' not in nav
+    for label in ('Build', 'Library', 'Teach'):
+        assert label in nav, label
+    assert nav.count('<a ') == 3
 
 
 def test_old_battlecard_link_still_works(client):
