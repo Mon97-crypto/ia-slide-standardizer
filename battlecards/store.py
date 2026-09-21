@@ -17,6 +17,8 @@ import logging
 import os
 import re
 import threading
+import time
+import urllib.parse
 
 log = logging.getLogger(__name__)
 
@@ -68,16 +70,64 @@ def enabled() -> bool:
         return False
 
 
-def _connect():
-    import psycopg
+# A serverless Postgres, Neon among them, parks its compute after a few minutes
+# of quiet and wakes on the next connection. The wake takes a few seconds, and
+# the first attempt is usually refused outright while it happens. One long
+# timeout does not cover that: the refusal returns immediately, so the fix is to
+# try again rather than to wait longer.
+CONNECT_ATTEMPTS = 3
+CONNECT_BACKOFF = (0.75, 2.5)
+
+
+def connect_timeout() -> int:
+    try:
+        return max(3, min(int(os.environ.get('DB_CONNECT_TIMEOUT', 15)), 60))
+    except ValueError:
+        return 15
+
+
+def _dsn() -> str:
     url = database_url()
     if not url:
         raise RuntimeError('DATABASE_URL is not set.')
-    # Render's managed Postgres requires TLS. libpq negotiates it by default, and
-    # a URL that already names sslmode is left alone.
-    if 'sslmode=' not in url and not url.startswith('postgresql://localhost'):
-        url += ('&' if '?' in url else '?') + 'sslmode=prefer'
-    return psycopg.connect(url, connect_timeout=10)
+    # Every managed provider requires TLS, and a URL that already names sslmode
+    # is left alone so a provider's own setting wins. The host has to be parsed
+    # rather than prefix matched: a real development URL carries credentials, so
+    # postgresql://user:pw@127.0.0.1/db does not start with the host at all, and
+    # requiring TLS against a local server that has none refuses the connection.
+    if 'sslmode=' not in url and not _is_local(url):
+        url += ('&' if '?' in url else '?') + 'sslmode=require'
+    return url
+
+
+_LOCAL_HOSTS = ('localhost', '127.0.0.1', '::1', 'host.docker.internal')
+
+
+def _is_local(url: str) -> bool:
+    try:
+        host = urllib.parse.urlsplit(url).hostname or ''
+    except ValueError:
+        return False
+    return host.lower() in _LOCAL_HOSTS
+
+
+def _connect():
+    import psycopg
+    url = _dsn()
+    timeout = connect_timeout()
+    last = None
+    for attempt in range(CONNECT_ATTEMPTS):
+        try:
+            return psycopg.connect(url, connect_timeout=timeout)
+        except psycopg.OperationalError as exc:
+            last = exc
+            if attempt == CONNECT_ATTEMPTS - 1:
+                break
+            delay = CONNECT_BACKOFF[min(attempt, len(CONNECT_BACKOFF) - 1)]
+            log.info('Database not up yet (%s). Waking it, retry in %.2fs.',
+                     str(exc).strip().splitlines()[0][:120], delay)
+            time.sleep(delay)
+    raise last
 
 
 def init(force: bool = False) -> bool:

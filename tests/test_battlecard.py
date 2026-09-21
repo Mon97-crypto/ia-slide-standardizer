@@ -2069,3 +2069,108 @@ def test_a_downloaded_file_loads_back_as_committed_claims(tmp_path, monkeypatch)
     # And it reaches the prompt with its rule attached.
     assert 'IN A DOCUMENT WE HOLD' in intel.prompt_block('o9 Solutions', '',
                                                          entries=rows)
+
+
+# ── a serverless database that parks itself ─────────────────────────────────
+# Neon's free compute scales to zero after five minutes idle and wakes on the
+# next connection. The first attempt is refused while it wakes, so one long
+# timeout does not help: the refusal is immediate.
+
+def test_a_sleeping_database_is_woken_rather_than_reported_dead(monkeypatch):
+    import psycopg
+    from battlecards import store
+
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://u:p@ep-x.neon.tech/db')
+    monkeypatch.setattr(store.time, 'sleep', lambda seconds: None)
+    attempts = []
+
+    def flaky(url, **kwargs):
+        attempts.append(kwargs.get('connect_timeout'))
+        if len(attempts) < 3:
+            raise psycopg.OperationalError('connection refused, endpoint waking')
+        return 'a connection'
+
+    monkeypatch.setattr(psycopg, 'connect', flaky)
+    assert store._connect() == 'a connection'
+    assert len(attempts) == 3, 'it has to try again, not just wait longer'
+
+
+def test_a_database_that_is_really_gone_still_raises(monkeypatch):
+    """Retrying forever would turn a wrong URL into a hang."""
+    import psycopg
+    from battlecards import store
+
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://u:p@nowhere/db')
+    monkeypatch.setattr(store.time, 'sleep', lambda seconds: None)
+    tries = []
+
+    def dead(url, **kwargs):
+        tries.append(1)
+        raise psycopg.OperationalError('no such host')
+
+    monkeypatch.setattr(psycopg, 'connect', dead)
+    with pytest.raises(psycopg.OperationalError):
+        store._connect()
+    assert len(tries) == store.CONNECT_ATTEMPTS
+
+
+def test_tls_is_required_for_a_managed_database(monkeypatch):
+    from battlecards import store
+    monkeypatch.setenv('DATABASE_URL', 'postgres://u:p@ep-x.aws.neon.tech/db')
+    dsn = store._dsn()
+    assert dsn.startswith('postgresql://'), 'psycopg needs the longer scheme'
+    assert 'sslmode=require' in dsn
+
+
+def test_a_provider_that_sets_its_own_sslmode_wins(monkeypatch):
+    from battlecards import store
+    monkeypatch.setenv('DATABASE_URL',
+                       'postgresql://u:p@h/db?sslmode=verify-full&channel_binding=require')
+    dsn = store._dsn()
+    assert 'sslmode=verify-full' in dsn and 'sslmode=require' not in dsn
+
+
+@pytest.mark.parametrize('url', [
+    'postgresql://localhost:5432/db',
+    'postgresql://127.0.0.1:5433/db',
+    # With credentials, which is what a real development URL looks like. The
+    # first version of this prefix matched the whole URL and so missed these.
+    'postgresql://postgres:pw@127.0.0.1:5433/iabc',
+    'postgresql://user:secret@localhost/db',
+    'postgres://postgres@localhost:5432/db',
+])
+def test_a_local_database_is_left_alone(url, monkeypatch):
+    """Local development has no certificate, so requiring TLS would refuse it."""
+    from battlecards import store
+    monkeypatch.setenv('DATABASE_URL', url)
+    assert 'sslmode' not in store._dsn()
+
+
+@pytest.mark.parametrize('url', [
+    'postgres://u:p@ep-quiet-bird.eu-central-1.aws.neon.tech/battlecards',
+    'postgresql://u:p@dpg-abc123.oregon-postgres.render.com/battlecards',
+    'postgresql://postgres:p@db.abcdefgh.supabase.co:5432/postgres',
+])
+def test_a_hosted_database_always_gets_tls(url, monkeypatch):
+    from battlecards import store
+    monkeypatch.setenv('DATABASE_URL', url)
+    dsn = store._dsn()
+    assert dsn.startswith('postgresql://')
+    assert 'sslmode=require' in dsn
+
+
+def test_a_malformed_url_does_not_crash_the_check(monkeypatch):
+    from battlecards import store
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://u:p@[bad:host/db')
+    assert isinstance(store._dsn(), str)
+
+
+def test_the_connect_timeout_is_bounded_and_configurable(monkeypatch):
+    from battlecards import store
+    monkeypatch.delenv('DB_CONNECT_TIMEOUT', raising=False)
+    assert store.connect_timeout() == 15
+    monkeypatch.setenv('DB_CONNECT_TIMEOUT', '45')
+    assert store.connect_timeout() == 45
+    for bad in ('0', '-5', 'soon', '9999'):
+        monkeypatch.setenv('DB_CONNECT_TIMEOUT', bad)
+        assert 3 <= store.connect_timeout() <= 60, bad

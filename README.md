@@ -268,6 +268,33 @@ as the durable one: claims committed there survive any expiry, need no database,
 and are reviewable as a diff. The Teach page's "Download to commit" button writes
 that file for you.
 
+### A free database that does not expire
+
+The database does not have to be Render's. `DATABASE_URL` is a plain Postgres
+connection string, so any provider works.
+
+| Provider | Free storage | The catch |
+| --- | --- | --- |
+| **Neon** | 0.5 GB per project, permanent | Compute parks after 5 minutes idle and wakes on the next connection |
+| Supabase | 500 MB | The project pauses after a week with no database activity and needs resuming by hand |
+| Render | 1 GB | Expires 30 days after creation |
+
+Neon is the one that stays. Create a project, copy the connection string, and set
+it as `DATABASE_URL` on the web service. Nothing else changes: the tables are
+created on boot either way.
+
+Parking the compute is what makes it free, and `store._connect()` is built for
+it. A parked endpoint refuses the first connection outright while it wakes, so a
+longer timeout would not help and the fix is to try again: three attempts,
+backing off, which turns a wake into a slow save rather than a failed one.
+`DB_CONNECT_TIMEOUT` raises the per attempt timeout if a provider is slower
+still.
+
+TLS is required for any host that is not local. A development URL carries
+credentials, so the host is parsed rather than prefix matched, which is how
+`postgresql://postgres:pw@127.0.0.1/db` keeps working against a local server
+that has no certificate.
+
 ### Where it lives
 
 Claims the team adds go to Postgres, beside the card library. Claims committed to
