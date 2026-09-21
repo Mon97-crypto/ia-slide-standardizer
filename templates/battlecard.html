@@ -207,8 +207,9 @@
 
             <label class="thrift" for="economy">
                 <input type="checkbox" id="economy">
-                <span><b>Economy run.</b> Shallower effort and three searches instead of
-                eight. Cheaper and faster, with a thinner brief.</span>
+                <span><b>Economy run.</b> Shallower effort and six searches instead
+                of eight. Cheaper and faster, with a thinner brief. The company
+                facts are searched first either way.</span>
             </label>
 
             <div class="launch">
@@ -258,7 +259,7 @@ const ACCENT = {
 
 let presets = { competitors: [], products: [], product_solutions: {} };
 let depths = [], depth = 'standard';
-let card = null, research = '', chat = [], spend = null;
+let card = null, research = '', chat = [], spend = null, searches = null;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
@@ -316,7 +317,7 @@ async function generate() {
     const competitor = $('competitor').value.trim();
     if (!competitor) { $('competitor').focus(); return; }
     busy(true);
-    card = null; research = ''; spend = null;
+    card = null; research = ''; spend = null; searches = null;
     $('pptxBtn').disabled = true; $('jsonBtn').disabled = true;
     $('resultPanel').hidden = true;
     $('progressPanel').hidden = false;
@@ -345,6 +346,11 @@ function onEvent(ev) {
         $('feed').scrollTop = $('feed').scrollHeight;
     } else if (ev.type === 'usage') {
         spend = ev.cost;
+        showSpend();
+    } else if (ev.type === 'searches') {
+        // A card of "not found" reads the same whether the record is silent or
+        // nothing was ever searched. The count is how the seller tells them apart.
+        searches = ev.count;
         showSpend();
     } else if (ev.type === 'card') {
         track([['Searched the public record', 'done'], ['Wrote the battlecard', 'done']]);
@@ -407,10 +413,13 @@ function showSpend() {
         $('track').parentNode.insertBefore(el, $('feed'));
     }
     const tok = (spend.input + spend.cache_write + spend.cache_read + spend.output);
+    const web = searches === null ? '' : (searches
+        ? ` ${searches} web search${searches === 1 ? '' : 'es'}, billed separately.`
+        : ' No web search ran, so treat every competitor fact as unsourced.');
     el.innerHTML = `<b>$${spend.usd.toFixed(3)}</b>
         <span>token cost so far, ${tok.toLocaleString()} tokens across
-        ${spend.calls} call${spend.calls === 1 ? '' : 's'}.
-        Web search bills separately.</span>`;
+        ${spend.calls} call${spend.calls === 1 ? '' : 's'}.${web
+        || ' Web search bills separately.'}</span>`;
 }
 
 function track(rows) {

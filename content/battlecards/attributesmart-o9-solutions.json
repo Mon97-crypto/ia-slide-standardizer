@@ -1,102 +1,237 @@
 {
+  "meta": {
+    "competitor": "o9 Solutions",
+    "competitor_category": "Planning platform that consumes attributes through a knowledge graph",
+    "ia_product": "AttributeSmart",
+    "solution": "data_intelligence",
+    "owner": "Competitive Marketing",
+    "audience": "Sales and solution consulting",
+    "date": "September 2026",
+    "distribution": "internal",
+    "headline": "AttributeSmart generates the attributes. o9 Solutions consumes them.",
+    "win_theme": "They consume attributes. Lead with who produces them today, and what that team's error rate is."
+  },
+  "how_to_use": [
+    "Read the mechanism slide before the call. The technical detail is the wedge.",
+    "Establish whether they generate attributes or only consume them.",
+    "Use the matrix only when the buyer asks for a direct comparison.",
+    "Treat every Unclear rating as a question to ask, never as a gap to assert.",
+    "Log what the buyer confirms, so the next card carries fact instead of prompt."
+  ],
+  "snapshot": {
+    "headquarters": "Dallas, Texas.",
+    "founded": "Founded in 2009 by Sanjiv Sidhu and Chakri Gottemukkala.",
+    "employees": "Trackers range from roughly 1,200 to 3,300, so do not quote a precise headcount.",
+    "ownership": "Private. KKR, General Atlantic including BeyondNetZero, and Generation Investment Management are investors.",
+    "funding": "295 million dollars in January 2022 at a 2.7 billion dollar valuation, then 116 million dollars in July 2023 at a 3.7 billion dollar valuation. Both are on o9's own newsroom.",
+    "target_segment": "Large enterprise integrated business planning across verticals, retail among them.",
+    "go_to_market": "",
+    "deployment": "",
+    "notable_customers": "Research and cite before naming anyone on a call.",
+    "recent_moves": [
+      "Category: Planning platform that consumes attributes through a knowledge graph",
+      "Their public claim: The Enterprise Knowledge Graph connects customer behaviour, product attributes, financial targets and execution constraints, and plans can be built and analysed by attribute.",
+      "Refresh this quarterly. Every line needs a dated source."
+    ]
+  },
+  "positioning": {
+    "their_claim": "The Enterprise Knowledge Graph connects customer behaviour, product attributes, financial targets and execution constraints, and plans can be built and analysed by attribute.",
+    "our_claim": "CNN models take multiple product images, assign weights and biases, and identify attributes from the image itself. OCR reads packaging and label images, so attributes already printed on the pack never get retyped. NLP parses existing product descriptions and e-commerce copy, then harmonises the result when two sources disagree.",
+    "wedge": "The knowledge graph is only as good as the attributes fed into it. Ask who creates those attributes today."
+  },
+  "their_strengths": [
+    "Planning by attribute is native, including price bands, fabric type and innovation versus core.",
+    "The knowledge graph ties attributes to behaviour, targets and constraints in one model.",
+    "Granularity down to SKU, product and attribute level for analysis."
+  ],
+  "their_weaknesses": [
+    "Public material describes consuming and planning by attributes, not generating them. Confirm where their attributes originate.",
+    "No published image, OCR or label extraction capability.",
+    "No published attribute library, synonym tagging or review workflow for attribute quality."
+  ],
+  "our_advantages": [
+    {
+      "title": "Three inputs, not one",
+      "detail": "CNN models take multiple product images, assign weights and biases, and identify attributes from the image itself. OCR reads packaging and label images, so attributes already printed on the pack never get retyped.",
+      "proof": "Accuracy of 65 to 96 percent once all three inputs ran. IA AttributeSmart NRF 2026 deck"
+    },
+    {
+      "title": "A library, not a mapper",
+      "detail": "A pre-trained library of 10,000 plus fashion and home attributes, curated by retail experts, plus 400 plus food tags maintained against FDA packaging guidance. Derived attributes go beyond what the pack states, using FDA labelling guidance and external data to infer diet, allergen, wellness and clean label attributes.",
+      "proof": "10,000 plus attributes for fashion and home, 400 plus food tags. IA AttributeSmart NRF 2026 deck"
+    },
+    {
+      "title": "Built for the merchant, not the model",
+      "detail": "Reviews are prioritised by model confidence, so merchants spend their time on the tags the model ranks as least certain. APIs and file exports push into PIM, MDM, ERP, CMS and e-commerce systems, or a single API serves the attributes.",
+      "proof": "60 percent cost saving on manual attribution. IA AttributeSmart NRF 2026 deck"
+    }
+  ],
   "comparison": [
     {
       "capability": "Attribute generation from product images",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "OCR extraction from packaging and labels",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "NLP extraction from product descriptions",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Pre-trained attribute library at retail depth",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Derived attributes beyond on-pack facts",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Synonym and search term tagging",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Trend and SEO driven attribute capture",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Confidence scored review workflow",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Custom taxonomy and client mapping",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Push into PIM, MDM and e-commerce",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Time to a tagged catalogue",
-      "competitor": "unknown",
       "ia": "strong",
+      "competitor": "unknown",
       "note": "Not claimed publicly. Ask the question, do not assert the gap."
     },
     {
       "capability": "Attributes feeding downstream planning",
-      "competitor": "strong",
       "ia": "strong",
+      "competitor": "strong",
       "note": "Match. Move to depth and inputs rather than the capability itself."
+    }
+  ],
+  "objections": [
+    {
+      "objection": "Our knowledge graph already handles attributes.",
+      "response": "The graph consumes attributes. Ask which team produces them and what the error rate is. That is the input problem AttributeSmart solves.",
+      "proof": "More than 70 percent of attributes carry at least one error before automation. IA AttributeSmart NRF 2026 deck"
+    },
+    {
+      "objection": "We are mid implementation and cannot add scope.",
+      "response": "Attribution runs in parallel and improves what the implementation is being fed. Two weeks, 100,000 products, no planning change.",
+      "proof": "Two week build for 100,000 plus products. IA AttributeSmart NRF 2026 deck"
+    }
+  ],
+  "landmines": [
+    {
+      "question": "Which team produces the attributes your knowledge graph runs on, and what is their error rate?",
+      "why": "It moves the conversation from the model to its inputs.",
+      "listen_for": "No owner, or no measurement."
+    },
+    {
+      "question": "How long does it take to add a new attribute across the whole catalogue?",
+      "why": "Retrofitting an attribute by hand is a months long job.",
+      "listen_for": "An answer measured in quarters."
+    },
+    {
+      "question": "Can you plan by an attribute you do not yet capture?",
+      "why": "The honest answer is no, which is the whole pitch.",
+      "listen_for": "A request to see how we would capture it."
     }
   ],
   "discovery": [
     {
+      "theme": "Where attributes come from",
       "questions": [
         "Which team creates a new product attribute today?",
         "How many minutes per product does that take?",
         "What happens when a supplier sends an image and nothing else?"
-      ],
-      "theme": "Where attributes come from"
+      ]
     },
     {
+      "theme": "Data quality",
       "questions": [
         "What share of your attributes carry at least one error?",
         "How much of your product data goes unused because it is not standardised?",
         "Who notices first when an attribute is wrong?"
-      ],
-      "theme": "Data quality"
+      ]
     },
     {
+      "theme": "Downstream cost",
       "questions": [
         "Which decision breaks first when attributes are thin, forecast or search?",
         "What did poor product discovery cost you in conversion last quarter?"
-      ],
-      "theme": "Downstream cost"
+      ]
     }
+  ],
+  "proof_points": [
+    {
+      "stat": "60%",
+      "label": "Cost saving on manual attribution",
+      "detail": "Automating attribute creation and management cut man hours on a 500,000 image catalogue.",
+      "source": "IA AttributeSmart NRF 2026 deck"
+    },
+    {
+      "stat": "65% to 96%",
+      "label": "Attribute accuracy",
+      "detail": "Accuracy moved from 65 percent to 96 percent after the AI models took over tagging.",
+      "source": "IA AttributeSmart NRF 2026 deck"
+    },
+    {
+      "stat": "5-10%",
+      "label": "AOV uplift",
+      "detail": "Better product discovery raised average order value.",
+      "source": "IA AttributeSmart NRF 2026 deck"
+    },
+    {
+      "stat": "5-6%",
+      "label": "E-commerce search conversion",
+      "detail": "Richer attributes and synonyms improved on-site search conversion.",
+      "source": "IA AttributeSmart NRF 2026 deck"
+    }
+  ],
+  "talk_track": {
+    "positioning": "For retailers whose product data blocks every downstream decision, AttributeSmart generates deep, standardised attributes from images, labels and text, so forecasting, assortment and search all run on data merchants trust.",
+    "elevator": "AttributeSmart reads your product images, your pack labels and your descriptions, then writes back a standardised attribute set. Accuracy went from 65 percent to 96 percent at one retailer, and manual attribution cost dropped 60 percent.",
+    "discovery_open": "How many minutes does a merchant spend per product today entering and correcting attributes?",
+    "trap": "Ask where their attributes come from when a supplier sends an image and nothing else."
+  },
+  "dos": [
+    "Lead with the attribute error rate the buyer already measures.",
+    "Separate generating attributes from consuming them. That line is the deal.",
+    "Offer the two week proof on their own catalogue, 100,000 products.",
+    "Name the downstream decision the bad data is breaking, then price that.",
+    "Cite the source for every number, including ours."
   ],
   "donts": [
     "Do not claim a rival lacks a capability you have not verified on the call.",
@@ -105,125 +240,18 @@
     "Do not send this card outside Impact Analytics.",
     "Do not present a comparison row marked Unclear as though it were a gap."
   ],
-  "dos": [
-    "Lead with the attribute error rate the buyer already measures.",
-    "Separate generating attributes from consuming them. That line is the deal.",
-    "Offer the two week proof on their own catalogue, 100,000 products.",
-    "Name the downstream decision the bad data is breaking, then price that.",
-    "Cite the source for every number, including ours."
-  ],
-  "how_to_use": [
-    "Read the mechanism slide before the call. The technical detail is the wedge.",
-    "Establish whether they generate attributes or only consume them.",
-    "Use the matrix only when the buyer asks for a direct comparison.",
-    "Treat every Unclear rating as a question to ask, never as a gap to assert.",
-    "Log what the buyer confirms, so the next card carries fact instead of prompt."
-  ],
-  "landmines": [
-    {
-      "listen_for": "No owner, or no measurement.",
-      "question": "Which team produces the attributes your knowledge graph runs on, and what is their error rate?",
-      "why": "It moves the conversation from the model to its inputs."
-    },
-    {
-      "listen_for": "An answer measured in quarters.",
-      "question": "How long does it take to add a new attribute across the whole catalogue?",
-      "why": "Retrofitting an attribute by hand is a months long job."
-    },
-    {
-      "listen_for": "A request to see how we would capture it.",
-      "question": "Can you plan by an attribute you do not yet capture?",
-      "why": "The honest answer is no, which is the whole pitch."
-    }
-  ],
-  "meta": {
-    "audience": "Sales and solution consulting",
-    "competitor": "o9 Solutions",
-    "competitor_category": "Planning platform that consumes attributes through a knowledge graph",
-    "date": "September 2026",
-    "distribution": "internal",
-    "headline": "AttributeSmart generates the attributes. o9 Solutions consumes them.",
-    "ia_product": "AttributeSmart",
-    "owner": "Competitive Marketing",
-    "solution": "data_intelligence",
-    "win_theme": "They consume attributes. Lead with who produces them today, and what that team's error rate is."
-  },
-  "next_steps": [
-    "Run the two week proof: 100,000 products from their own catalogue.",
-    "Agree the accuracy metric and the readout date before the test starts.",
-    "Confirm which downstream system consumes the attributes first, PIM or planning."
-  ],
-  "objections": [
-    {
-      "objection": "Our knowledge graph already handles attributes.",
-      "proof": "More than 70 percent of attributes carry at least one error before automation. IA AttributeSmart NRF 2026 deck",
-      "response": "The graph consumes attributes. Ask which team produces them and what the error rate is. That is the input problem AttributeSmart solves."
-    },
-    {
-      "objection": "We are mid implementation and cannot add scope.",
-      "proof": "Two week build for 100,000 plus products. IA AttributeSmart NRF 2026 deck",
-      "response": "Attribution runs in parallel and improves what the implementation is being fed. Two weeks, 100,000 products, no planning change."
-    }
-  ],
-  "options": {
-    "include_notes": true,
-    "sanitize_copy": true
-  },
-  "our_advantages": [
-    {
-      "detail": "CNN models take multiple product images, assign weights and biases, and identify attributes from the image itself. OCR reads packaging and label images, so attributes already printed on the pack never get retyped.",
-      "proof": "Accuracy of 65 to 96 percent once all three inputs ran. IA AttributeSmart NRF 2026 deck",
-      "title": "Three inputs, not one"
-    },
-    {
-      "detail": "A pre-trained library of 10,000 plus fashion and home attributes, curated by retail experts, plus 400 plus food tags maintained against FDA packaging guidance. Derived attributes go beyond what the pack states, using FDA labelling guidance and external data to infer diet, allergen, wellness and clean label attributes.",
-      "proof": "10,000 plus attributes for fashion and home, 400 plus food tags. IA AttributeSmart NRF 2026 deck",
-      "title": "A library, not a mapper"
-    },
-    {
-      "detail": "Reviews are prioritised by model confidence, so merchants spend their time on the tags the model ranks as least certain. APIs and file exports push into PIM, MDM, ERP, CMS and e-commerce systems, or a single API serves the attributes.",
-      "proof": "60 percent cost saving on manual attribution. IA AttributeSmart NRF 2026 deck",
-      "title": "Built for the merchant, not the model"
-    }
-  ],
-  "positioning": {
-    "our_claim": "CNN models take multiple product images, assign weights and biases, and identify attributes from the image itself. OCR reads packaging and label images, so attributes already printed on the pack never get retyped. NLP parses existing product descriptions and e-commerce copy, then harmonises the result when two sources disagree.",
-    "their_claim": "The Enterprise Knowledge Graph connects customer behaviour, product attributes, financial targets and execution constraints, and plans can be built and analysed by attribute.",
-    "wedge": "The knowledge graph is only as good as the attributes fed into it. Ask who creates those attributes today."
-  },
   "pricing": {
-    "competitor_model": "Record only what the buyer states or the vendor publishes. Nothing here is sourced.",
     "ia_model": "Subscription scoped by category and catalogue size, with services scoped per phase. Confirm the current model with deal desk before you quote.",
+    "competitor_model": "Record only what the buyer states or the vendor publishes. Nothing here is sourced.",
     "notes": [
       "Never quote a rival price you cannot source.",
       "Price the cost of staying: manual hours plus the margin the bad data is losing."
     ]
   },
-  "proof_points": [
-    {
-      "detail": "Automating attribute creation and management cut man hours on a 500,000 image catalogue.",
-      "label": "Cost saving on manual attribution",
-      "source": "IA AttributeSmart NRF 2026 deck",
-      "stat": "60%"
-    },
-    {
-      "detail": "Accuracy moved from 65 percent to 96 percent after the AI models took over tagging.",
-      "label": "Attribute accuracy",
-      "source": "IA AttributeSmart NRF 2026 deck",
-      "stat": "65% to 96%"
-    },
-    {
-      "detail": "Better product discovery raised average order value.",
-      "label": "AOV uplift",
-      "source": "IA AttributeSmart NRF 2026 deck",
-      "stat": "5-10%"
-    },
-    {
-      "detail": "Richer attributes and synonyms improved on-site search conversion.",
-      "label": "E-commerce search conversion",
-      "source": "IA AttributeSmart NRF 2026 deck",
-      "stat": "5-6%"
-    }
+  "next_steps": [
+    "Run the two week proof: 100,000 products from their own catalogue.",
+    "Agree the accuracy metric and the readout date before the test starts.",
+    "Confirm which downstream system consumes the attributes first, PIM or planning."
   ],
   "resources": [
     {
@@ -235,40 +263,20 @@
       "url": "https://o9solutions.com/industries/retail/apparel-footwear-luxury"
     },
     {
+      "label": "o9 newsroom, 295 million dollar round",
+      "url": "https://o9solutions.com/news/o9-solutions-raises-295-million-to-grow-its-ai-powered-integrated-business-planning-platform"
+    },
+    {
+      "label": "o9 newsroom, 3.7 billion dollar valuation",
+      "url": "https://o9solutions.com/news/existing-investors-double-down-on-o9-solutions-growth-with-incremental-investment-at-3-7-billion-valuation"
+    },
+    {
       "label": "AttributeSmart product page",
       "url": "https://www.impactanalytics.ai/solutions/product-tagging"
     }
   ],
-  "snapshot": {
-    "deployment": "",
-    "employees": "",
-    "founded": "",
-    "funding": "",
-    "go_to_market": "",
-    "headquarters": "",
-    "notable_customers": "Research and cite before naming anyone on a call.",
-    "ownership": "",
-    "recent_moves": [
-      "Category: Planning platform that consumes attributes through a knowledge graph",
-      "Their public claim: The Enterprise Knowledge Graph connects customer behaviour, product attributes, financial targets and execution constraints, and plans can be built and analysed by attribute.",
-      "Refresh this quarterly. Every line needs a dated source."
-    ],
-    "target_segment": ""
-  },
-  "talk_track": {
-    "discovery_open": "How many minutes does a merchant spend per product today entering and correcting attributes?",
-    "elevator": "AttributeSmart reads your product images, your pack labels and your descriptions, then writes back a standardised attribute set. Accuracy went from 65 percent to 96 percent at one retailer, and manual attribution cost dropped 60 percent.",
-    "positioning": "For retailers whose product data blocks every downstream decision, AttributeSmart generates deep, standardised attributes from images, labels and text, so forecasting, assortment and search all run on data merchants trust.",
-    "trap": "Ask where their attributes come from when a supplier sends an image and nothing else."
-  },
-  "their_strengths": [
-    "Planning by attribute is native, including price bands, fabric type and innovation versus core.",
-    "The knowledge graph ties attributes to behaviour, targets and constraints in one model.",
-    "Granularity down to SKU, product and attribute level for analysis."
-  ],
-  "their_weaknesses": [
-    "Public material describes consuming and planning by attributes, not generating them. Confirm where their attributes originate.",
-    "No published image, OCR or label extraction capability.",
-    "No published attribute library, synonym tagging or review workflow for attribute quality."
-  ]
+  "options": {
+    "include_notes": true,
+    "sanitize_copy": true
+  }
 }

@@ -5,6 +5,7 @@ Run with: python3 -m pytest tests -q
 
 import json
 import os
+import re
 import sys
 import zipfile
 
@@ -973,3 +974,221 @@ def test_the_panel_does_not_post_its_own_bubbles():
     assert "say('assistant', 'Thinking', false)" in page
     # And the greeting is an interface note, so it is never sent as a turn.
     assert page.count('if (track) chat.push(') == 1
+
+
+# ── company facts on the snapshot ───────────────────────────────────────────
+# A real o9 card came back with "Not found" in every company fact box. Three
+# causes: the curated snapshot shipped empty, _merge_curated never merged
+# 'snapshot' at all, and economy mode gave three searches to a six part brief,
+# so the capability questions spent the budget before the facts were asked for.
+
+@pytest.mark.parametrize('competitor', sorted(attributesmart.COMPETITORS))
+def test_every_curated_card_carries_sourced_company_facts(competitor):
+    snapshot = attributesmart.card_for(competitor)['snapshot']
+    filled = [field for field in ('headquarters', 'ownership', 'funding',
+                                  'target_segment')
+              if snapshot.get(field)]
+    assert len(filled) >= 3, (competitor, snapshot)
+    # Any fact that quotes a figure has to say where the figure came from, or
+    # say plainly that it should not be quoted. A city name needs no citation;
+    # a valuation does. That distinction is the whole discipline of the card.
+    # Money and headcount are the figures a buyer will challenge, so those two
+    # carry provenance or tell the seller not to quote them. A founding year or a
+    # city needs no citation, and demanding one would only pad the slide.
+    for field in ('funding', 'employees'):
+        text = snapshot.get(field) or ''
+        assert text, (competitor, field)
+        assert any(word in text.lower() for word in (
+            'per ', 'newsroom', 'investor', 'pitchbook', 'tracker', 'own ',
+            'do not quote', 'do not present', 'no round', 'not published',
+            'no venture')), (competitor, field, text)
+
+
+def test_a_blank_curated_fact_is_left_for_the_researcher():
+    """Blank means unsourced, so the slide stays quiet instead of asserting."""
+    snapshot = attributesmart.card_for('o9 Solutions')['snapshot']
+    assert snapshot['go_to_market'] == ''
+    assert attributesmart.FACTS_NOTE
+
+
+def test_curated_facts_reach_a_generated_card():
+    """The merge bug: 'snapshot' was missing from the key list entirely."""
+    from battlecards import ai
+    generated = {'snapshot': {'headquarters': 'Not found. Verify before the call.',
+                              'founded': 'Not found. Verify before the call.',
+                              'go_to_market': 'Direct, per their careers page.'},
+                 'meta': {}}
+    merged = ai._merge_curated(generated, 'o9 Solutions', 'AttributeSmart')
+    assert merged['snapshot']['headquarters'] == 'Dallas, Texas.'
+    assert 'Sidhu' in merged['snapshot']['founded']
+    # A field the curated card leaves blank keeps what the research found.
+    assert merged['snapshot']['go_to_market'] == 'Direct, per their careers page.'
+
+
+def test_a_generated_snapshot_survives_a_competitor_with_no_curated_card():
+    from battlecards import ai
+    card = {'snapshot': {'headquarters': 'Boston.'}, 'meta': {}}
+    assert ai._merge_curated(card, 'Lily AI', 'AttributeSmart')['snapshot'] == {
+        'headquarters': 'Boston.'}
+
+
+def test_the_search_budget_can_cover_the_brief():
+    """Three searches could not answer eight company facts plus the capabilities."""
+    from battlecards import ai
+    assert ai.ECONOMY['searches'] >= 6
+    assert ai.STANDARD['searches'] >= ai.ECONOMY['searches']
+
+
+def test_company_facts_are_searched_before_the_capabilities():
+    from battlecards import ai
+    prompt = ai._research_prompt('o9 Solutions', 'AttributeSmart', '')
+    facts_at = prompt.index('headquarters')
+    caps_at = prompt.index('For each capability')
+    assert facts_at < caps_at, 'the cheap facts must not be crowded out'
+    assert 'FIRST' in prompt
+
+
+def test_one_definition_of_the_search_tool():
+    from battlecards import ai
+    assert not hasattr(ai, 'WEB_SEARCH_TOOL'), 'two definitions can drift apart'
+    assert ai._search_tool(6)['max_uses'] == 6
+
+
+class _SearchUsage:
+    """A usage object carrying a server tool count."""
+
+    def __init__(self, searches=None):
+        self.input_tokens = 10
+        self.output_tokens = 10
+        self.cache_creation_input_tokens = 0
+        self.cache_read_input_tokens = 0
+        if searches is not None:
+            self.server_tool_use = type('S', (), {'web_search_requests': searches})()
+
+
+@pytest.mark.parametrize('searches,expected', [(0, 0), (4, 4), (None, 0)])
+def test_the_search_count_is_reported(searches, expected):
+    """Zero searches and a genuinely silent record must be distinguishable."""
+    from battlecards import ai
+    assert ai.searches_used(_SearchUsage(searches)) == expected
+
+
+def test_a_truncated_brief_is_an_error_not_a_card_of_not_founds(monkeypatch):
+    from battlecards import ai
+
+    class FakeStream:
+        text_stream = iter(['Partial brief'])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return type('M', (), {'stop_reason': 'max_tokens', 'usage': _SearchUsage(2),
+                                  'content': []})()
+
+    class FakeClient:
+        messages = type('M', (), {'stream': lambda self, **kw: FakeStream()})()
+
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: FakeClient())
+    events = list(ai.generate_events('o9 Solutions', 'AttributeSmart'))
+    assert events[-1]['type'] == 'error'
+    assert 'cut off' in events[-1]['message']
+    assert not any(event['type'] == 'card' for event in events)
+
+
+def test_a_run_with_no_search_says_so(monkeypatch):
+    """Silent failure is the thing to avoid: the card would look researched."""
+    from battlecards import ai
+
+    class FakeStream:
+        text_stream = iter(['A brief with no sources.'])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return type('M', (), {'stop_reason': 'end_turn', 'usage': _SearchUsage(0),
+                                  'content': []})()
+
+    class FakeClient:
+        messages = type('M', (), {'stream': lambda self, **kw: FakeStream()})()
+
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: FakeClient())
+    monkeypatch.setattr(ai, '_structure',
+                        lambda *a, **k: {'meta': {}, 'snapshot': {}})
+    events = list(ai.generate_events('o9 Solutions', 'AttributeSmart'))
+    counts = [event for event in events if event['type'] == 'searches']
+    assert counts and counts[0]['count'] == 0
+    warning = [event for event in events
+               if event['type'] == 'status' and 'no web search ran' in event['message']]
+    assert warning, [event['type'] for event in events]
+
+
+# ── the snapshot grid has to flow ───────────────────────────────────────────
+# The facts above are sentences, not single words, and the grid used a fixed
+# 0.52in row. The longer facts ran straight over the next row's label.
+
+@pytest.mark.parametrize('competitor', sorted(attributesmart.COMPETITORS))
+def test_no_company_fact_overruns_its_box(tmp_path, competitor):
+    from pptx import Presentation
+    from pptx.util import Emu
+    from battlecards.brand import text_height
+
+    card = attributesmart.card_for(competitor)
+    deck = Presentation(service.build(card, str(tmp_path))['path'])
+    slide = next(s for s in deck.slides
+                 if any(sh.has_text_frame and 'Competitor snapshot' in sh.text_frame.text
+                        for sh in s.shapes))
+
+    # The left panel's text, top to bottom. Labels are the 6pt runs.
+    boxes = []
+    for shape in slide.shapes:
+        if not shape.has_text_frame or not shape.text_frame.text.strip():
+            continue
+        if shape.left > Emu(int(deck.slide_width) // 2):
+            continue                      # right panel, a bulleted list
+        runs = [run for para in shape.text_frame.paragraphs for run in para.runs]
+        if not runs or runs[0].font.size is None:
+            continue
+        boxes.append((int(shape.top), int(shape.height), shape.text_frame.text,
+                      runs[0].font.size.pt, int(shape.width)))
+    boxes.sort()
+
+    for top, height, text, size, width in boxes:
+        if size <= 6.5:
+            continue                      # a label, one line by construction
+        needed = text_height(text, width, size)
+        assert needed <= height, (competitor, text[:40], needed, height)
+
+    # A value's text must clear the next row's label. The label box itself sits a
+    # hair inside its own value's offset by design, so only values are checked.
+    for index, (top, height, text, size, width) in enumerate(boxes):
+        if size <= 6.5:
+            continue
+        below = [box for box in boxes[index + 1:] if box[0] > top + 100]
+        if not below:
+            continue
+        needed = text_height(text, width, size)
+        assert top + needed <= below[0][0], (competitor, text[:40], below[0][2][:30])
+
+
+def test_the_grid_shrinks_rather_than_spilling_off_the_panel():
+    """Eight long facts still have to land inside the card."""
+    card = attributesmart.card_for('o9 Solutions')
+    long_fact = ('A deliberately long company fact that runs well past one line so '
+                 'the grid has to either shrink the type or run out of room. ') * 2
+    for field in ('headquarters', 'founded', 'employees', 'ownership', 'funding',
+                  'target_segment', 'go_to_market', 'deployment'):
+        card['snapshot'][field] = long_fact
+    import tempfile
+    with tempfile.TemporaryDirectory() as out:
+        result = service.build(card, out)
+    assert result['compatibility']['ok']

@@ -539,23 +539,48 @@ class BattlecardDeck:
 
         grid_top = BODY_TOP + Inches(0.5)
         cell_w = (left_w - 2 * PAD - Inches(0.2)) / 2
-        cell_h = Inches(0.52)
-        display = filled or [(label, 'Add detail') for label, _ in fields[:6]]
-        rows_used = 0
-        for index, (label, value) in enumerate(display[:8]):
-            col, row = index % 2, index // 2
-            rows_used = row + 1
-            left = MARGIN + PAD + col * (cell_w + Inches(0.2))
-            top = grid_top + row * cell_h
-            label_box = add_textbox(slide, left, top, cell_w, Inches(0.16))
-            write_paragraph(label_box.text_frame, label.upper(), Pt(6), bold=True,
-                            color=GRAY_3, font=self.theme.body_font,
-                            space_after=0, line_spacing=1.0, first=True)
-            self._paragraph_block(slide, left, top + Inches(0.15), cell_w, Inches(0.34),
-                                  value, max_pt=9.5, min_pt=7)
+        display = (filled or [(label, 'Add detail') for label, _ in fields[:6]])[:8]
+        rows = [display[index:index + 2] for index in range(0, len(display), 2)]
+
+        # A row is as tall as the taller of its two facts. These values carry real
+        # sourced detail, "295 million dollars in January 2022 at a 2.7 billion
+        # dollar valuation" rather than a single word, and a fixed row height used
+        # to run that text straight over the next row's label. One size is chosen
+        # for the whole grid so the column still reads as a grid.
+        label_h = Inches(0.15)
+        row_gap = Inches(0.07)
+        reserved = Inches(0.56) if customers else Inches(0.1)
+        room = int(BODY_TOP + BODY_H - grid_top - reserved)
+        size, heights = 9.5, []
+        while True:
+            # Measured against a narrower column than the text actually gets,
+            # plus a line of slack. estimate_lines is an approximation and
+            # PowerPoint's own wrap is the authority, so the measurement has to
+            # err long: a fact that wraps past its box lands on the next row's
+            # label, which is worse than a little unused white space.
+            measure_w = int(cell_w * 0.9)
+            heights = [max(text_height(value, measure_w, size, extra_lines=1)
+                           for _, value in row)
+                       for row in rows]
+            total = sum(height + int(label_h) + int(row_gap) for height in heights)
+            if total <= room or size <= 7:
+                break
+            size -= 0.5
+
+        top = grid_top
+        for row, height in zip(rows, heights):
+            for col, (label, value) in enumerate(row):
+                left = MARGIN + PAD + col * (cell_w + Inches(0.2))
+                label_box = add_textbox(slide, left, top, cell_w, Inches(0.16))
+                write_paragraph(label_box.text_frame, label.upper(), Pt(6), bold=True,
+                                color=GRAY_3, font=self.theme.body_font,
+                                space_after=0, line_spacing=1.0, first=True)
+                self._paragraph_block(slide, left, top + label_h, cell_w,
+                                      Emu(height), value, max_pt=size, min_pt=7)
+            top = Emu(int(top) + height + int(label_h) + int(row_gap))
 
         if customers:
-            top = grid_top + rows_used * cell_h + Inches(0.04)
+            top = Emu(int(top) + int(Inches(0.05)))
             available = BODY_TOP + BODY_H - top - Inches(0.14)
             if available > Inches(0.3):
                 label_box = add_textbox(slide, MARGIN + PAD, top, left_w - 2 * PAD, Inches(0.16))

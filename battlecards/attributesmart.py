@@ -137,6 +137,24 @@ HOW_TO_USE = [
 
 COMPETITORS = {
     'Oracle Retail': {
+        # Company facts, sourced by hand. A blank field is not an oversight: it
+        # means nothing was sourced, so the researcher fills it rather than the
+        # deck asserting it. See FACTS_NOTE below.
+        'facts': {
+            'headquarters': 'A division of Oracle Corporation, not a standalone '
+                            'vendor. Take the corporate address from Oracle '
+                            'investor relations rather than a data broker.',
+            'employees': 'Not published at division level. Oracle does not break '
+                         'out Retail headcount, so do not quote one.',
+            'ownership': 'Public. A business unit of Oracle Corporation, NYSE ORCL.',
+            'funding': 'No round to quote. Funded from Oracle operations.',
+            'target_segment': 'Enterprise retailers, sold inside the Oracle Retail suite.',
+            'deployment': 'Cloud services, per Oracle\'s own Merchandising Cloud '
+                          'Services naming.',
+            'notable_customers': 'Oracle publishes retail references on its own site. '
+                                 'Cite an Oracle page, not a tracker database, before '
+                                 'naming a retailer on a call.',
+        },
         'theme': 'Their extraction reads text. Lead with the image and label inputs their public material never claims.',
         'category': 'Enterprise retail suite with a dedicated attribute extraction product',
         'claim': 'Machine learning extracts item attributes from free-form product '
@@ -199,6 +217,23 @@ COMPETITORS = {
         ],
     },
     'Blue Yonder': {
+        'facts': {
+            'headquarters': 'Scottsdale, Arizona.',
+            'founded': 'Founded in 1985 as JDA Software. Renamed Blue Yonder in '
+                       'February 2020.',
+            'employees': 'Trackers disagree and Panasonic does not break out the '
+                         'figure. Do not quote a headcount.',
+            'ownership': 'Owned by Panasonic since 2021, at 8.5 billion dollars '
+                         'including debt, per Panasonic investor relations.',
+            'funding': 'No venture round to quote. Panasonic funds it as a subsidiary.',
+            'target_segment': 'Retail and supply chain, enterprise scale.',
+            'recent_moves': [
+                'Panasonic has said it is considering listing its supply chain '
+                'business with Blue Yonder at the centre. The reporting dates from '
+                '2022 and no completion is confirmed, so treat it as unresolved and '
+                'check the position before raising it.',
+            ],
+        },
         'theme': 'They buy attribute quality from a content network. Lead with the private label share no network covers.',
         'category': 'Retail and supply chain suite, product content through partnership',
         'claim': 'A strategic partnership with Syndigo brings GS1 aligned product '
@@ -259,9 +294,25 @@ COMPETITORS = {
              'url': 'https://syndigo.com/news/syndigo-blue-yonder-trusted-product-data-partnership/'},
             {'label': 'Blue Yonder and Syndigo, press release',
              'url': 'https://www.businesswire.com/news/home/20260519898378/en/Blue-Yonder-and-Syndigo-Partner-to-Bring-Trusted-Product-Data-to-Supply-Chain-Planning-and-Execution'},
+            {'label': 'Panasonic investor relations, Blue Yonder acquisition',
+             'url': 'https://holdings.panasonic/global/corporate/investors/pdf/en210423-1.pdf'},
         ],
     },
     'RELEX Solutions': {
+        'facts': {
+            'headquarters': 'Helsinki, Finland.',
+            'founded': 'Founded in 2005 by Mikko Karkkainen, Johanna Smaros and '
+                       'Michael Falck.',
+            'employees': 'About 2,355 per PitchBook in July 2026. A tracker figure, '
+                         'so do not present it as RELEX published.',
+            'ownership': 'Private. Blackstone Growth led a 500 million euro round at '
+                         'a 5 billion euro valuation, confirmed on RELEX\'s own '
+                         'newsroom.',
+            'funding': 'The 500 million euro Blackstone Growth round is on RELEX\'s '
+                       'own newsroom. PitchBook puts total raised at 811 million '
+                       'dollars, which is a tracker figure.',
+            'target_segment': 'Grocery and retail demand and supply planning.',
+        },
         'theme': 'Their attributes exist to serve a forecast. Lead with catalogue grade depth, forty fields not four.',
         'category': 'Retail planning and replenishment platform with a product attribute AI agent',
         'claim': 'The Product Attribute AI agent identifies relevant product '
@@ -323,9 +374,24 @@ COMPETITORS = {
              'url': 'https://www.relexsolutions.com/resources/introducing-relex-ai-agents-for-retail/'},
             {'label': 'RELEX demand planning',
              'url': 'https://www.relexsolutions.com/solutions/demand-planning-software/'},
+            {'label': 'RELEX newsroom, Blackstone Growth round',
+             'url': 'https://www.relexsolutions.com/news/relex-solutions-raises-500m-in-blackstone-led-funding-round-at-5bn-valuation/'},
         ],
     },
     'o9 Solutions': {
+        'facts': {
+            'headquarters': 'Dallas, Texas.',
+            'founded': 'Founded in 2009 by Sanjiv Sidhu and Chakri Gottemukkala.',
+            'employees': 'Trackers range from roughly 1,200 to 3,300, so do not '
+                         'quote a precise headcount.',
+            'ownership': 'Private. KKR, General Atlantic including BeyondNetZero, '
+                         'and Generation Investment Management are investors.',
+            'funding': '295 million dollars in January 2022 at a 2.7 billion dollar '
+                       'valuation, then 116 million dollars in July 2023 at a 3.7 '
+                       'billion dollar valuation. Both are on o9\'s own newsroom.',
+            'target_segment': 'Large enterprise integrated business planning across '
+                              'verticals, retail among them.',
+        },
         'theme': "They consume attributes. Lead with who produces them today, and what that team's error rate is.",
         'category': 'Planning platform that consumes attributes through a knowledge graph',
         'claim': 'The Enterprise Knowledge Graph connects customer behaviour, product '
@@ -381,6 +447,10 @@ COMPETITORS = {
              'url': 'https://o9solutions.com/solutions/merchandise-planning'},
             {'label': 'o9 apparel, footwear and luxury planning',
              'url': 'https://o9solutions.com/industries/retail/apparel-footwear-luxury'},
+            {'label': 'o9 newsroom, 295 million dollar round',
+             'url': 'https://o9solutions.com/news/o9-solutions-raises-295-million-to-grow-its-ai-powered-integrated-business-planning-platform'},
+            {'label': 'o9 newsroom, 3.7 billion dollar valuation',
+             'url': 'https://o9solutions.com/news/existing-investors-double-down-on-o9-solutions-growth-with-incremental-investment-at-3-7-billion-valuation'},
         ],
     },
 }
@@ -408,6 +478,33 @@ DIRECT_RIVALS = [
                                'AttributeSmart writes into.',
      'url': 'https://www.akeneo.com/'},
 ]
+
+
+FACTS_NOTE = """A blank field in `facts` is deliberate.
+
+It means nothing was sourced for that competitor, so the researcher fills it and
+the deck stays quiet, rather than the card asserting a figure nobody checked. A
+filled field carries where it came from inside the sentence, and says so plainly
+when the number is a third party tracker rather than the company's own word."""
+
+_SNAPSHOT_FIELDS = ('headquarters', 'founded', 'employees', 'ownership', 'funding',
+                    'target_segment', 'go_to_market', 'deployment',
+                    'notable_customers')
+
+
+def _snapshot_for(profile: dict) -> dict:
+    """Company facts for the snapshot slide, from the hand sourced `facts` block."""
+    facts = profile.get('facts') or {}
+    snapshot = {field: facts.get(field) or '' for field in _SNAPSHOT_FIELDS}
+    if not snapshot['notable_customers']:
+        snapshot['notable_customers'] = ('Research and cite before naming anyone '
+                                         'on a call.')
+    snapshot['recent_moves'] = list(facts.get('recent_moves') or []) + [
+        'Category: %s' % profile['category'],
+        'Their public claim: %s' % profile['claim'],
+        'Refresh this quarterly. Every line needs a dated source.',
+    ]
+    return snapshot
 
 
 def card_for(competitor: str, owner: str = '', date_label: str = '') -> dict:
@@ -441,17 +538,7 @@ def card_for(competitor: str, owner: str = '', date_label: str = '') -> dict:
             'win_theme': profile.get('theme') or profile['wedge'],
         },
         'how_to_use': list(HOW_TO_USE),
-        'snapshot': {
-            'headquarters': '', 'founded': '', 'employees': '', 'ownership': '',
-            'funding': '', 'target_segment': '',
-            'go_to_market': '', 'deployment': '',
-            'notable_customers': 'Research and cite before naming anyone on a call.',
-            'recent_moves': [
-                'Category: %s' % profile['category'],
-                'Their public claim: %s' % profile['claim'],
-                'Refresh this quarterly. Every line needs a dated source.',
-            ],
-        },
+        'snapshot': _snapshot_for(profile),
         'positioning': {
             'their_claim': profile['claim'],
             'our_claim': MECHANISM['image'] + ' ' + MECHANISM['ocr'] + ' '

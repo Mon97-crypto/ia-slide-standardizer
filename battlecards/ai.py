@@ -31,7 +31,6 @@ log = logging.getLogger(__name__)
 MODEL = 'claude-opus-5'
 # Server side web search, so competitor claims can carry a real source. This runs
 # on Anthropic's infrastructure, not from this container.
-WEB_SEARCH_TOOL = {'type': 'web_search_20260209', 'name': 'web_search', 'max_uses': 8}
 
 RESEARCH_MAX_TOKENS = 32000
 STRUCTURE_MAX_TOKENS = 32000
@@ -46,12 +45,26 @@ PRICING = {'input': 5.00, 'output': 25.00, 'cache_write': 6.25, 'cache_read': 0.
 # `max_tokens` is only a ceiling. Output bills for what is generated, so a
 # generous cap costs nothing and avoids truncating a long card. Economy saves
 # through shallower effort and fewer searches instead.
-ECONOMY = {'effort': 'low', 'searches': 3, 'max_tokens': 24000}
+# Six searches is the floor that still answers the snapshot. At roughly a cent a
+# search, cutting to three saved about five cents and cost the whole company facts
+# slide, because the capability questions below spend the budget first.
+ECONOMY = {'effort': 'low', 'searches': 6, 'max_tokens': 24000}
 STANDARD = {'effort': 'high', 'searches': 8, 'max_tokens': RESEARCH_MAX_TOKENS}
 
 
 def _search_tool(max_uses: int) -> dict:
     return {'type': 'web_search_20260209', 'name': 'web_search', 'max_uses': max_uses}
+
+
+def searches_used(usage) -> int:
+    """How many web searches the API actually ran.
+
+    A card full of "not found" means one of two very different things: searched
+    and genuinely absent, or never searched at all. The count tells them apart, so
+    it goes to the UI alongside the cost.
+    """
+    server = getattr(usage, 'server_tool_use', None)
+    return int(getattr(server, 'web_search_requests', 0) or 0) if server else 0
 
 
 def usage_cost(usage) -> dict:
@@ -348,9 +361,14 @@ def _research_prompt(competitor: str, product: str, notes: str) -> str:
     ask = (
         'Research %(comp)s as a competitor to Impact Analytics %(prod)s.\n\n'
         'Search the public record. Then write a brief covering:\n'
-        '1. What %(comp)s actually sells, in their own words, with the source URL.\n'
-        '2. Company facts you can source: headquarters, founding year, size, '
-        'ownership, funding, target segment, go to market, deployment model.\n'
+        '1. Company facts, and search for these FIRST, before anything else: '
+        'headquarters, founding year and founders, headcount, ownership, funding '
+        'and valuation, target segment, go to market, deployment model. A company '
+        'profile page or a funding announcement usually answers most of them in '
+        'one search, so this is the cheapest part of the brief. Where trackers '
+        'disagree on headcount, say so and give the range rather than a figure. '
+        'Name the source inside each fact.\n'
+        '2. What %(comp)s actually sells, in their own words, with the source URL.\n'
         '3. Dated news from the last 12 months, each with a source URL.\n'
         '4. What they genuinely do well.\n'
         '5. For each capability, whether the public record says they have it, '
@@ -366,20 +384,22 @@ def _research_prompt(competitor: str, product: str, notes: str) -> str:
     return ask
 
 
-def _research(client, competitor: str, product: str, notes: str) -> str:
+def _research(client, competitor: str, product: str, notes: str,
+              mode: dict = None) -> str:
     """Phase one: search the public record and write a sourced brief.
 
     Kept separate from the structuring call because citations and structured
     output formats cannot be combined in one request.
     """
+    mode = mode or STANDARD
     ask = _research_prompt(competitor, product, notes)
     with client.messages.stream(
         model=MODEL,
-        max_tokens=RESEARCH_MAX_TOKENS,
+        max_tokens=mode['max_tokens'],
         system=_system_prompt(product, competitor),
         thinking={'type': 'adaptive'},
-        output_config={'effort': 'high'},
-        tools=[WEB_SEARCH_TOOL],
+        output_config={'effort': mode['effort']},
+        tools=[_search_tool(mode['searches'])],
         messages=[{'role': 'user', 'content': ask}],
     ) as stream:
         message = stream.get_final_message()
@@ -506,6 +526,15 @@ def _merge_curated(card: dict, competitor: str, product: str) -> dict:
                     'positioning', 'talk_track', 'dos', 'donts', 'resources'):
             if curated.get(key):
                 merged[key] = curated[key]
+        # Company facts merge field by field, not wholesale. A hand sourced fact
+        # wins, and a field the curated card leaves blank keeps what the research
+        # found, so the snapshot is the best of both rather than one or the other.
+        snapshot = dict(card.get('snapshot') or {})
+        for field, value in (curated.get('snapshot') or {}).items():
+            if value:
+                snapshot[field] = value
+        if snapshot:
+            merged['snapshot'] = snapshot
         merged['meta'] = dict(card.get('meta', {}), **curated['meta'])
         merged['_curated'] = True
         return merged
@@ -564,7 +593,20 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         if message.stop_reason == 'refusal':
             yield {'type': 'error', 'message': 'The research request was declined.'}
             return
+        if message.stop_reason == 'max_tokens':
+            yield {'type': 'error',
+                   'message': 'The brief was cut off at the token ceiling, so the '
+                              'card would be built on half the research. Pick a '
+                              'shorter depth, or raise the ceiling.'}
+            return
         research = ''.join(chunks).strip()
+        searches = searches_used(message.usage)
+        yield {'type': 'searches', 'count': searches}
+        if not searches:
+            yield {'type': 'status', 'step': 'research',
+                   'message': 'Warning: no web search ran, so every competitor fact '
+                              'in this card is unsourced. Check that web search is '
+                              'enabled on the API account.'}
 
         yield {'type': 'status', 'step': 'structure',
                'message': 'Writing the battlecard'}
