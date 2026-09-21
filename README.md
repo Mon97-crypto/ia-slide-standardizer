@@ -5,6 +5,8 @@ product, pick a length, and Claude researches the public record and writes the d
 
 - **Battlecard Builder** at `/` is the product. Three inputs, a chat assistant, and a
   PPTX download.
+- **Library** at `/library` is the shared gallery. Every generated card lands there, so
+  the team browses one place instead of passing decks around.
 - **Slide Standardizer** at `/standardizer` is the original tool, kept but no longer the
   front door.
 
@@ -55,7 +57,11 @@ python3 -m pytest tests -q
 | Variable | Effect when unset |
 |---|---|
 | `ANTHROPIC_API_KEY` | No research and no assistant. Saved cards still build. |
+| `DATABASE_URL` | No shared library. Cards still generate and download. |
 | `IA_AUTH_USER`, `IA_AUTH_PASSWORD` | Every route is open. Unsafe with real content. |
+
+Nothing here is required to run the app. Each missing piece disables its own feature and
+says so in the UI rather than failing.
 
 ### Access control
 
@@ -155,6 +161,38 @@ the only one shipping a directly competing extraction product. The vendors that
 actually compete on generation are listed in `DIRECT_RIVALS`: Lily AI, Vue.ai,
 Pixyle AI, Syndigo, Salsify and Akeneo.
 
+## The shared library
+
+`battlecards/store.py` keeps every generated card in Postgres: the card JSON, the research
+brief behind it, the slide count, how many capabilities came back unverified, and who built
+it. The gallery at `/library` lists them newest first with the solution accent on each card,
+filters by competitor text or IA product, and opens a drawer with the talk track, the
+capability matrix and the proof points. Any card rebuilds to PPTX at a different depth
+without regenerating, so a colleague's full technical card becomes your summary in one
+click.
+
+Render provisions the database from `render.yaml`:
+
+```yaml
+databases:
+  - name: ia-battlecards-db
+    plan: free
+    databaseName: battlecards
+    user: battlecards
+```
+
+`DATABASE_URL` is wired to it through `fromDatabase`, so a Blueprint apply needs no manual
+step. The table is created on first boot, and `init()` is safe to call repeatedly. Render
+hands out `postgres://` URLs and psycopg wants `postgresql://`, so the store rewrites the
+scheme; a test covers that.
+
+Run the library tests against a real Postgres by setting `DATABASE_URL`. They skip
+without one, so the suite passes either way:
+
+```bash
+DATABASE_URL=postgresql://localhost/battlecards python3 -m pytest tests -q
+```
+
 ### Using it from Python
 
 ```python
@@ -241,6 +279,7 @@ battlecards/
   builder.py     slide builders, pagination, the deck assembler
   compat.py      Google Slides compatibility audit
   ai.py          Claude Opus 5 research, structured card generation, chat assistant
+  store.py       the shared Postgres library, optional
   attributesmart.py  deep AttributeSmart card set, IA facts plus sourced rivals
   auth.py        optional HTTP basic auth over every route
   service.py     glue for the Flask routes
@@ -249,6 +288,7 @@ content/battlecards/
 build_battlecards.py  build every card from content/
 templates/
   battlecard.html   the builder UI, the landing page
+  library.html      the shared gallery
   index.html        the original standardizer, at /standardizer
 tests/
   test_battlecard.py

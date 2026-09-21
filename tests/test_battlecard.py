@@ -562,3 +562,141 @@ def test_generate_route_streams_events(client, monkeypatch):
     assert response.mimetype == 'text/event-stream'
     body = response.get_data(as_text=True)
     assert '"type": "status"' in body and '"type": "card"' in body
+
+
+# ── shared library ──────────────────────────────────────────────────────────
+
+def test_render_postgres_scheme_is_rewritten(monkeypatch):
+    """Render hands out postgres:// URLs; psycopg needs postgresql://."""
+    from battlecards import store
+    monkeypatch.setenv('DATABASE_URL', 'postgres://user:pw@host/db')
+    assert store.database_url() == 'postgresql://user:pw@host/db'
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://user:pw@host/db')
+    assert store.database_url() == 'postgresql://user:pw@host/db'
+
+
+def test_library_is_disabled_without_a_database(monkeypatch):
+    from battlecards import store
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    assert store.enabled() is False
+    assert store.init() is False
+    assert store.save({'meta': {'competitor': 'Acme'}}) == {}
+    assert store.listing() == []
+    assert store.get(1) == {}
+    assert store.delete(1) is False
+    assert store.stats() == {'enabled': False, 'cards': 0,
+                             'competitors': 0, 'products': 0}
+
+
+def test_library_page_explains_a_missing_database(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app.battlecard_store, 'enabled', lambda: False)
+    body = flask_app.app.test_client().get('/library').data.decode()
+    assert 'library is not connected' in body
+    assert 'DATABASE_URL' in body
+
+
+def test_build_still_works_without_a_library(client, monkeypatch, tmp_path):
+    """A missing database must never break the deck build."""
+    import app as flask_app
+    monkeypatch.setattr(flask_app.battlecard_store, 'save', lambda *a, **k: {})
+    payload = attributesmart.card_for('o9 Solutions')
+    payload['meta']['depth'] = 'summary'
+    response = client.post('/api/battlecard/build', json=payload)
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body['library_entry'] is None
+    assert body['slide_count'] >= 6
+
+
+# These need a real Postgres. DATABASE_URL points at one in CI and locally.
+pg = pytest.mark.skipif(not os.environ.get('DATABASE_URL'),
+                        reason='set DATABASE_URL to run the library tests')
+
+
+@pg
+def test_store_round_trip():
+    from battlecards import store
+    assert store.init(force=True) is True
+    payload = attributesmart.card_for('Oracle Retail')
+    payload['meta']['depth'] = 'standard'
+    saved = store.save(payload, slide_count=13, research='a brief',
+                       author='tester@impactanalytics.co', curated=True)
+    assert saved['id'] and saved['competitor'] == 'Oracle Retail'
+    assert saved['slide_count'] == 13 and saved['curated'] is True
+    # unverified counts the unknown competitor ratings
+    expected = sum(1 for row in payload['comparison']
+                   if row['competitor'] == 'unknown')
+    assert saved['unverified'] == expected
+
+    full = store.get(saved['id'])
+    assert full['card']['meta']['competitor'] == 'Oracle Retail'
+    assert len(full['card']['comparison']) == len(payload['comparison'])
+    assert full['research'] == 'a brief'
+    assert full['views'] >= 1
+    assert store.delete(saved['id']) is True
+    assert store.get(saved['id']) == {}
+
+
+@pg
+def test_store_filters():
+    from battlecards import store
+    store.init(force=True)
+    made = []
+    for name, product in (('Zeta Planning', 'AttributeSmart'),
+                          ('Omega Pricing', 'PriceSmart')):
+        payload = attributesmart.card_for('o9 Solutions')
+        payload['meta']['competitor'] = name
+        payload['meta']['ia_product'] = product
+        made.append(store.save(payload, slide_count=9)['id'])
+    try:
+        assert [row['competitor'] for row in store.listing(query='zeta')] == ['Zeta Planning']
+        products = {row['ia_product'] for row in store.listing(product='PriceSmart')}
+        assert products == {'PriceSmart'}
+        assert store.listing(limit=1) and len(store.listing(limit=1)) == 1
+    finally:
+        for card_id in made:
+            store.delete(card_id)
+
+
+@pg
+def test_library_routes(client):
+    from battlecards import store
+    store.init(force=True)
+    payload = attributesmart.card_for('RELEX Solutions')
+    payload['meta']['depth'] = 'summary'
+    saved = store.save(payload, slide_count=7)
+    try:
+        listing = client.get('/api/library').get_json()
+        assert listing['stats']['enabled'] is True
+        assert any(row['id'] == saved['id'] for row in listing['cards'])
+        assert 'AttributeSmart' in listing['products']
+
+        detail = client.get('/api/library/%d' % saved['id']).get_json()
+        assert detail['card']['meta']['competitor'] == 'RELEX Solutions'
+
+        rebuilt = client.post('/api/library/%d/build' % saved['id'],
+                              json={'depth': 'technical'}).get_json()
+        assert rebuilt['slide_count'] >= 17  # rebuilt longer than it was saved
+
+        assert client.get('/api/library/99999999').status_code == 404
+        assert client.post('/api/library/99999999/build').status_code == 404
+    finally:
+        store.delete(saved['id'])
+
+
+@pg
+def test_generated_cards_land_in_the_library(client):
+    """The build route is what shares a card, so it must write the row."""
+    from battlecards import store
+    store.init(force=True)
+    before = store.stats()['cards']
+    payload = attributesmart.card_for('Blue Yonder')
+    payload['meta']['depth'] = 'summary'
+    body = client.post('/api/battlecard/build',
+                       json=dict(payload, research='brief', curated=True)).get_json()
+    entry = body['library_entry']
+    assert entry and entry['competitor'] == 'Blue Yonder'
+    assert store.stats()['cards'] == before + 1
+    assert store.get(entry['id'])['research'] == 'brief'
+    store.delete(entry['id'])

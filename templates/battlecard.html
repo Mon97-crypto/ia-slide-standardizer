@@ -215,6 +215,7 @@
         <span class="ai-dot {{ '' if ai_enabled else 'off' }}" id="aiDot">
             <i></i><span id="aiLabel">{{ 'Claude connected' if ai_enabled else 'Claude not connected' }}</span>
         </span>
+        <a href="{{ url_for('library_page') }}">Library</a>
         <a href="{{ url_for('standardizer') }}">Slide Standardizer</a>
     </div>
 </header>
@@ -415,7 +416,9 @@ function onGenerateEvent(ev) {
 async function buildDeck(curated) {
     const res = await fetch('/api/battlecard/build', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(card)
+        body: JSON.stringify(Object.assign({}, card, {
+            research: research, curated: !!curated, save_to_library: true
+        }))
     });
     const data = await res.json();
     if (!res.ok) { fail(data.error || 'The deck could not be built.'); return; }
@@ -442,6 +445,10 @@ async function buildDeck(curated) {
         html += `<div class="note warn"><b>${unclear} capabilit${unclear === 1 ? 'y is' : 'ies are'}
             marked Unclear.</b> The public record did not support a rating, so the deck tells
             the seller to ask rather than asserting a gap. Ask me about any of them.</div>`;
+    }
+    if (data.library_entry) {
+        html += `<div class="note ok">Saved to the <a href="/library">shared library</a>
+            so the rest of the team can find it.</div>`;
     }
     const warnings = data.warnings || [];
     if (warnings.length) {

@@ -19,6 +19,7 @@ from battlecards import ai as battlecard_ai
 from battlecards import auth as battlecard_auth
 from battlecards import service as battlecard_service
 from battlecards import schema as battlecard_schema
+from battlecards import store as battlecard_store
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -32,11 +33,16 @@ os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 # carry competitive intelligence, so a deployment holding real content needs both.
 battlecard_auth.install(app)
 
+# Prepare the shared library if a database is attached. A missing DATABASE_URL
+# is not an error: the builder works without a library.
+battlecard_store.init()
+
 
 @app.route('/healthz')
 def healthz():
     """Unauthenticated health check, so the platform probe keeps working."""
-    return jsonify({'status': 'ok', 'auth': battlecard_auth.is_enabled()})
+    return jsonify({'status': 'ok', 'auth': battlecard_auth.is_enabled(),
+                    'library': battlecard_store.enabled()})
 
 # ─── Brand Constants ────────────────────────────────────────────────────────────
 BRAND = {
@@ -911,6 +917,13 @@ def battlecard_build():
         import traceback
         return jsonify({'error': str(exc), 'traceback': traceback.format_exc()}), 500
 
+    saved = {}
+    if data.get('save_to_library', True):
+        saved = battlecard_store.save(
+            result['card'], slide_count=result['slide_count'],
+            research=data.get('research', ''), author=_author(),
+            curated=bool(data.get('curated')))
+
     return jsonify({
         'success': True,
         'filename': result['filename'],
@@ -918,6 +931,7 @@ def battlecard_build():
         'slide_count': result['slide_count'],
         'warnings': result['warnings'],
         'compatibility': result['compatibility'],
+        'library_entry': saved or None,
     })
 
 
@@ -936,6 +950,7 @@ def battlecard_status():
     """Tell the UI whether Claude is reachable, so it can adapt."""
     return jsonify({
         'ai_enabled': battlecard_ai.available(),
+        'library': battlecard_store.stats(),
         'model': battlecard_ai.MODEL,
         'depths': [{'key': key, **{field: value for field, value in preset.items()
                                    if field in ('label', 'blurb', 'slides')}}
@@ -990,6 +1005,69 @@ def battlecard_chat():
     return app.response_class(stream(), mimetype='text/event-stream',
                               headers={'Cache-Control': 'no-cache',
                                        'X-Accel-Buffering': 'no'})
+
+
+# ─── Shared Library Routes ──────────────────────────────────────────────────────
+
+def _author() -> str:
+    """Whoever is signed in, so the library credits the card."""
+    auth = request.authorization
+    return auth.username if auth and auth.username else ''
+
+
+@app.route('/library')
+def library_page():
+    """The shared gallery of every battlecard the team has generated."""
+    return render_template('library.html',
+                           library_enabled=battlecard_store.enabled())
+
+
+@app.route('/api/library')
+def library_list():
+    return jsonify({
+        'stats': battlecard_store.stats(),
+        'cards': battlecard_store.listing(
+            query=request.args.get('q', '').strip(),
+            product=request.args.get('product', '').strip()),
+        'products': [entry['name'] for entry in battlecard_service.presets()['products']],
+    })
+
+
+@app.route('/api/library/<int:card_id>')
+def library_get(card_id):
+    entry = battlecard_store.get(card_id)
+    if not entry:
+        return jsonify({'error': 'That card is not in the library.'}), 404
+    return jsonify(entry)
+
+
+@app.route('/api/library/<int:card_id>/build', methods=['POST'])
+def library_build(card_id):
+    """Rebuild the deck from a stored card, without saving a duplicate."""
+    entry = battlecard_store.get(card_id, count_view=False)
+    if not entry:
+        return jsonify({'error': 'That card is not in the library.'}), 404
+    depth = (request.get_json(silent=True) or {}).get('depth')
+    payload = entry['card']
+    if depth:
+        payload.setdefault('meta', {})['depth'] = depth
+    try:
+        result = battlecard_service.build(payload, app.config['OUTPUT_FOLDER'])
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({
+        'success': True,
+        'filename': result['filename'],
+        'download_url': url_for('download', filename=result['filename']),
+        'slide_count': result['slide_count'],
+    })
+
+
+@app.route('/api/library/<int:card_id>', methods=['DELETE'])
+def library_delete(card_id):
+    if not battlecard_store.delete(card_id):
+        return jsonify({'error': 'That card is not in the library.'}), 404
+    return jsonify({'success': True})
 
 
 if __name__ == '__main__':
