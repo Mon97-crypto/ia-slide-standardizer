@@ -245,6 +245,29 @@ price is never printed on a slide, and an account is never named unless the clai
 verified with a public source. A claim older than nine months is flagged stale and reaches
 the prompt as something to re-confirm rather than a current fact.
 
+### Attaching Render Postgres
+
+`render.yaml` already declares the database and wires `DATABASE_URL` into the web
+service, so a deployment created as a **Blueprint** gets it automatically. A
+service created by hand in the dashboard never read that file, which is the usual
+reason the Teach page reports that nothing can be saved.
+
+Check which situation you are in at `/healthz`. `"library": false` means no
+reachable database; `"intel"` counts the claims currently loaded, committed seeds
+included.
+
+To attach one to an existing service: create a Postgres instance in the Render
+dashboard **in the same region as the web service**, copy its *Internal Database
+URL*, and add it to the service as `DATABASE_URL`. The service redeploys and
+`store.init()` and `intel.init()` create their tables on boot.
+
+A free Render Postgres **expires 30 days after it is created**, with a 14 day
+grace period before the data is deleted, and one free instance is allowed per
+account. So treat the database as the convenient store and `content/intel/*.json`
+as the durable one: claims committed there survive any expiry, need no database,
+and are reviewable as a diff. The Teach page's "Download to commit" button writes
+that file for you.
+
 ### Where it lives
 
 Claims the team adds go to Postgres, beside the card library. Claims committed to
