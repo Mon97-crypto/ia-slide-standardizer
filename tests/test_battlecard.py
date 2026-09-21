@@ -3,6 +3,7 @@
 Run with: python3 -m pytest tests -q
 """
 
+import json
 import os
 import sys
 import zipfile
@@ -790,3 +791,75 @@ def test_building_a_saved_card_costs_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(ai, '_client', explode)
     result = service.build(attributesmart.card_for('o9 Solutions'), str(tmp_path))
     assert result['slide_count'] >= 15
+
+
+# ── the card JSON path ──────────────────────────────────────────────────────
+# A real run failed with "The compiled grammar is too large, which would cause
+# performance issues." CARD_SCHEMA has twelve nested object shapes, which is past
+# what output_config.format can compile. The shape is now a prompt contract and
+# the JSON is parsed here, so the request carries no grammar at all.
+
+def test_no_grammar_is_ever_compiled():
+    """The regression guard. A json_schema format would 400 on this schema."""
+    import inspect
+    from battlecards import ai
+    source = inspect.getsource(ai)
+    assert 'json_schema' not in source
+    assert "'format'" not in source
+
+
+def test_the_shape_contract_comes_from_the_one_schema():
+    from battlecards import ai
+    contract = ai._shape_contract()
+    assert 'their_strengths' in contract and 'comparison' in contract
+    # Same definition the test below checks, so prompt and schema cannot drift.
+    assert json.loads(contract) == ai.CARD_SCHEMA
+
+
+@pytest.mark.parametrize('wrapped', [
+    '{"a": 1}',
+    '```json\n{"a": 1}\n```',
+    '```\n{"a": 1}\n```',
+    'Here is the card:\n\n{"a": 1}',
+    '{"a": 1}\n\nI marked three rows Unclear.',
+    'Sure.\n```json\n{"a": 1}\n```\nHope that helps.',
+    '\n\n   {"a": 1}   \n',
+])
+def test_card_json_survives_model_drift(wrapped):
+    from battlecards import ai
+    assert ai._parse_card_json(wrapped) == {'a': 1}
+
+
+def test_card_json_handles_nested_braces_and_escapes():
+    from battlecards import ai
+    out = ai._parse_card_json('{"a": {"b": "}"}, "c": "60% \\u2192 96%"}')
+    assert out['a']['b'] == '}'
+    assert '→' in out['c']
+
+
+@pytest.mark.parametrize('bad', ['', '   ', 'I could not research that.',
+                                 '[{"a": 1}]', '"just a string"'])
+def test_unusable_output_raises_value_error(bad):
+    """ValueError is what triggers the single retry, so the type matters."""
+    from battlecards import ai
+    with pytest.raises(ValueError):
+        ai._parse_card_json(bad)
+
+
+def test_truncation_is_named_as_truncation():
+    from battlecards import ai
+    with pytest.raises(ValueError) as caught:
+        ai._parse_card_json('{"headline": "x", "rows": ["a"')
+    assert 'max_tokens' in str(caught.value)
+
+
+def test_token_ceilings_are_generous_enough_for_a_full_card():
+    """max_tokens is a cap, not a spend. Economy saves on effort, not headroom."""
+    from battlecards import ai
+    card = json.dumps(attributesmart.card_for('Oracle Retail'))
+    needed = len(card) // 3          # deliberately pessimistic chars-per-token
+    assert ai.ECONOMY['max_tokens'] > needed, (ai.ECONOMY['max_tokens'], needed)
+    assert ai.STANDARD['max_tokens'] > needed
+    # Economy still costs less, through effort and searches.
+    assert ai.ECONOMY['effort'] == 'low'
+    assert ai.ECONOMY['searches'] < ai.STANDARD['searches']

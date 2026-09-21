@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 
 from . import attributesmart, library
 from .brand import PRODUCT_SOLUTIONS, SOLUTION_LABELS
@@ -42,7 +43,10 @@ PRICING = {'input': 5.00, 'output': 25.00, 'cache_write': 6.25, 'cache_read': 0.
 
 # Economy mode trades thoroughness for a predictable bill: shallower effort, fewer
 # searches and tighter ceilings. Useful for a first run on a small budget.
-ECONOMY = {'effort': 'low', 'searches': 3, 'max_tokens': 10000}
+# `max_tokens` is only a ceiling. Output bills for what is generated, so a
+# generous cap costs nothing and avoids truncating a long card. Economy saves
+# through shallower effort and fewer searches instead.
+ECONOMY = {'effort': 'low', 'searches': 3, 'max_tokens': 24000}
 STANDARD = {'effort': 'high', 'searches': 8, 'max_tokens': RESEARCH_MAX_TOKENS}
 
 
@@ -268,6 +272,50 @@ CARD_SCHEMA = {
 }
 
 
+# ─── Card JSON, parsed rather than grammar constrained ──────────────────────────
+# `output_config.format` compiles the schema into a grammar, and CARD_SCHEMA is
+# too large for it: the API rejects the request with "The compiled grammar is too
+# large". Splitting the schema would only move the ceiling, so the shape is given
+# to the model as a contract in the prompt and parsed here instead. `normalize()`
+# was always the real validator, coercing every field and dropping anything it
+# does not recognise, so nothing downstream relies on the grammar.
+
+_FENCE = re.compile(r'^\s*```(?:json)?\s*|\s*```\s*$', re.I)
+
+
+def _parse_card_json(text: str) -> dict:
+    """Pull a JSON object out of a model response.
+
+    Tolerates a code fence, a sentence of preamble, and trailing commentary,
+    because those are the shapes a model actually produces when it drifts.
+    """
+    if not text or not text.strip():
+        raise ValueError('The model returned nothing to parse.')
+
+    body = _FENCE.sub('', text.strip())
+    try:
+        data = json.loads(body)
+    except ValueError:
+        start = body.find('{')
+        end = body.rfind('}')
+        if start < 0:
+            raise ValueError('No JSON object found in the response.')
+        if end <= start:
+            raise ValueError('The JSON object is incomplete, which usually means '
+                             'the response hit max_tokens.')
+        data = json.loads(body[start:end + 1])
+
+    if not isinstance(data, dict):
+        raise ValueError('The response parsed to %s, not an object.'
+                         % type(data).__name__)
+    return data
+
+
+def _shape_contract() -> str:
+    """The expected JSON shape, rendered from the one schema definition."""
+    return json.dumps(CARD_SCHEMA, indent=1, sort_keys=True)
+
+
 # ─── Generation ─────────────────────────────────────────────────────────────────
 
 def generate(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
@@ -372,15 +420,18 @@ def _structure(client, competitor: str, product: str, preset: dict,
            'caps': cap_text, 'research': research})
     if notes:
         ask += '\n\nSELLER NOTES\n%s' % notes
+    ask += ('\n\nReturn one JSON object and nothing else. No prose before or after, '
+            'no code fence. It must match this shape exactly, with every key '
+            'present:\n%s' % _shape_contract())
+    messages = [{'role': 'user', 'content': ask}]
 
     with client.messages.stream(
         model=MODEL,
         max_tokens=mode['max_tokens'],
         system=_system_prompt(product, competitor),
         thinking={'type': 'adaptive'},
-        output_config={'effort': mode['effort'],
-                       'format': {'type': 'json_schema', 'schema': CARD_SCHEMA}},
-        messages=[{'role': 'user', 'content': ask}],
+        output_config={'effort': mode['effort']},
+        messages=messages,
     ) as stream:
         message = stream.get_final_message()
 
@@ -388,16 +439,52 @@ def _structure(client, competitor: str, product: str, preset: dict,
         add_cost(cost, message.usage)
     if message.stop_reason == 'refusal':
         raise RuntimeError('The card request was declined.')
-    text = next((block.text for block in message.content if block.type == 'text'), '')
+    if message.stop_reason == 'max_tokens':
+        raise RuntimeError('The card was cut off at the token ceiling. Pick a '
+                           'shorter depth, or raise STRUCTURE_MAX_TOKENS.')
+    text = ''.join(block.text for block in message.content if block.type == 'text')
+
     try:
-        data = json.loads(text)
-    except ValueError as exc:
-        raise RuntimeError('The model returned a card that could not be parsed.') from exc
+        data = _parse_card_json(text)
+    except ValueError as first:
+        log.warning('card JSON did not parse (%s), retrying once', first)
+        data = _retry_structure(client, messages, text, mode, cost)
 
     meta_keys = ('competitor_category', 'headline', 'win_theme')
     card = {key: value for key, value in data.items() if key not in meta_keys}
     card['meta'] = {key: data.get(key, '') for key in meta_keys}
     return card
+
+
+def _retry_structure(client, messages: list, bad: str, mode: dict,
+                     cost: dict = None) -> dict:
+    """Ask once more for clean JSON, showing the model what came back.
+
+    One retry only. A second failure is a real problem and should surface rather
+    than burn more of the budget.
+    """
+    followup = list(messages) + [
+        {'role': 'assistant', 'content': bad[:4000] or '(empty)'},
+        {'role': 'user', 'content': 'That did not parse as JSON. Send the same card '
+                                    'again as one raw JSON object. Start with { and '
+                                    'end with }. No fence, no explanation.'},
+    ]
+    with client.messages.stream(
+        model=MODEL,
+        max_tokens=mode['max_tokens'],
+        thinking={'type': 'adaptive'},
+        output_config={'effort': 'low'},
+        messages=followup,
+    ) as stream:
+        message = stream.get_final_message()
+    if cost is not None:
+        add_cost(cost, message.usage)
+    text = ''.join(block.text for block in message.content if block.type == 'text')
+    try:
+        return _parse_card_json(text)
+    except ValueError as exc:
+        raise RuntimeError(
+            'The model did not return usable JSON after a retry. %s' % exc) from exc
 
 
 def _merge_curated(card: dict, competitor: str, product: str) -> dict:

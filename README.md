@@ -18,8 +18,15 @@ Keynote and Google Slides.
 1. **Research.** Claude Opus 5 searches the public record with the `web_search` server
    tool and writes a sourced brief. The brief streams to the browser while it is written,
    so a run that takes minutes never looks stalled and never trips a worker timeout.
-2. **Structure.** A second call turns the brief into the card schema through structured
-   outputs, so the payload validates without parsing prose.
+2. **Structure.** A second call turns the brief into the card payload. The shape is given
+   to the model as a contract in the prompt and parsed on the way back, tolerating a code
+   fence or a sentence of preamble, with one retry if it does not parse. `normalize()` is
+   the validator: it coerces every field and drops anything unrecognised.
+
+   This deliberately does **not** use `output_config.format`. That compiles the schema into
+   a grammar, and `CARD_SCHEMA` has twelve nested object shapes, which the API rejects with
+   "The compiled grammar is too large". Splitting the schema would only move the ceiling, so
+   the request carries no grammar at all and a test asserts it never will.
 3. **Merge.** Where a hand researched card exists in `content/battlecards/`, its sourced
    sections win. The model fills gaps rather than overwriting research.
 4. **Build.** The card is normalised, trimmed to the chosen depth, checked against the
