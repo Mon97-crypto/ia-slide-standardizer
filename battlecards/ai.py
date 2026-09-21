@@ -22,7 +22,7 @@ import logging
 import os
 import re
 
-from . import attributesmart, library
+from . import attributesmart, intel, library
 from .brand import PRODUCT_SOLUTIONS, SOLUTION_LABELS
 from .schema import DEPTHS, DEFAULT_DEPTH, RATING_VALUES
 
@@ -198,10 +198,21 @@ def _system_prompt(product: str, competitor: str) -> list:
     """
     stable = '%s\n\nIMPACT ANALYTICS GROUND TRUTH\n\n%s' % (
         SYSTEM_RULES, _product_facts(product))
-    return [
+    blocks = [
         {'type': 'text', 'text': stable, 'cache_control': {'type': 'ephemeral'}},
         {'type': 'text', 'text': 'This card covers %s.' % competitor},
     ]
+    # What colleagues have taught the builder about this rival. Outside the cached
+    # prefix on purpose: it changes whenever somebody adds a claim, and a stale
+    # cache would quietly serve yesterday's knowledge.
+    try:
+        taught = intel.prompt_block(competitor, product)
+    except Exception:
+        log.exception('Could not read field intelligence for the prompt.')
+        taught = ''
+    if taught:
+        blocks.append({'type': 'text', 'text': taught})
+    return blocks
 
 
 # ─── Structured output schema ───────────────────────────────────────────────────
@@ -719,3 +730,113 @@ def _card_digest(card: dict) -> dict:
          'competitor': row.get('competitor')} for row in comparison[:20]
     ]
     return digest
+
+
+# ─── Teaching the builder ───────────────────────────────────────────────────────
+
+TEACH_SYSTEM = """You turn what a colleague knows about a competitor into separate,
+storable claims.
+
+You are not judging whether a claim is true. You are recording how well it is
+known, from how the person tells it, so the battlecard can obey the right rule
+later.
+
+- verified: they gave a public link, a filing, a press release or a named public
+  page. Put it in `source`.
+- field: they saw it themselves in a live deal, a demo, an RFP or a bake off.
+- hearsay: they heard it from a buyer, an analyst, a rumour or "someone said".
+  Anything with no first hand account and no link is hearsay. When you cannot
+  tell, choose hearsay. Overstating confidence is the one mistake that reaches a
+  slide as a false claim.
+
+Split a paragraph that carries several facts into one claim each. Keep the
+colleague's own meaning. Do not add anything they did not say, do not research,
+and do not soften a claim into vagueness.
+
+`claim` is one sentence, under 200 characters, stating the fact plainly. `detail`
+carries the rest, including how they came to know it. Follow the brand writing
+rules: no em dashes, no en dashes, active voice, no superlatives."""
+
+
+def _parse_intel_json(text: str) -> list:
+    """Pull a JSON array of claims out of a model response."""
+    if not text or not text.strip():
+        raise ValueError('The model returned nothing to parse.')
+    body = _FENCE.sub('', text.strip())
+    try:
+        data = json.loads(body)
+    except ValueError:
+        start, end = body.find('['), body.rfind(']')
+        if start < 0 or end <= start:
+            raise ValueError('No JSON array of claims found in the response.')
+        data = json.loads(body[start:end + 1])
+    if isinstance(data, dict):
+        data = data.get('claims') or data.get('intel') or [data]
+    if not isinstance(data, list):
+        raise ValueError('The response parsed to %s, not a list of claims.'
+                         % type(data).__name__)
+    return [row for row in data if isinstance(row, dict)]
+
+
+def extract_intel(text: str, competitor: str, product: str = '',
+                  author: str = '') -> dict:
+    """Propose structured claims from what somebody wrote. Nothing is saved.
+
+    The proposals go back to the browser for the person to correct and approve,
+    because a claim they never checked is exactly the kind that later reads as
+    fact on a slide.
+    """
+    text = (text or '').strip()
+    if not text:
+        raise ValueError('Write what you know first.')
+    client = _client()
+
+    ask = ('A colleague knows the following about %(comp)s%(prod)s. Turn it into '
+           'separate claims.\n\nWHAT THEY WROTE\n%(text)s\n\n'
+           'Return one JSON array and nothing else. No prose, no code fence. Each '
+           'element has exactly these keys:\n'
+           '{"kind": one of %(kinds)s, "claim": "one sentence", '
+           '"detail": "the rest, including how they know", '
+           '"confidence": one of %(tiers)s, "source": "a URL or a named public '
+           'page, empty when there is none"}'
+           % {'comp': competitor or 'a competitor',
+              'prod': (' as it relates to %s' % product) if product else '',
+              'text': text[:12000],
+              'kinds': ', '.join(sorted(intel.KINDS)),
+              'tiers': ', '.join(sorted(intel.CONFIDENCE))})
+
+    system = [{'type': 'text', 'text': SYSTEM_RULES,
+               'cache_control': {'type': 'ephemeral'}},
+              {'type': 'text', 'text': TEACH_SYSTEM}]
+    cost = {}
+    with client.messages.stream(
+        model=MODEL,
+        max_tokens=16000,
+        system=system,
+        thinking={'type': 'adaptive'},
+        output_config={'effort': 'low'},
+        messages=[{'role': 'user', 'content': ask}],
+    ) as stream:
+        message = stream.get_final_message()
+
+    add_cost(cost, message.usage)
+    if message.stop_reason == 'refusal':
+        raise RuntimeError('The request to structure that was declined.')
+    if message.stop_reason == 'max_tokens':
+        raise RuntimeError('That was too long to structure in one go. Split it '
+                           'into a few smaller notes.')
+
+    body = ''.join(block.text for block in message.content if block.type == 'text')
+    proposals, rejected = [], []
+    for row in _parse_intel_json(body):
+        row.setdefault('competitor', competitor)
+        row.setdefault('ia_product', product)
+        row.setdefault('author', author)
+        try:
+            proposals.append(intel.normalize(row, author))
+        except ValueError as exc:
+            # A claim the model shaped badly is shown as a problem rather than
+            # dropped, so nobody thinks their note was recorded when it was not.
+            rejected.append({'claim': str(row.get('claim', ''))[:200],
+                             'problem': str(exc)})
+    return {'proposals': proposals, 'rejected': rejected, 'cost': cost}

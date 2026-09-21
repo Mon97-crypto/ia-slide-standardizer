@@ -1192,3 +1192,269 @@ def test_the_grid_shrinks_rather_than_spilling_off_the_panel():
     with tempfile.TemporaryDirectory() as out:
         result = service.build(card, out)
     assert result['compatibility']['ok']
+
+
+# ── teaching the builder ────────────────────────────────────────────────────
+# Public research only reaches so far. This is the store the team owns, and the
+# confidence tier on each claim decides whether a card may state it or has to
+# turn it into a question.
+
+def _claim(**over):
+    base = {'competitor': 'o9 Solutions', 'ia_product': 'AttributeSmart',
+            'kind': 'gap', 'claim': 'Attribute tagging is a services engagement.',
+            'detail': 'Their engineer said so in a bake off.',
+            'confidence': 'field', 'source': ''}
+    base.update(over)
+    return base
+
+
+def test_a_claim_needs_a_competitor_a_kind_and_a_confidence():
+    from battlecards import intel
+    for missing in ('competitor', 'kind', 'confidence', 'claim'):
+        with pytest.raises(ValueError):
+            intel.normalize(_claim(**{missing: ''}))
+
+
+def test_a_verified_claim_cannot_be_saved_without_its_source():
+    """The tier that lets a card assert something is the tier that needs a link."""
+    from battlecards import intel
+    with pytest.raises(ValueError) as caught:
+        intel.normalize(_claim(confidence='verified', source=''))
+    assert 'source' in str(caught.value)
+    ok = intel.normalize(_claim(confidence='verified',
+                                source='https://o9solutions.com/news/'))
+    assert ok['confidence'] == 'verified'
+
+
+def test_an_unknown_tier_or_kind_is_refused():
+    from battlecards import intel
+    with pytest.raises(ValueError):
+        intel.normalize(_claim(confidence='definitely'))
+    with pytest.raises(ValueError):
+        intel.normalize(_claim(kind='vibes'))
+
+
+def test_a_taught_claim_is_sanitized_like_card_copy():
+    from battlecards import intel
+    entry = intel.normalize(_claim(claim='They lost the deal — badly.'))
+    assert '—' not in entry['claim']
+
+
+def test_a_claim_defaults_to_today_and_reads_a_given_date():
+    from battlecards import intel
+    import datetime
+    assert intel.normalize(_claim())['as_of'] == datetime.date.today().isoformat()
+    assert intel.normalize(_claim(as_of='2026-08-14'))['as_of'] == '2026-08-14'
+    with pytest.raises(ValueError):
+        intel.normalize(_claim(as_of='last August'))
+
+
+def test_old_field_intel_is_flagged_for_a_recheck():
+    from battlecards import intel
+    import datetime
+    fresh = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+    old = (datetime.date.today() - datetime.timedelta(days=400)).isoformat()
+    assert not intel.is_stale({'as_of': fresh})
+    assert intel.is_stale({'as_of': old})
+
+
+def test_every_tier_states_what_a_card_may_do_with_it():
+    from battlecards import intel
+    for tier, spec in intel.CONFIDENCE.items():
+        assert spec['rule'] and spec['label'], tier
+    # Only the public tier may be asserted outright.
+    assert intel.CONFIDENCE['verified']['needs_source'] is True
+    assert intel.CONFIDENCE['field']['needs_source'] is False
+    assert intel.CONFIDENCE['hearsay']['needs_source'] is False
+
+
+def test_the_prompt_tells_claude_never_to_assert_hearsay():
+    """The whole point. Unconfirmed intel has to reach the slide as a question."""
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', 'AttributeSmart', entries=[
+        dict(intel.normalize(_claim(confidence='hearsay',
+                                    claim='They are rewriting the planner.')),
+             stale=False),
+    ])
+    assert 'HEARD SECOND HAND' in block
+    assert 'Never assert it' in block
+    assert 'question' in block
+
+
+def test_the_prompt_carries_the_house_rule_on_pricing_and_customers():
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', '', entries=[
+        dict(intel.normalize(_claim(kind='pricing',
+                                    claim='They price per SKU per month.')),
+             stale=False),
+        dict(intel.normalize(_claim(kind='customer',
+                                    claim='They run a large grocer in Australia.')),
+             stale=False),
+    ])
+    assert 'Never print a competitor price' in block
+    assert 'Do not name the account' in block
+
+
+def test_a_stale_claim_reaches_the_prompt_as_a_question():
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', '', entries=[
+        dict(intel.normalize(_claim()), stale=True)])
+    assert 'STALE' in block
+    assert 're-confirm' in block
+
+
+def test_an_empty_store_leaves_the_prompt_untouched():
+    from battlecards import intel
+    assert intel.prompt_block('Nobody', '', entries=[]) == ''
+
+
+def test_taught_claims_reach_the_system_prompt(monkeypatch):
+    from battlecards import ai, intel
+    monkeypatch.setattr(intel, 'listing', lambda *a, **k: [
+        dict(intel.normalize(_claim(claim='They subcontract the taxonomy work.')),
+             stale=False)])
+    blocks = ai._system_prompt('AttributeSmart', 'o9 Solutions')
+    joined = '\n'.join(block['text'] for block in blocks)
+    assert 'subcontract the taxonomy work' in joined
+    # The taught block must sit outside the cached prefix, or a new claim would
+    # be served from yesterday's cache.
+    cached = [block for block in blocks if block.get('cache_control')]
+    assert len(cached) == 1
+    assert 'subcontract' not in cached[0]['text']
+
+
+def test_a_broken_intel_store_never_breaks_a_card(monkeypatch):
+    """Generation matters more than the extra context, so failure is quiet."""
+    from battlecards import ai, intel
+
+    def explode(*args, **kwargs):
+        raise RuntimeError('database gone')
+
+    monkeypatch.setattr(intel, 'prompt_block', explode)
+    blocks = ai._system_prompt('AttributeSmart', 'o9 Solutions')
+    assert blocks and blocks[0]['text']
+
+
+def test_a_committed_seed_is_read_and_a_bad_one_is_skipped(tmp_path, monkeypatch):
+    from battlecards import intel
+    (tmp_path / 'rivals.json').write_text(json.dumps({'intel': [
+        _claim(claim='A good committed claim.'),
+        _claim(claim='A claim with no tier.', confidence=''),
+    ]}))
+    monkeypatch.setattr(intel, 'SEED_DIR', str(tmp_path))
+    rows = intel.seeds()
+    assert [row['claim'] for row in rows] == ['A good committed claim.']
+    assert rows[0]['seed'] is True
+
+
+def test_a_committed_claim_cannot_be_retired_from_the_browser():
+    """Editing it has to go through a reviewed commit, not a click."""
+    from battlecards import intel
+    with pytest.raises(ValueError) as caught:
+        intel.retire('seed:rivals:0')
+    assert 'content/intel' in str(caught.value)
+
+
+def test_the_export_drops_the_database_only_fields(monkeypatch):
+    from battlecards import intel
+    monkeypatch.setattr(intel, 'listing', lambda *a, **k: [
+        dict(intel.normalize(_claim()), id=7, retired=False, seed=False,
+             stale=False, created_at='2026-09-01T00:00:00'),
+        dict(intel.normalize(_claim(claim='A seed.')), id='seed:x:0', seed=True),
+    ])
+    rows = intel.export()['intel']
+    assert len(rows) == 1, 'a committed seed must not be exported back'
+    assert set(rows[0]) == {'competitor', 'ia_product', 'kind', 'claim', 'detail',
+                            'confidence', 'source', 'author', 'as_of'}
+
+
+def test_the_teach_page_renders_and_links_from_the_builder(client):
+    page = client.get('/intel')
+    assert page.status_code == 200
+    body = page.data.decode()
+    for tier in ('Verified in public', 'Seen in a deal', 'Heard second hand'):
+        assert tier in body
+    assert '/intel' in client.get('/').data.decode()
+
+
+def test_adding_a_claim_without_a_database_says_where_to_put_it(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app.battlecard_intel, 'enabled', lambda: False)
+    response = client.post('/api/intel', json=_claim())
+    assert response.status_code == 503
+    assert 'content/intel' in response.get_json()['error']
+
+
+def test_a_bad_claim_comes_back_as_a_problem_not_a_silent_drop(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app.battlecard_intel, 'enabled', lambda: True)
+    monkeypatch.setattr(flask_app.battlecard_intel, 'init', lambda force=False: True)
+    response = client.post('/api/intel', json={'claims': [
+        _claim(confidence='verified', source='')]})
+    assert response.status_code == 400
+    assert 'source' in response.get_json()['failed'][0]['problem']
+
+
+def test_structuring_a_note_refuses_without_a_credential(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app.battlecard_ai, 'available', lambda: False)
+    response = client.post('/api/intel/extract', json={'text': 'They lost a deal.'})
+    assert response.status_code == 503
+    assert 'one at a time' in response.get_json()['error']
+
+
+def test_a_note_is_split_into_claims_for_review(monkeypatch):
+    """Extraction proposes. Nothing is saved until the person approves it."""
+    from battlecards import ai
+
+    body = json.dumps([
+        {'kind': 'gap', 'claim': 'Tagging is a services engagement.',
+         'detail': 'Their engineer said so.', 'confidence': 'field', 'source': ''},
+        {'kind': 'pricing', 'claim': 'They price per SKU per month.',
+         'detail': 'Seen on the quote.', 'confidence': 'field', 'source': ''},
+        {'kind': 'gap', 'claim': 'No source, claims to be verified.',
+         'detail': '', 'confidence': 'verified', 'source': ''},
+    ])
+
+    class FakeStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return type('M', (), {
+                'stop_reason': 'end_turn', 'usage': _SearchUsage(0),
+                'content': [type('B', (), {'type': 'text', 'text': body})()]})()
+
+    class FakeClient:
+        messages = type('M', (), {'stream': lambda self, **kw: FakeStream()})()
+
+    monkeypatch.setattr(ai, '_client', lambda: FakeClient())
+    result = ai.extract_intel('a note', 'o9 Solutions', 'AttributeSmart', 'me')
+    assert [row['kind'] for row in result['proposals']] == ['gap', 'pricing']
+    assert result['proposals'][0]['competitor'] == 'o9 Solutions'
+    assert result['proposals'][0]['author'] == 'me'
+    # The third claimed to be verified with no link, so it is surfaced, not kept.
+    assert len(result['rejected']) == 1
+    assert 'source' in result['rejected'][0]['problem']
+
+
+@pytest.mark.parametrize('wrapped', [
+    '[{"kind": "gap"}]',
+    '```json\n[{"kind": "gap"}]\n```',
+    'Here are the claims:\n[{"kind": "gap"}]',
+    '{"claims": [{"kind": "gap"}]}',
+    '{"kind": "gap"}',
+])
+def test_the_claim_list_survives_model_drift(wrapped):
+    from battlecards import ai
+    assert ai._parse_intel_json(wrapped) == [{'kind': 'gap'}]
+
+
+def test_teaching_never_guesses_a_higher_confidence():
+    """The instruction that keeps a rumour from becoming a stated fact."""
+    from battlecards import ai
+    assert 'choose hearsay' in ai.TEACH_SYSTEM
+    assert 'Overstating confidence' in ai.TEACH_SYSTEM

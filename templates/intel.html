@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teach the Builder</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/ia_logo.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,200;0,300;0,400;1,300&family=Inter+Tight:wght@400;500;600&family=Lato:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ia.css') }}">
+    <style>
+        :root { --accent: var(--data); }
+        .hero { padding: 62px 40px 150px; }
+        .hero .wrap { max-width: 1160px; margin: 0 auto; }
+        .hero .eyebrow { color: rgba(255,255,255,.62); }
+        .hero .display { margin-top: 16px; color: var(--white); max-width: 18ch; }
+        .hero .lede { margin-top: 20px; color: rgba(255,255,255,.78); max-width: 560px; }
+        .counts { display: flex; gap: 46px; margin-top: 38px; flex-wrap: wrap; }
+        .count b { display: block; font-family: var(--serif); font-weight: 200; font-size: 52px; line-height: .95; letter-spacing: -2.4px; }
+        .count span { display: block; margin-top: 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255,255,255,.6); }
+
+        .page { max-width: 1160px; margin: 0 auto; padding: 0 40px 84px; }
+        .console { margin-top: -110px; position: relative; z-index: 10; padding: 34px; }
+        .console h2 { font-family: var(--serif); font-weight: 300; font-size: 30px; letter-spacing: -1px; margin: 0; }
+        .console .sub { color: #5f5f5f; margin-top: 8px; font-size: 15px; max-width: 62ch; line-height: 1.55; }
+
+        .who { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 24px; }
+        .who label { flex: 1; min-width: 210px; }
+        .who .cap { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase; color: var(--gray3); margin-bottom: 7px; }
+
+        textarea.field { min-height: 156px; resize: vertical; line-height: 1.6; font-family: var(--sans); }
+        .acts { display: flex; gap: 12px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+        .acts .note { font-size: 13.5px; color: var(--gray3); }
+
+        /* ── Proposals awaiting approval ─────────────────────────────────── */
+        .review { margin-top: 28px; }
+        .review > h3 { font-family: var(--serif); font-weight: 300; font-size: 25px; letter-spacing: -.8px; margin: 0 0 4px; }
+        .review > p { color: #5f5f5f; font-size: 14.5px; margin: 0 0 18px; max-width: 64ch; line-height: 1.55; }
+        .prop { background: var(--white); border: 1px solid var(--gray1); border-left: 4px solid var(--tier, var(--gray2)); border-radius: var(--r-sm); padding: 18px 20px; margin-bottom: 14px; box-shadow: var(--lift); }
+        .prop.off { opacity: .45; }
+        .prop .row1 { display: flex; gap: 12px; align-items: flex-start; }
+        .prop .claim { flex: 1; font-size: 16.5px; line-height: 1.5; font-weight: 500; border: 0; background: transparent; font-family: var(--sans); color: var(--black); resize: vertical; min-height: 52px; padding: 0; }
+        .prop .claim:focus { outline: 2px solid rgba(38,76,215,.3); outline-offset: 4px; border-radius: 3px; }
+        .prop .drop { background: none; border: 0; cursor: pointer; color: var(--gray3); font-size: 12px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; font-family: var(--sans); padding: 4px; }
+        .prop .drop:hover { color: var(--orange); }
+        .prop .detail { width: 100%; margin-top: 10px; font-size: 14px; color: #5f5f5f; border: 0; background: transparent; font-family: var(--sans); line-height: 1.55; resize: vertical; min-height: 40px; padding: 0; }
+        .prop .knobs { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--gray1); }
+        .prop select, .prop input[type=text] { font-family: var(--sans); font-size: 13.5px; padding: 8px 11px; border: 1px solid var(--gray1); border-radius: var(--r-xs); background: var(--off-white); color: var(--black); }
+        .prop input[type=text] { flex: 1; min-width: 180px; }
+        .prop .rule { flex-basis: 100%; font-size: 13px; color: #6a6a6a; line-height: 1.5; margin-top: 2px; }
+
+        .tiers { display: flex; gap: 8px; }
+        .tiers button { font-family: var(--sans); font-size: 12.5px; font-weight: 600; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--gray1); background: var(--white); color: #5f5f5f; cursor: pointer; }
+        .tiers button.on { border-color: transparent; color: var(--black); }
+        .tiers button.on[data-t=verified] { background: rgba(61,212,153,.26); }
+        .tiers button.on[data-t=field] { background: rgba(38,76,215,.13); color: var(--blue-ink); }
+        .tiers button.on[data-t=hearsay] { background: rgba(255,111,28,.16); color: #a8490d; }
+
+        /* ── What the builder already knows ──────────────────────────────── */
+        .known { margin-top: 56px; }
+        .known .head { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+        .known .head h2 { font-family: var(--serif); font-weight: 300; font-size: 34px; letter-spacing: -1.3px; margin: 0; }
+        .known .head select { margin-left: auto; flex: 0 0 240px; }
+        .tier { margin-top: 30px; }
+        .tier > .cap { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--black); }
+        .tier > .cap i { width: 10px; height: 10px; border-radius: 3px; background: var(--tier); }
+        .tier > .rule { font-size: 13.5px; color: #6a6a6a; margin-top: 7px; line-height: 1.5; max-width: 76ch; }
+        .claims { margin-top: 14px; display: grid; gap: 10px; }
+        .cl { background: var(--white); border: 1px solid var(--gray1); border-radius: var(--r-sm); padding: 15px 18px; display: flex; gap: 14px; align-items: flex-start; }
+        .cl .body { flex: 1; }
+        .cl .k { font-size: 10.5px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--impact-blue); }
+        .cl .t { font-size: 15.5px; line-height: 1.5; margin-top: 5px; }
+        .cl .d { font-size: 13.5px; color: #5f5f5f; margin-top: 6px; line-height: 1.5; }
+        .cl .foot { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+        .cl .foot span, .cl .foot a { font-family: var(--mono-ish); font-size: 11.5px; color: var(--gray3); }
+        .cl .foot a { color: var(--impact-blue); text-decoration: none; word-break: break-all; }
+        .cl .foot a:hover { text-decoration: underline; }
+        .cl .x { background: none; border: 0; color: var(--gray3); cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px; }
+        .cl .x:hover { color: var(--orange); }
+
+        .void { margin-top: 26px; background: var(--white); border: 1px dashed var(--gray2); border-radius: var(--r); padding: 56px 34px; text-align: center; }
+        .void p { color: var(--gray3); margin-top: 10px; font-size: 16px; max-width: 52ch; margin-left: auto; margin-right: auto; line-height: 1.55; }
+
+        .flash { margin-top: 16px; padding: 14px 16px; border-radius: var(--r-sm); font-size: 14.5px; line-height: 1.55; }
+        .flash.ok { background: rgba(61,212,153,.16); color: #126046; }
+        .flash.bad { background: rgba(255,111,28,.12); color: #a8490d; }
+
+        @media (max-width: 760px) {
+            .hero { padding: 42px 20px 132px; }
+            .page { padding: 0 20px 60px; }
+            .console { padding: 22px; margin-top: -104px; }
+            .counts { gap: 26px; }
+            .count b { font-size: 40px; }
+            .known .head select { margin-left: 0; flex-basis: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="masthead">
+    <div class="mark">
+        <img src="{{ url_for('static', filename='images/ia_logo.png') }}" alt="Impact Analytics">
+        <b>Battlecard Builder</b>
+    </div>
+    <nav>
+        <a href="{{ url_for('index') }}">Build</a>
+        <a href="{{ url_for('library_page') }}">Library</a>
+        <a href="{{ url_for('intel_page') }}" class="here">Teach</a>
+        <a href="{{ url_for('standardizer') }}">Standardizer</a>
+    </nav>
+</header>
+
+<section class="hero blue-field grain grid-lines">
+    <div class="wrap">
+        <p class="eyebrow">Field intelligence</p>
+        <h1 class="display">Teach the builder what you <em>know</em></h1>
+        <p class="lede">Public research only gets a card so far. What a rival's engineer
+            admitted in a bake off, the objection that keeps landing, the gap you watched
+            them fail to cover: that lives in somebody's head. Put it here once and every
+            card written from now on carries it.</p>
+        <div class="counts">
+            <div class="count"><b id="cClaims">0</b><span>Claims taught</span></div>
+            <div class="count"><b id="cRivals">0</b><span>Rivals covered</span></div>
+            <div class="count"><b id="cVerified">0</b><span>Verified in public</span></div>
+            <div class="count"><b id="cStale">0</b><span>Due a recheck</span></div>
+        </div>
+    </div>
+</section>
+
+<div class="page">
+    <section class="console glass">
+        <h2>Write it however you would say it out loud</h2>
+        <p class="sub">No form to fill. Claude splits your note into separate claims and
+            tags how well each one is known, then you correct it before anything is saved.
+            Nothing reaches a card until you approve it.</p>
+
+        <div class="who">
+            <label><span class="cap">Which rival</span>
+                <input class="field" id="competitor" list="rivals" placeholder="o9 Solutions" autocomplete="off">
+                <datalist id="rivals">
+                    {% for name in competitors %}<option value="{{ name }}"></option>{% endfor %}
+                </datalist>
+            </label>
+            <label><span class="cap">Against which product</span>
+                <select class="field" id="product">
+                    <option value="">Any product</option>
+                    {% for name in products %}<option value="{{ name }}"{% if name == 'AttributeSmart' %} selected{% endif %}>{{ name }}</option>{% endfor %}
+                </select>
+            </label>
+        </div>
+
+        <div style="margin-top:16px">
+            <span class="cap" style="display:block;font-size:10.5px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--gray3);margin-bottom:7px">What you know</span>
+            <textarea class="field" id="note" placeholder="Their solution engineer told the buyer that attribute tagging is a services engagement, not a product. We saw it in a bake off in August. They also priced per SKU per month, which got expensive above two million items."></textarea>
+        </div>
+
+        <div class="acts">
+            <button class="btn btn-primary" id="go"{% if not ai_enabled %} disabled{% endif %}>
+                <span id="goLabel">{% if ai_enabled %}Structure this{% else %}Claude not connected{% endif %}</span>
+            </button>
+            <span class="note" id="hint">Two or three sentences per note works best. Split a long brain dump into a few.</span>
+        </div>
+        <div id="flash"></div>
+        <div class="review" id="review" hidden></div>
+    </section>
+
+    <section class="known">
+        <div class="head">
+            <h2>What the builder already knows</h2>
+            <select class="field" id="filter">
+                <option value="">Every rival</option>
+            </select>
+        </div>
+        <div id="knownBody"></div>
+    </section>
+</div>
+
+<script>
+const KINDS = {{ kinds | tojson }};
+const KIND_LABELS = {{ kind_labels | tojson }};
+const TIERS = {{ confidence | tojson }};
+const AI_ENABLED = {{ 'true' if ai_enabled else 'false' }};
+const TIER_COLOR = { verified: '#3DD499', field: '#264CD7', hearsay: '#FF6F1C' };
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let proposals = [];
+
+function flash(message, kind) {
+    $('flash').innerHTML = message
+        ? `<div class="flash ${kind}">${esc(message)}</div>` : '';
+}
+
+// ── Propose ─────────────────────────────────────────────────────────────────
+$('go').onclick = async () => {
+    const text = $('note').value.trim();
+    const competitor = $('competitor').value.trim();
+    if (!text) { flash('Write what you know first.', 'bad'); return; }
+    if (!competitor) { flash('Name the rival this is about.', 'bad'); return; }
+
+    $('go').disabled = true; $('goLabel').textContent = 'Reading it';
+    flash('', '');
+    try {
+        const res = await fetch('/api/intel/extract', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, competitor, ia_product: $('product').value })
+        });
+        const data = await res.json();
+        if (!res.ok) { flash(data.error || 'That could not be structured.', 'bad'); return; }
+        proposals = (data.proposals || []).map(p => ({ ...p, keep: true }));
+        if (data.rejected && data.rejected.length) {
+            flash(data.rejected.length + ' part(s) could not be shaped into a claim: '
+                + data.rejected.map(r => r.problem).join(' '), 'bad');
+        }
+        drawProposals();
+    } catch (err) {
+        flash(String(err), 'bad');
+    } finally {
+        $('go').disabled = !AI_ENABLED; $('goLabel').textContent = 'Structure this';
+    }
+};
+
+function drawProposals() {
+    const box = $('review');
+    if (!proposals.length) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    box.innerHTML = `<h3>${proposals.length} claim${proposals.length === 1 ? '' : 's'}, waiting on you</h3>
+        <p>Read each one as if a colleague will take it into a meeting. Fix the wording,
+        and check the confidence: it decides whether a card may state the claim or has to
+        ask the question instead.</p>
+        <div id="props"></div>
+        <div class="acts">
+            <button class="btn btn-primary" id="save">Save <span id="keepCount"></span></button>
+            <button class="btn btn-ghost" id="scrap">Discard all</button>
+        </div>`;
+
+    $('props').innerHTML = proposals.map((p, index) => `
+        <div class="prop${p.keep ? '' : ' off'}" style="--tier:${TIER_COLOR[p.confidence] || '#D7D6D2'}" data-i="${index}">
+            <div class="row1">
+                <textarea class="claim" data-f="claim">${esc(p.claim)}</textarea>
+                <button class="drop" data-act="toggle">${p.keep ? 'Drop' : 'Keep'}</button>
+            </div>
+            <textarea class="detail" data-f="detail" placeholder="Any detail, including how you know">${esc(p.detail || '')}</textarea>
+            <div class="knobs">
+                <select data-f="kind">
+                    ${Object.keys(KINDS).map(k => `<option value="${k}"${k === p.kind ? ' selected' : ''}>${esc(KINDS[k])}</option>`).join('')}
+                </select>
+                <div class="tiers">
+                    ${Object.keys(TIERS).map(t => `<button data-t="${t}" class="${t === p.confidence ? 'on' : ''}">${esc(TIERS[t].label)}</button>`).join('')}
+                </div>
+                <input type="text" data-f="source" placeholder="Source link, if there is one" value="${esc(p.source || '')}">
+                <div class="rule">${esc((TIERS[p.confidence] || {}).rule || '')}</div>
+            </div>
+        </div>`).join('');
+
+    countKeepers();
+    $('props').querySelectorAll('.prop').forEach(el => {
+        const index = Number(el.dataset.i);
+        el.querySelectorAll('[data-f]').forEach(input => {
+            input.oninput = () => { proposals[index][input.dataset.f] = input.value; };
+        });
+        el.querySelector('[data-act=toggle]').onclick = () => {
+            proposals[index].keep = !proposals[index].keep;
+            drawProposals();
+        };
+        el.querySelectorAll('.tiers button').forEach(button => {
+            button.onclick = () => {
+                proposals[index].confidence = button.dataset.t;
+                drawProposals();
+            };
+        });
+    });
+    $('scrap').onclick = () => { proposals = []; drawProposals(); };
+    $('save').onclick = save;
+}
+
+function countKeepers() {
+    const keeping = proposals.filter(p => p.keep).length;
+    const label = $('keepCount');
+    if (label) label.textContent = keeping + ' claim' + (keeping === 1 ? '' : 's');
+    const save = $('save');
+    if (save) save.disabled = !keeping;
+}
+
+async function save() {
+    const claims = proposals.filter(p => p.keep).map(p => ({
+        competitor: $('competitor').value.trim(),
+        ia_product: $('product').value,
+        kind: p.kind, claim: p.claim, detail: p.detail,
+        confidence: p.confidence, source: p.source,
+    }));
+    $('save').disabled = true;
+    try {
+        const res = await fetch('/api/intel', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ claims })
+        });
+        const data = await res.json();
+        if (!res.ok && !(data.saved || []).length) {
+            flash(data.error || (data.failed || []).map(f => f.problem).join(' ')
+                  || 'Nothing was saved.', 'bad');
+            return;
+        }
+        const kept = (data.saved || []).length;
+        let message = kept + ' claim' + (kept === 1 ? '' : 's')
+            + ' saved. Every card written from now on carries ' + (kept === 1 ? 'it' : 'them') + '.';
+        if ((data.failed || []).length) {
+            message += ' ' + data.failed.length + ' could not be saved: '
+                + data.failed.map(f => f.problem).join(' ');
+        }
+        flash(message, kept ? 'ok' : 'bad');
+        proposals = []; drawProposals();
+        $('note').value = '';
+        load();
+    } catch (err) {
+        flash(String(err), 'bad');
+    } finally {
+        countKeepers();
+    }
+}
+
+// ── Browse ─────────────────────────────────────────────────────────────────
+async function load() {
+    const res = await fetch('/api/intel?competitor='
+                            + encodeURIComponent($('filter').value));
+    const data = await res.json();
+    const stats = data.stats || {};
+    $('cClaims').textContent = stats.claims || 0;
+    $('cRivals').textContent = stats.competitors || 0;
+    $('cVerified').textContent = stats.verified || 0;
+    $('cStale').textContent = stats.stale || 0;
+    draw(data.claims || []);
+}
+
+function draw(claims) {
+    const body = $('knownBody');
+    if (!claims.length) {
+        body.innerHTML = `<div class="void"><p class="h2" style="color:var(--black)">Nothing taught yet</p>
+            <p>The cards are running on public research alone. Add the first thing you
+            know that a search would never turn up.</p></div>`;
+        rebuildFilter(claims);
+        return;
+    }
+    body.innerHTML = ['verified', 'field', 'hearsay'].map(tier => {
+        const rows = claims.filter(row => row.confidence === tier);
+        if (!rows.length) return '';
+        return `<div class="tier" style="--tier:${TIER_COLOR[tier]}">
+            <div class="cap"><i></i>${esc(TIERS[tier].label)} · ${rows.length}</div>
+            <div class="rule">${esc(TIERS[tier].rule)}</div>
+            <div class="claims">${rows.map(card).join('')}</div>
+        </div>`;
+    }).join('');
+    body.querySelectorAll('.x').forEach(button => {
+        button.onclick = () => retire(button.dataset.id);
+    });
+    rebuildFilter(claims);
+}
+
+function card(row) {
+    const source = row.source && /^https?:\/\//i.test(row.source)
+        ? `<a href="${esc(row.source)}" target="_blank" rel="noopener">${esc(row.source)}</a>`
+        : (row.source ? `<span>${esc(row.source)}</span>` : '');
+    return `<div class="cl">
+        <div class="body">
+            <div class="k">${esc(row.competitor)} · ${esc(KIND_LABELS[row.kind] || row.kind)}</div>
+            <div class="t">${esc(row.claim)}</div>
+            ${row.detail ? `<div class="d">${esc(row.detail)}</div>` : ''}
+            <div class="foot">
+                ${row.stale ? '<span class="pill pill-warn">Due a recheck</span>' : ''}
+                ${row.seed ? '<span class="pill pill-blue">In the repository</span>' : ''}
+                ${row.ia_product ? `<span>${esc(row.ia_product)}</span>` : ''}
+                ${row.author ? `<span>${esc(row.author)}</span>` : ''}
+                <span>${esc(row.as_of || '')}</span>
+                ${source}
+            </div>
+        </div>
+        ${row.seed ? '' : `<button class="x" data-id="${esc(row.id)}" title="Retire this claim">&times;</button>`}
+    </div>`;
+}
+
+function rebuildFilter(claims) {
+    const select = $('filter');
+    const chosen = select.value;
+    const names = [...new Set(claims.map(row => row.competitor))].sort();
+    for (const name of names) {
+        if (![...select.options].some(option => option.value === name)) {
+            select.add(new Option(name, name));
+        }
+    }
+    select.value = chosen;
+}
+
+async function retire(id) {
+    const res = await fetch('/api/intel/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        flash(data.error || 'That claim could not be retired.', 'bad');
+        return;
+    }
+    load();
+}
+
+$('filter').onchange = load;
+load();
+</script>
+</body>
+</html>

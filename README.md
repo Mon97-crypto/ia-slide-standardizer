@@ -188,6 +188,49 @@ the only one shipping a directly competing extraction product. The vendors that
 actually compete on generation are listed in `DIRECT_RIVALS`: Lily AI, Vue.ai,
 Pixyle AI, Syndigo, Salsify and Akeneo.
 
+## Teaching the builder
+
+Public research only reaches so far. What a rival's engineer admitted in a bake off, the
+objection that keeps landing, the gap you watched them fail to cover: none of that is
+searchable, and it decides deals. `/intel` is where the team puts it, and
+`battlecards/intel.py` feeds it to Claude as ground truth on every card from then on.
+
+Write the note however you would say it out loud. Claude splits it into separate claims
+and tags each one, you correct it, and nothing is stored until you approve it. Adding a
+claim never edits a card that already exists; it changes what the next card is written
+from.
+
+### Confidence decides what a card may do
+
+The tier on a claim is the whole mechanism. `intel.CONFIDENCE` holds the rule for each
+one, and that wording goes into the prompt verbatim:
+
+| Tier | Means | What a card may do |
+| --- | --- | --- |
+| `verified` | A public page, filing or release backs it. A source is required. | State it as fact and cite the source. |
+| `field` | A colleague saw it first hand in a live deal. | Use it, attributed as a field note with the date, never as the competitor's own published claim. Never name the account. |
+| `hearsay` | Heard from a buyer, an analyst or the market. Unconfirmed. | Never assert it. It becomes a question the seller asks on the call. |
+
+When Claude cannot tell which tier a note belongs in, it picks `hearsay`. Overstating
+confidence is the one mistake that reaches a slide as a false claim.
+
+Two kinds carry a house rule that outranks the tier, in `intel.GUARDED`: a competitor
+price is never printed on a slide, and an account is never named unless the claim is
+verified with a public source. A claim older than nine months is flagged stale and reaches
+the prompt as something to re-confirm rather than a current fact.
+
+### Where it lives
+
+Claims the team adds go to Postgres, beside the card library. Claims committed to
+`content/intel/*.json` ship with the app, work with no database, and are read only at
+runtime, so anything worth keeping permanently belongs there. `GET /api/intel/export`
+returns the database contents in that file shape, so a snapshot can be committed and read
+as a diff in git. Retiring a claim is a soft delete: the record of what the team once
+believed survives.
+
+If the intel store fails, generation carries on without it. A card matters more than the
+extra context.
+
 ## The shared library
 
 `battlecards/store.py` keeps every generated card in Postgres: the card JSON, the research

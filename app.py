@@ -20,6 +20,7 @@ from battlecards import auth as battlecard_auth
 from battlecards import service as battlecard_service
 from battlecards import schema as battlecard_schema
 from battlecards import store as battlecard_store
+from battlecards import intel as battlecard_intel
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -36,13 +37,16 @@ battlecard_auth.install(app)
 # Prepare the shared library if a database is attached. A missing DATABASE_URL
 # is not an error: the builder works without a library.
 battlecard_store.init()
+# The taught claims live beside the library, in the same database.
+battlecard_intel.init()
 
 
 @app.route('/healthz')
 def healthz():
     """Unauthenticated health check, so the platform probe keeps working."""
     return jsonify({'status': 'ok', 'auth': battlecard_auth.is_enabled(),
-                    'library': battlecard_store.enabled()})
+                    'library': battlecard_store.enabled(),
+                    'intel': battlecard_intel.stats()['claims']})
 
 # ─── Brand Constants ────────────────────────────────────────────────────────────
 BRAND = {
@@ -1071,6 +1075,99 @@ def library_delete(card_id):
         return jsonify({'error': 'That card is not in the library.'}), 404
     return jsonify({'success': True})
 
+
+
+# ─── Teaching the builder ───────────────────────────────────────────────────────
+
+@app.route('/intel')
+def intel_page():
+    """Where the team teaches the builder what it knows about a rival."""
+    return render_template('intel.html',
+                           ai_enabled=battlecard_ai.available(),
+                           library_enabled=battlecard_store.enabled(),
+                           competitors=[entry['name'] for entry
+                                        in battlecard_service.presets()['competitors']],
+                           products=[entry['name'] for entry
+                                     in battlecard_service.presets()['products']],
+                           kinds=battlecard_intel.KINDS,
+                           kind_labels=battlecard_intel.KIND_LABELS,
+                           confidence=battlecard_intel.CONFIDENCE)
+
+
+@app.route('/api/intel')
+def intel_list():
+    return jsonify({
+        'stats': battlecard_intel.stats(),
+        'claims': battlecard_intel.listing(
+            competitor=request.args.get('competitor', '').strip(),
+            product=request.args.get('product', '').strip()),
+    })
+
+
+@app.route('/api/intel/extract', methods=['POST'])
+def intel_extract():
+    """Structure a written note into claims. Saves nothing on its own."""
+    if not battlecard_ai.available():
+        return jsonify({'error': 'No Anthropic credential is configured. Set '
+                                 'ANTHROPIC_API_KEY on the service, or add the '
+                                 'claims one at a time instead.'}), 503
+    data = request.get_json(silent=True) or {}
+    try:
+        result = battlecard_ai.extract_intel(
+            data.get('text', ''), data.get('competitor', ''),
+            data.get('ia_product', ''), _author())
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        app.logger.exception('structuring a note failed')
+        return jsonify({'error': '%s: %s' % (type(exc).__name__, exc)}), 502
+    return jsonify(result)
+
+
+@app.route('/api/intel', methods=['POST'])
+def intel_add():
+    """Save approved claims. The browser posts what the person actually kept."""
+    data = request.get_json(silent=True) or {}
+    rows = data.get('claims')
+    if rows is None:
+        rows = [data]
+    if not battlecard_intel.enabled():
+        return jsonify({'error': 'No database is attached, so there is nowhere to '
+                                 'keep this. Set DATABASE_URL, or commit the claim '
+                                 'to content/intel instead.'}), 503
+
+    saved, failed = [], []
+    for row in rows[:100]:
+        try:
+            entry = battlecard_intel.add(row, _author())
+        except ValueError as exc:
+            failed.append({'claim': str(row.get('claim', ''))[:200],
+                           'problem': str(exc)})
+            continue
+        if entry:
+            saved.append(entry)
+        else:
+            failed.append({'claim': str(row.get('claim', ''))[:200],
+                           'problem': 'The database refused the write.'})
+    status = 200 if saved else (400 if failed else 204)
+    return jsonify({'saved': saved, 'failed': failed}), status
+
+
+@app.route('/api/intel/<entry_id>', methods=['DELETE'])
+def intel_retire(entry_id):
+    try:
+        gone = battlecard_intel.retire(entry_id)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    if not gone:
+        return jsonify({'error': 'That claim is not in the store.'}), 404
+    return jsonify({'retired': entry_id})
+
+
+@app.route('/api/intel/export')
+def intel_export():
+    """The committable snapshot, so the store has an audit trail in git."""
+    return jsonify(battlecard_intel.export())
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
