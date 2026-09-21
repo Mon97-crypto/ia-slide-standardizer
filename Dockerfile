@@ -16,4 +16,7 @@ RUN mkdir -p uploads outputs
 
 EXPOSE 10000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--timeout", "120", "--workers", "2", "app:app"]
+# Generation streams for minutes, so the worker timeout is generous and
+# threads let one long stream run without blocking the other requests.
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--timeout", "600", \
+     "--workers", "2", "--threads", "4", "--worker-class", "gthread", "app:app"]

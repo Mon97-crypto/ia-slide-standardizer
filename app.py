@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 import io
@@ -14,8 +15,10 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.ns import qn
 
+from battlecards import ai as battlecard_ai
 from battlecards import auth as battlecard_auth
 from battlecards import service as battlecard_service
+from battlecards import schema as battlecard_schema
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -751,6 +754,13 @@ def process_screenshot(image_path, slide_type='content'):
 
 @app.route('/')
 def index():
+    """The battlecard builder is the product. It owns the landing page."""
+    return render_template('battlecard.html', ai_enabled=battlecard_ai.available())
+
+
+@app.route('/standardizer')
+def standardizer():
+    """The original slide standardizer, kept but no longer the front door."""
     return render_template('index.html')
 
 
@@ -864,8 +874,8 @@ def build_custom():
 
 @app.route('/battlecard')
 def battlecard_page():
-    """Serve the battlecard builder UI."""
-    return render_template('battlecard.html')
+    """Alias, so links handed out before the builder moved to / still work."""
+    return render_template('battlecard.html', ai_enabled=battlecard_ai.available())
 
 
 @app.route('/api/battlecard/presets')
@@ -917,6 +927,69 @@ def battlecard_export():
     data = request.get_json(silent=True) or {}
     payload = battlecard_service.export_json(data)
     return app.response_class(payload, mimetype='application/json')
+
+
+# ─── AI Routes ──────────────────────────────────────────────────────────────────
+
+@app.route('/api/battlecard/status')
+def battlecard_status():
+    """Tell the UI whether Claude is reachable, so it can adapt."""
+    return jsonify({
+        'ai_enabled': battlecard_ai.available(),
+        'model': battlecard_ai.MODEL,
+        'depths': [{'key': key, **{field: value for field, value in preset.items()
+                                   if field in ('label', 'blurb', 'slides')}}
+                   for key, preset in battlecard_schema.DEPTHS.items()],
+    })
+
+
+def _sse(events):
+    """Serialise an event generator as server sent events."""
+    for event in events:
+        yield 'data: %s\n\n' % json.dumps(event)
+
+
+@app.route('/api/battlecard/generate', methods=['POST'])
+def battlecard_generate():
+    """Research a competitor and write the card, streaming progress as it goes.
+
+    Streamed because research plus structuring runs for minutes, and a silent
+    connection gets cut by the worker timeout or an upstream proxy.
+    """
+    data = request.get_json(silent=True) or {}
+    events = battlecard_ai.generate_events(
+        data.get('competitor', ''), data.get('ia_product', ''),
+        data.get('depth', battlecard_schema.DEFAULT_DEPTH), data.get('notes', ''))
+    return app.response_class(_sse(events), mimetype='text/event-stream',
+                              headers={'Cache-Control': 'no-cache',
+                                       'X-Accel-Buffering': 'no'})
+
+
+@app.route('/api/battlecard/chat', methods=['POST'])
+def battlecard_chat():
+    """Stream an answer from the in-app assistant."""
+    data = request.get_json(silent=True) or {}
+    history = data.get('messages') or []
+    card = data.get('card') or None
+    product = (card or {}).get('meta', {}).get('ia_product', '')
+
+    if not battlecard_ai.available():
+        return jsonify({'error': 'No Anthropic credential is configured. Set '
+                                 'ANTHROPIC_API_KEY on the service.'}), 503
+
+    def stream():
+        try:
+            for chunk in battlecard_ai.chat_stream(history, card, product):
+                yield 'data: %s\n\n' % json.dumps({'type': 'text', 'text': chunk})
+        except Exception as exc:
+            app.logger.exception('chat failed')
+            yield 'data: %s\n\n' % json.dumps(
+                {'type': 'error', 'message': '%s: %s' % (type(exc).__name__, exc)})
+        yield 'data: %s\n\n' % json.dumps({'type': 'done'})
+
+    return app.response_class(stream(), mimetype='text/event-stream',
+                              headers={'Cache-Control': 'no-cache',
+                                       'X-Accel-Buffering': 'no'})
 
 
 if __name__ == '__main__':

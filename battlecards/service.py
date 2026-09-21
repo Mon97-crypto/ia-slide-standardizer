@@ -11,7 +11,8 @@ from .brand import PRODUCT_SOLUTIONS, SOLUTION_LABELS
 from .builder import build_presentation
 from .compat import audit
 from .library import COMPETITOR_PRESETS, PRODUCT_CATALOG, scaffold
-from .schema import SECTION_LABELS, SECTION_ORDER, normalize, validate
+from .schema import (DEPTHS, SECTION_LABELS, SECTION_ORDER, apply_depth,
+                     normalize, validate)
 
 _SAFE_NAME = re.compile(r'[^A-Za-z0-9]+')
 
@@ -32,8 +33,17 @@ def starter(competitor: str = '', product: str = '', solution: str = '') -> dict
     return scaffold(competitor, product, solution)
 
 
-def review(payload: dict) -> dict:
+def _prepare(payload: dict) -> dict:
+    """Normalise, then trim to the requested depth if one was asked for."""
     card = normalize(payload)
+    depth = card['meta'].get('depth')
+    if depth in DEPTHS:
+        apply_depth(card, depth)
+    return card
+
+
+def review(payload: dict) -> dict:
+    card = _prepare(payload)
     result = validate(card)
     result['card'] = card
     return result
@@ -41,7 +51,7 @@ def review(payload: dict) -> dict:
 
 def build(payload: dict, output_dir: str) -> dict:
     """Normalise, validate and write the deck. Raises ValueError on bad input."""
-    card = normalize(payload)
+    card = _prepare(payload)
     checks = validate(card)
     if checks['errors']:
         raise ValueError('; '.join(checks['errors']))
@@ -63,7 +73,7 @@ def build(payload: dict, output_dir: str) -> dict:
 
 
 def export_json(payload: dict) -> str:
-    return json.dumps(normalize(payload), indent=2, sort_keys=True)
+    return json.dumps(_prepare(payload), indent=2, sort_keys=True)
 
 
 def _filename(card: dict) -> str:

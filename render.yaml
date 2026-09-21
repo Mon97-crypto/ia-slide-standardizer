@@ -13,3 +13,7 @@ services:
         sync: false
       - key: IA_AUTH_PASSWORD
         sync: false
+      # Required for competitor research and the in-app assistant. Without it the
+      # builder still assembles saved cards, but nothing is generated.
+      - key: ANTHROPIC_API_KEY
+        sync: false

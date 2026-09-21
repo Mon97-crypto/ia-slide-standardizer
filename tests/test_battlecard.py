@@ -388,3 +388,177 @@ def test_auth_gate_rejects_and_accepts(monkeypatch):
     assert client.get('/private', headers=header('ia', 'wrong')).status_code == 401
     assert client.get('/private', headers=header('nope', 'secret')).status_code == 401
     assert client.get('/private', headers=header('ia', 'secret')).status_code == 200
+
+
+# ── depth presets ───────────────────────────────────────────────────────────
+
+def test_each_depth_hits_its_advertised_slide_count(tmp_path):
+    """The label promises a range. The build must land inside it."""
+    expected = {'summary': (6, 8), 'standard': (11, 13), 'technical': (17, 20)}
+    for depth, (low, high) in expected.items():
+        payload = attributesmart.card_for('o9 Solutions')
+        payload['meta']['depth'] = depth
+        result = service.build(payload, str(tmp_path))
+        assert low <= result['slide_count'] <= high, (depth, result['slide_count'])
+
+
+def test_depth_caps_trim_rows():
+    payload = attributesmart.card_for('Oracle Retail')
+    card = schema.apply_depth(schema.normalize(payload), 'summary')
+    caps = schema.DEPTHS['summary']['caps']
+    for key, cap in caps.items():
+        assert len(card.get(key, [])) <= cap, key
+
+
+def test_a_card_without_a_depth_keeps_every_section(tmp_path):
+    """A curated card lists its own sections and must not be silently trimmed."""
+    payload = attributesmart.card_for('o9 Solutions')
+    assert 'depth' not in payload['meta']
+    result = service.build(payload, str(tmp_path))
+    assert result['slide_count'] >= 17
+
+
+def test_depth_is_recorded_on_the_card():
+    card = schema.normalize({'meta': {'competitor': 'Acme', 'depth': 'summary'},
+                             'their_strengths': ['x']})
+    assert card['meta']['depth'] == 'summary'
+    assert schema.normalize({'meta': {'competitor': 'Acme'}})['meta']['depth'] == ''
+
+
+# ── AI layer ────────────────────────────────────────────────────────────────
+
+def test_ai_reports_unavailable_without_a_credential(monkeypatch):
+    from battlecards import ai
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    monkeypatch.delenv('ANTHROPIC_AUTH_TOKEN', raising=False)
+    monkeypatch.setattr(ai.os.path, 'isdir', lambda path: False)
+    assert ai.available() is False
+
+
+def test_ai_available_with_a_key(monkeypatch):
+    from battlecards import ai
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-ant-not-a-real-key')
+    assert ai.available() is True
+
+
+def test_generate_events_explains_a_missing_credential(monkeypatch):
+    from battlecards import ai
+    monkeypatch.setattr(ai, 'available', lambda: False)
+    events = list(ai.generate_events('Acme', 'AttributeSmart'))
+    assert len(events) == 1
+    assert events[0]['type'] == 'error'
+    assert 'ANTHROPIC_API_KEY' in events[0]['message']
+
+
+def test_generate_events_rejects_an_empty_competitor():
+    from battlecards import ai
+    events = list(ai.generate_events('', 'AttributeSmart'))
+    assert events[0]['type'] == 'error'
+
+
+def test_model_is_opus_5():
+    from battlecards import ai
+    assert ai.MODEL == 'claude-opus-5'
+
+
+def test_ground_truth_carries_the_verified_attributesmart_facts():
+    from battlecards import ai
+    facts = ai._product_facts('AttributeSmart')
+    assert '10,000' in facts and 'CNN' in facts and 'OCR' in facts
+    assert attributesmart.IA_CITATION in facts
+    # Another product must not inherit AttributeSmart's numbers.
+    assert 'CNN' not in ai._product_facts('PriceSmart')
+
+
+def test_system_prompt_states_the_honesty_rules_and_caches_them():
+    from battlecards import ai
+    blocks = ai._system_prompt('AttributeSmart', 'o9 Solutions')
+    stable = blocks[0]
+    assert stable['cache_control'] == {'type': 'ephemeral'}
+    assert 'Never state a capability' in stable['text']
+    assert 'no en dashes' in stable['text']
+    # The volatile competitor name sits after the cached prefix.
+    assert 'o9 Solutions' in blocks[1]['text']
+    assert 'o9 Solutions' not in stable['text']
+
+
+def test_generated_card_schema_restricts_ratings():
+    from battlecards import ai
+    ratings = ai.CARD_SCHEMA['properties']['comparison']['items']['properties']
+    assert ratings['competitor']['enum'] == list(schema.RATING_VALUES)
+    assert 'unknown' in ratings['competitor']['enum']
+
+
+def test_curated_research_wins_over_generated_content():
+    from battlecards import ai
+    thin = {'their_strengths': ['generated guess'], 'comparison': [],
+            'meta': {'headline': 'generated'}}
+    merged = ai._merge_curated(thin, 'o9 Solutions', 'AttributeSmart')
+    curated = attributesmart.COMPETITORS['o9 Solutions']
+    assert merged['their_strengths'] == curated['strengths']
+    assert merged['_curated'] is True
+    # A competitor with no curated card keeps the generated content.
+    untouched = ai._merge_curated(dict(thin), 'Some New Vendor', 'AttributeSmart')
+    assert untouched['their_strengths'] == ['generated guess']
+
+
+# ── routes ──────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def client(monkeypatch):
+    monkeypatch.delenv('IA_AUTH_USER', raising=False)
+    monkeypatch.delenv('IA_AUTH_PASSWORD', raising=False)
+    import app as flask_app
+    flask_app.app.config['TESTING'] = True
+    return flask_app.app.test_client()
+
+
+def test_battlecard_builder_owns_the_landing_page(client):
+    body = client.get('/').data.decode()
+    assert 'Battlecard Builder' in body
+    assert 'Which Impact Analytics product?' in body
+    # The standardizer is no longer the front door.
+    assert 'Upload & Convert' not in body
+
+
+def test_standardizer_still_reachable(client):
+    assert client.get('/standardizer').status_code == 200
+    assert 'Standardize Now' in client.get('/standardizer').data.decode()
+
+
+def test_old_battlecard_link_still_works(client):
+    assert client.get('/battlecard').status_code == 200
+
+
+def test_status_route_lists_the_depths(client):
+    data = client.get('/api/battlecard/status').get_json()
+    assert data['model'] == 'claude-opus-5'
+    assert {entry['key'] for entry in data['depths']} == set(schema.DEPTHS)
+    for entry in data['depths']:
+        assert entry['label'] and entry['slides'] and entry['blurb']
+
+
+def test_chat_route_refuses_without_a_credential(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app.battlecard_ai, 'available', lambda: False)
+    response = client.post('/api/battlecard/chat', json={'messages': [
+        {'role': 'user', 'content': 'hi'}]})
+    assert response.status_code == 503
+    assert 'ANTHROPIC_API_KEY' in response.get_json()['error']
+
+
+def test_generate_route_streams_events(client, monkeypatch):
+    import app as flask_app
+
+    def fake(competitor, product, depth, notes):
+        yield {'type': 'status', 'step': 'research', 'message': 'searching'}
+        yield {'type': 'card', 'card': {'meta': {'competitor': competitor}},
+               'curated': False, 'research': 'brief'}
+
+    monkeypatch.setattr(flask_app.battlecard_ai, 'generate_events', fake)
+    response = client.post('/api/battlecard/generate',
+                           json={'competitor': 'Acme', 'ia_product': 'AttributeSmart'})
+    assert response.status_code == 200
+    assert response.mimetype == 'text/event-stream'
+    body = response.get_data(as_text=True)
+    assert '"type": "status"' in body and '"type": "card"' in body

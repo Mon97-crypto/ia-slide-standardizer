@@ -1,12 +1,45 @@
-# IA Slide Standardizer
+# IA Battlecard Builder
 
-Two tools for Impact Analytics slide work, served from one Flask app.
+A competitive battlecard builder for Impact Analytics. Pick a competitor, pick an IA
+product, pick a length, and Claude researches the public record and writes the deck.
 
-1. **Slide Standardizer** at `/` converts an existing PPTX or a screenshot into the IA template.
-2. **Battlecard Builder** at `/battlecard` builds a competitive battlecard deck from structured input.
+- **Battlecard Builder** at `/` is the product. Three inputs, a chat assistant, and a
+  PPTX download.
+- **Slide Standardizer** at `/standardizer` is the original tool, kept but no longer the
+  front door.
 
-Both follow the Impact Analytics brand guide. Every deck the battlecard builder writes opens
-unchanged in PowerPoint, Keynote and Google Slides.
+Every deck follows the Impact Analytics brand guide and opens unchanged in PowerPoint,
+Keynote and Google Slides.
+
+## How generation works
+
+1. **Research.** Claude Opus 5 searches the public record with the `web_search` server
+   tool and writes a sourced brief. The brief streams to the browser while it is written,
+   so a run that takes minutes never looks stalled and never trips a worker timeout.
+2. **Structure.** A second call turns the brief into the card schema through structured
+   outputs, so the payload validates without parsing prose.
+3. **Merge.** Where a hand researched card exists in `content/battlecards/`, its sourced
+   sections win. The model fills gaps rather than overwriting research.
+4. **Build.** The card is normalised, trimmed to the chosen depth, checked against the
+   brand writing rules, and rendered to PPTX.
+
+**The honesty design is the point.** Claude receives the IA product facts as ground truth
+and is instructed never to state a competitor capability, number, customer or price it did
+not source. Where the public record is silent, the capability rating comes back `unknown`,
+which the deck renders as "Unclear" with "Ask the question, do not assert the gap". A
+battlecard that overstates a rival's gap loses the deal the moment the buyer corrects it,
+so the builder would rather hand a seller a question than a guess.
+
+### Depths
+
+| Depth | Slides | What it is |
+|---|---|---|
+| Summary | 6 to 8 | The one page card plus the essentials |
+| Standard | 11 to 13 | The working card for most meetings |
+| Full technical | 17 to 20 | Every section, including the capability matrix and pricing |
+
+Depth caps rows per section, so a summary stays a summary. A card that names its own
+sections, such as the curated files in `content/`, is never trimmed.
 
 ## Running it
 
@@ -16,6 +49,13 @@ python3 app.py                                  # http://127.0.0.1:5000
 python3 build_battlecards.py                    # build every card in content/
 python3 -m pytest tests -q
 ```
+
+### Environment
+
+| Variable | Effect when unset |
+|---|---|
+| `ANTHROPIC_API_KEY` | No research and no assistant. Saved cards still build. |
+| `IA_AUTH_USER`, `IA_AUTH_PASSWORD` | Every route is open. Unsafe with real content. |
 
 ### Access control
 
@@ -66,6 +106,14 @@ Import and export JSON so a team can version a card in git.
 ### Using the API
 
 ```bash
+# Is Claude reachable, and what depths exist
+curl localhost:5000/api/battlecard/status
+
+# Research a competitor and stream the card back as server sent events
+curl -N -X POST localhost:5000/api/battlecard/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"competitor":"o9 Solutions","ia_product":"AttributeSmart","depth":"summary"}'
+
 # Presets: products, solutions, competitor list, section list
 curl localhost:5000/api/battlecard/presets
 
@@ -192,6 +240,7 @@ battlecards/
   library.py     IA portfolio, capability and question banks, competitor presets, scaffold
   builder.py     slide builders, pagination, the deck assembler
   compat.py      Google Slides compatibility audit
+  ai.py          Claude Opus 5 research, structured card generation, chat assistant
   attributesmart.py  deep AttributeSmart card set, IA facts plus sourced rivals
   auth.py        optional HTTP basic auth over every route
   service.py     glue for the Flask routes
@@ -199,7 +248,8 @@ content/battlecards/
   *.json            versioned battlecard payloads
 build_battlecards.py  build every card from content/
 templates/
-  battlecard.html   the builder UI
+  battlecard.html   the builder UI, the landing page
+  index.html        the original standardizer, at /standardizer
 tests/
   test_battlecard.py
 ```

@@ -61,6 +61,59 @@ SECTION_LABELS = {
 
 DEFAULT_SECTIONS = list(SECTION_ORDER)
 
+# ─── Depth presets ──────────────────────────────────────────────────────────────
+# The user picks how long the deck is. Each depth names the sections it keeps and
+# caps how many rows a section may carry, so a summary stays a summary.
+
+DEPTHS = {
+    'summary': {
+        'label': 'Summary',
+        'blurb': 'The one page card plus the essentials. Good for a first call.',
+        'slides': '6 to 8 slides',
+        'sections': ['cover', 'positioning', 'why_we_win', 'objections',
+                     'proof_points', 'talk_track', 'one_pager'],
+        'caps': {'our_advantages': 3, 'comparison': 6, 'objections': 2,
+                 'landmines': 2, 'discovery': 2, 'proof_points': 3,
+                 'their_strengths': 3, 'their_weaknesses': 3},
+    },
+    'standard': {
+        'label': 'Standard',
+        'blurb': 'The working card a seller carries into most meetings.',
+        'slides': '11 to 13 slides',
+        'sections': ['cover', 'snapshot', 'positioning', 'strengths_weaknesses',
+                     'why_we_win', 'comparison', 'objections', 'landmines',
+                     'discovery', 'proof_points', 'talk_track', 'one_pager'],
+        'caps': {'our_advantages': 3, 'comparison': 9, 'objections': 4,
+                 'landmines': 3, 'discovery': 3, 'proof_points': 4,
+                 'their_strengths': 4, 'their_weaknesses': 4},
+    },
+    'technical': {
+        'label': 'Full technical',
+        'blurb': 'Every section, including the deep capability matrix and pricing.',
+        'slides': '17 to 20 slides',
+        'sections': list(SECTION_ORDER),
+        'caps': {},
+    },
+}
+
+DEFAULT_DEPTH = 'standard'
+
+
+def depth_sections(depth: str) -> list:
+    return list(DEPTHS.get(depth, DEPTHS[DEFAULT_DEPTH])['sections'])
+
+
+def apply_depth(card: dict, depth: str) -> dict:
+    """Trim a card to a depth preset, in place, and set its section list."""
+    preset = DEPTHS.get(depth, DEPTHS[DEFAULT_DEPTH])
+    for key, cap in preset['caps'].items():
+        rows = card.get(key)
+        if isinstance(rows, list) and len(rows) > cap:
+            card[key] = rows[:cap]
+    card.setdefault('options', {})['sections'] = _valid_sections(preset['sections'])
+    card['meta']['depth'] = depth if depth in DEPTHS else DEFAULT_DEPTH
+    return card
+
 
 # ─── Copy rules from the brand guide ────────────────────────────────────────────
 
@@ -205,6 +258,11 @@ def normalize(payload: dict) -> dict:
         'confidentiality': _clean_str(meta_in.get('confidentiality'), sanitize) or 'Internal use only',
         'headline': _clean_str(meta_in.get('headline'), sanitize),
         'win_theme': _clean_str(meta_in.get('win_theme'), sanitize),
+        # Empty when the caller did not ask for a depth. A curated card that
+        # lists its own sections must not be silently trimmed to a preset.
+        'depth': (_clean_str(meta_in.get('depth'), False).lower()
+                  if _clean_str(meta_in.get('depth'), False).lower() in DEPTHS
+                  else ''),
         'distribution': (_clean_str(meta_in.get('distribution'), False).lower()
                          if _clean_str(meta_in.get('distribution'), False).lower() in DISTRIBUTIONS
                          else 'internal'),
