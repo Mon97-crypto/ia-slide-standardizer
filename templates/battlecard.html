@@ -5,289 +5,233 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IA Battlecard Builder</title>
     <link rel="icon" href="{{ url_for('static', filename='images/ia_logo.png') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=Lato:wght@400&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,200;0,300;0,400;1,300&family=Inter+Tight:wght@400;500;600&family=Lato:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ia.css') }}">
     <style>
-        /* Impact Analytics palette. Nothing outside it appears on this page. */
-        :root {
-            --impact-blue: #264CD7;
-            --impact-blue-dark: #1D3CAF;
-            --off-white: #F4F4F6;
-            --black: #1C1B1B;
-            --white: #FFFFFF;
-            --orange: #FF6F1C;
-            --gray1: #E4E4E4;
-            --gray2: #D7D6D2;
-            --gray3: #B3B2AD;
-            --merch: #BEA8EF;
-            --inventory: #E3F576;
-            --pricing: #3DD499;
-            --data: #BFD1F5;
-            --r: 14px;
-            --r-sm: 9px;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { height: 100%; }
-        body {
-            font-family: 'Inter Tight', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--off-white);
-            color: var(--black);
-            font-size: 15px;
-            line-height: 1.5;
-            display: flex;
-            flex-direction: column;
-        }
-        a { color: var(--impact-blue); }
-        ::selection { background: var(--data); }
+        .shell { display: grid; grid-template-columns: minmax(0, 1fr) 400px; min-height: calc(100vh - 62px); }
+        main { min-width: 0; }
 
-        /* ── Masthead ───────────────────────────────────────────── */
-        header.top {
-            background: var(--black); height: 58px; padding: 0 26px; flex: none;
-            display: flex; align-items: center; justify-content: space-between;
-        }
-        .brand { display: flex; align-items: center; gap: 13px; }
-        .brand img { height: 27px; }
-        .brand b { color: #fff; font-weight: 600; font-size: 16px; letter-spacing: -0.3px; }
-        .brand .tag {
-            font-size: 9.5px; font-weight: 600; letter-spacing: 0.7px;
-            text-transform: uppercase; color: var(--data);
-            border: 1px solid rgba(191,209,245,.35); padding: 2px 7px; border-radius: 20px;
-        }
-        .top .right { display: flex; align-items: center; gap: 16px; }
-        .top .right a { color: var(--gray3); font-size: 13px; text-decoration: none; }
-        .top .right a:hover { color: #fff; }
-        .ai-dot { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gray3); }
-        .ai-dot i { width: 7px; height: 7px; border-radius: 50%; background: var(--pricing); }
-        .ai-dot.off i { background: var(--orange); }
+        /* ── Hero: Impact Blue, grid pattern, grain. The glass base layer. ── */
+        .hero { padding: 60px 48px 186px; }
+        .hero .wrap { max-width: 720px; margin: 0 auto; }
+        .hero .eyebrow { color: rgba(255,255,255,.62); }
+        .hero .display { margin-top: 16px; color: var(--white); }
+        .hero .lede { margin-top: 18px; color: rgba(255,255,255,.78); max-width: 560px; }
+        .hero .rule { width: 68px; height: 3px; background: var(--accent); margin-top: 28px; border-radius: 2px; transition: background .3s; }
 
-        /* ── Two column shell ───────────────────────────────────── */
-        .shell { flex: 1; display: grid; grid-template-columns: 1fr 384px; min-height: 0; }
-        main { overflow-y: auto; padding: 34px 40px 60px; }
-        .inner { max-width: 760px; margin: 0 auto; }
+        /* ── The glass panel that clarifies the pattern beneath it ───────── */
+        .console { max-width: 720px; margin: -148px auto 0; padding: 0 48px 70px; position: relative; z-index: 10; }
+        .console > .glass { padding: 36px 38px 34px; }
 
-        h1 { font-size: 31px; font-weight: 600; letter-spacing: -1px; line-height: 1.15; }
-        h1 em { color: var(--impact-blue); font-style: normal; }
-        .lede { color: #6a6a6a; margin-top: 9px; font-size: 15px; }
+        .step { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 4px 18px; padding: 24px 0; border-top: 1px solid var(--gray1); }
+        .step:first-of-type { padding-top: 4px; border-top: none; }
+        .step .numeral { color: var(--impact-blue); grid-row: span 3; padding-top: 2px; }
+        .step .numeral::after { content: ''; display: block; width: 26px; height: 3px; border-radius: 2px;
+            background: var(--accent); margin-top: 10px; transition: background .3s; }
+        .step .ask { align-self: center; }
+        .step .why { color: var(--gray3); font-size: 14px; margin-top: -2px; margin-bottom: 13px; }
+        .step .ctl { min-width: 0; }
 
-        /* ── Form ───────────────────────────────────────────────── */
-        .step { margin-top: 30px; }
-        .step > label.q {
-            display: flex; align-items: baseline; gap: 9px; margin-bottom: 11px;
-        }
-        .step .n {
-            flex: none; width: 21px; height: 21px; border-radius: 50%;
-            background: var(--impact-blue); color: #fff; font-size: 11px;
-            font-weight: 600; display: grid; place-items: center;
-        }
-        .step .qt { font-size: 16px; font-weight: 600; }
-        .step .hint { color: var(--gray3); font-size: 13px; margin-left: 30px; margin-top: -6px; margin-bottom: 11px; }
-
-        select, input[type=text], textarea {
-            width: 100%; padding: 12px 13px; border: 1px solid var(--gray1);
-            border-radius: var(--r-sm); font-family: inherit; font-size: 15px;
-            color: var(--black); background: var(--white); appearance: none;
-        }
-        select { background-image: linear-gradient(45deg, transparent 50%, var(--gray3) 50%), linear-gradient(135deg, var(--gray3) 50%, transparent 50%); background-position: calc(100% - 19px) 20px, calc(100% - 14px) 20px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
-        select:focus, input:focus, textarea:focus {
-            outline: none; border-color: var(--impact-blue);
-            box-shadow: 0 0 0 3px rgba(38,76,215,.11);
-        }
-        textarea { min-height: 72px; resize: vertical; line-height: 1.5; }
-
-        .depths { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
+        .depths { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
         .depth {
-            border: 1px solid var(--gray1); background: var(--white);
-            border-radius: var(--r-sm); padding: 14px; cursor: pointer; text-align: left;
-            font-family: inherit; transition: border-color .12s;
+            position: relative; overflow: hidden; text-align: left; cursor: pointer;
+            font-family: var(--sans); background: var(--white); border: 1px solid var(--gray1);
+            border-radius: var(--r-sm); padding: 16px 15px; transition: border-color .14s, box-shadow .14s, transform .14s;
         }
-        .depth:hover { border-color: var(--gray3); }
-        .depth.on { border-color: var(--impact-blue); box-shadow: 0 0 0 2px rgba(38,76,215,.12); }
-        .depth .dl { display: block; font-weight: 600; font-size: 14.5px; }
-        .depth .ds { display: block; color: var(--impact-blue); font-size: 12px; font-weight: 500; margin-top: 2px; }
-        .depth .db { display: block; color: var(--gray3); font-size: 12px; margin-top: 6px; line-height: 1.4; }
+        .depth:hover { border-color: var(--gray2); transform: translateY(-2px); }
+        .depth.on { border-color: var(--impact-blue); box-shadow: 0 0 0 3px rgba(38,76,215,.13); }
+        .depth.on::before {
+            content: ''; position: absolute; inset: 0; z-index: 0; opacity: .5;
+            background: linear-gradient(140deg, var(--accent) 0%, rgba(255,255,255,0) 68%);
+        }
+        .depth > * { position: relative; z-index: 1; }
+        .depth .dn { font-family: var(--serif); font-weight: 400; font-size: 19px; letter-spacing: -.3px; display: block; }
+        .depth .dc { display: block; margin-top: 3px; font-size: 12.5px; font-weight: 600; color: var(--impact-blue); }
+        .depth .dd { display: block; margin-top: 8px; font-size: 12.5px; color: #6c6c6c; line-height: 1.42; }
 
-        .accent-note {
-            margin-top: 22px; background: rgba(38,76,215,.05);
-            border: 1px solid rgba(38,76,215,.16); border-radius: var(--r-sm);
-            padding: 12px 14px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start;
-        }
-        .sw { flex: none; width: 13px; height: 13px; border-radius: 3px; margin-top: 3px; }
+        .accent-line { display: flex; gap: 12px; align-items: flex-start; margin-top: 6px; font-size: 13.5px; color: #5c5c5c; line-height: 1.5; }
+        .accent-line .chip { flex: none; width: 15px; height: 15px; border-radius: 4px; margin-top: 2px; background: var(--accent); transition: background .3s; }
 
-        .go { margin-top: 26px; display: flex; gap: 11px; align-items: center; flex-wrap: wrap; }
-        .btn {
-            display: inline-flex; align-items: center; gap: 8px; border: none;
-            border-radius: var(--r-sm); padding: 13px 22px; font-family: inherit;
-            font-size: 15px; font-weight: 600; cursor: pointer;
-        }
-        .btn-primary { background: var(--impact-blue); color: #fff; }
-        .btn-primary:hover:not(:disabled) { background: var(--impact-blue-dark); }
-        .btn:disabled { background: var(--gray2); color: var(--gray3); cursor: not-allowed; }
-        .btn-quiet { background: var(--white); color: var(--black); border: 1px solid var(--gray1); }
-        .btn-quiet:hover { border-color: var(--impact-blue); color: var(--impact-blue); }
+        details.extra { margin-top: 22px; }
+        details.extra summary { cursor: pointer; font-size: 14.5px; color: var(--impact-blue); font-weight: 500; list-style: none; }
+        details.extra summary::-webkit-details-marker { display: none; }
+        details.extra summary::before { content: '+ '; font-family: var(--serif); }
+        details.extra[open] summary::before { content: '\2212  '; }
 
-        /* ── Progress + result ──────────────────────────────────── */
-        .panel {
-            margin-top: 26px; background: var(--white); border: 1px solid var(--gray1);
-            border-radius: var(--r); overflow: hidden;
+        .launch { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 28px; }
+
+        /* ── Progress and result ─────────────────────────────────────────── */
+        .card-panel { background: var(--white); border: 1px solid var(--gray1); border-radius: var(--r); box-shadow: var(--lift); margin-top: 22px; overflow: hidden; }
+        .card-panel .cap { padding: 20px 26px 0; }
+        .card-panel .in { padding: 14px 26px 26px; }
+
+        .track { display: flex; flex-direction: column; gap: 2px; }
+        .tstep { display: flex; gap: 13px; align-items: center; padding: 9px 0; font-size: 15px; }
+        .tstep .bead {
+            flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+            font-size: 11px; font-weight: 700; background: var(--off-white); color: var(--gray3);
+            border: 1px solid var(--gray1);
         }
-        .panel > h3 {
-            font-size: 12px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase;
-            color: var(--impact-blue); padding: 15px 18px 0;
-        }
-        .panel > .body { padding: 12px 18px 18px; }
-        .steps { display: flex; flex-direction: column; gap: 8px; }
-        .sline { display: flex; gap: 10px; align-items: baseline; font-size: 14px; }
-        .sline .mk { flex: none; width: 15px; color: var(--pricing); font-weight: 700; }
-        .sline.wait .mk { color: var(--gray3); }
+        .tstep.now .bead { background: var(--impact-blue); border-color: var(--impact-blue); color: #fff; }
+        .tstep.done .bead { background: var(--pricing); border-color: var(--pricing); color: #0d4a37; }
+        .tstep.wait { color: var(--gray3); }
+
         .feed {
-            margin-top: 12px; max-height: 210px; overflow-y: auto; background: var(--off-white);
-            border-radius: var(--r-sm); padding: 12px 14px; font-size: 12.5px;
-            line-height: 1.55; white-space: pre-wrap; color: #4a4a4a;
-            font-family: 'Lato', system-ui, sans-serif;
+            position: relative; margin-top: 14px; max-height: 240px; overflow-y: auto;
+            background: var(--black); color: #d6d6d6; border-radius: var(--r-sm);
+            padding: 16px 18px; font-family: var(--mono-ish); font-size: 12.5px;
+            line-height: 1.6; white-space: pre-wrap;
         }
-        .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
-        .stat { background: var(--off-white); border-radius: var(--r-sm); padding: 12px 14px; }
-        .stat b { display: block; font-size: 22px; font-weight: 600; color: var(--impact-blue); }
-        .stat span { font-size: 12px; color: var(--gray3); }
-        .warn-list { margin: 0 0 4px 17px; font-size: 13px; }
-        .warn-list li { margin-bottom: 4px; }
-        .note { border-radius: var(--r-sm); padding: 11px 13px; font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
-        .note.ok { background: rgba(61,212,153,.1); border: 1px solid rgba(61,212,153,.34); }
-        .note.warn { background: rgba(255,111,28,.07); border: 1px solid rgba(255,111,28,.26); }
-        .note.bad { background: #fdeceb; border: 1px solid #f2b8b3; color: #8f2d26; }
+        .feed::-webkit-scrollbar { width: 8px; }
+        .feed::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
 
-        /* ── Chat rail ──────────────────────────────────────────── */
-        aside {
-            background: var(--white); border-left: 1px solid var(--gray1);
-            display: flex; flex-direction: column; min-height: 0;
-        }
-        aside .ah { padding: 17px 20px 13px; border-bottom: 1px solid var(--gray1); flex: none; }
-        aside .ah b { font-size: 15px; font-weight: 600; display: block; }
-        aside .ah span { font-size: 12.5px; color: var(--gray3); }
-        .msgs { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
-        .msg { font-size: 14px; line-height: 1.55; }
-        .msg .who {
-            font-size: 10px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase;
-            color: var(--gray3); margin-bottom: 4px;
-        }
+        .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 16px; }
+        .tile { position: relative; overflow: hidden; background: var(--off-white); border-radius: var(--r-sm); padding: 16px 17px; }
+        .tile b { font-family: var(--serif); font-weight: 300; font-size: 34px; line-height: 1; letter-spacing: -1.5px; color: var(--impact-blue); display: block; }
+        .tile span { display: block; margin-top: 7px; font-size: 12px; color: #6c6c6c; }
+        .tile.flag b { color: var(--orange); }
+
+        .note { border-radius: var(--r-sm); padding: 14px 16px; font-size: 14px; line-height: 1.55; margin-bottom: 12px; }
+        .note.ok { background: rgba(61,212,153,.1); border: 1px solid rgba(61,212,153,.3); }
+        .note.warn { background: rgba(255,111,28,.07); border: 1px solid rgba(255,111,28,.24); }
+        .note.bad { background: #fdeceb; border: 1px solid #f1b5b0; color: #8a2b24; }
+        .note ul { margin: 7px 0 0 18px; }
+        .note li { margin-bottom: 4px; }
+
+        /* ── Assistant rail ──────────────────────────────────────────────── */
+        aside { background: var(--white); border-left: 1px solid var(--gray1); display: flex; flex-direction: column; min-height: 0; position: sticky; top: 62px; height: calc(100vh - 62px); }
+        .rail-top { position: relative; overflow: hidden; padding: 22px 24px 18px; border-bottom: 1px solid var(--gray1); flex: none; }
+        .rail-top .h3 { position: relative; z-index: 2; }
+        .rail-top .caption { position: relative; z-index: 2; margin-top: 3px; }
+        .msgs { flex: 1; overflow-y: auto; padding: 22px 24px 8px; display: flex; flex-direction: column; gap: 18px; align-content: start; }
+        .msg .who { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--gray3); margin-bottom: 6px; }
         .msg.me .who { color: var(--impact-blue); }
-        .msg .bubble { white-space: pre-wrap; }
-        .msg.me .bubble {
-            background: var(--off-white); padding: 10px 12px; border-radius: var(--r-sm);
+        .msg .said { font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; }
+        .msg.me .said { background: var(--off-white); padding: 12px 14px; border-radius: 12px 12px 12px 3px; }
+        .prompts { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }
+        .prompts button {
+            border: 1px solid var(--gray1); background: var(--white); border-radius: 30px;
+            padding: 8px 14px; font-size: 12.5px; cursor: pointer; font-family: var(--sans);
+            color: var(--black); text-align: left; transition: border-color .14s, color .14s;
         }
-        .chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 20px 14px; }
-        .chip {
-            border: 1px solid var(--gray1); background: var(--white); border-radius: 20px;
-            padding: 6px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit;
-            color: var(--black); text-align: left;
-        }
-        .chip:hover { border-color: var(--impact-blue); color: var(--impact-blue); }
-        .composer { flex: none; border-top: 1px solid var(--gray1); padding: 13px 16px; display: flex; gap: 9px; }
-        .composer textarea {
-            min-height: 42px; max-height: 130px; padding: 10px 12px; font-size: 14px;
-            border-radius: var(--r-sm); resize: none;
-        }
-        .composer button {
-            flex: none; width: 42px; border: none; border-radius: var(--r-sm);
-            background: var(--impact-blue); color: #fff; cursor: pointer; font-size: 16px;
-        }
-        .composer button:disabled { background: var(--gray2); cursor: not-allowed; }
+        .prompts button:hover { border-color: var(--impact-blue); color: var(--impact-blue); }
+        .composer { flex: none; border-top: 1px solid var(--gray1); padding: 15px 18px; display: flex; gap: 10px; align-items: flex-end; }
+        .composer textarea { min-height: 46px; max-height: 140px; padding: 12px 14px; font-size: 14.5px; resize: none; }
+        .composer button { flex: none; width: 46px; height: 46px; border: none; border-radius: var(--r-sm); background: var(--impact-blue); color: #fff; cursor: pointer; font-size: 17px; }
+        .composer button:disabled { background: var(--gray1); color: var(--gray3); cursor: not-allowed; }
 
-        .blink { animation: blink 1.1s ease-in-out infinite; }
-        @keyframes blink { 50% { opacity: .35; } }
-        .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-
-        @media (max-width: 1080px) {
+        @media (max-width: 1120px) {
             .shell { grid-template-columns: 1fr; }
-            aside { border-left: none; border-top: 1px solid var(--gray1); max-height: 460px; }
-            main { padding: 26px 22px 40px; }
-            .depths { grid-template-columns: 1fr; }
+            aside { position: static; height: auto; max-height: 520px; border-left: none; border-top: 1px solid var(--gray1); }
+            .hero { padding: 44px 24px 130px; }
+            .console { padding: 0 24px 50px; }
+            .console > .glass { padding: 26px 22px; }
+            .step { grid-template-columns: 42px minmax(0,1fr); gap: 4px 12px; }
+            .step .numeral { font-size: 32px; }
+            .depths, .tiles { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-<header class="top">
-    <div class="brand">
+<header class="masthead">
+    <div class="mark">
         <img src="{{ url_for('static', filename='images/ia_logo.png') }}" alt="Impact Analytics">
         <b>Battlecard Builder</b>
-        <span class="tag">Competitive Intelligence</span>
     </div>
-    <div class="right">
-        <span class="ai-dot {{ '' if ai_enabled else 'off' }}" id="aiDot">
-            <i></i><span id="aiLabel">{{ 'Claude connected' if ai_enabled else 'Claude not connected' }}</span>
+    <nav>
+        <span class="status-dot {{ '' if ai_enabled else 'off' }}">
+            <i></i><span class="label">{{ 'Claude connected' if ai_enabled else 'Claude not connected' }}</span>
         </span>
+        <a href="{{ url_for('index') }}" class="here">Build</a>
         <a href="{{ url_for('library_page') }}">Library</a>
-        <a href="{{ url_for('standardizer') }}">Slide Standardizer</a>
-    </div>
+        <a href="{{ url_for('standardizer') }}">Standardizer</a>
+    </nav>
 </header>
 
 <div class="shell">
 <main>
-    <div class="inner">
-        <h1>Build a competitive <em>battlecard</em></h1>
-        <p class="lede">Pick the rival, pick the product, pick the length. Claude researches
-           the public record and writes the deck against the Impact Analytics brand guide.</p>
+    <section class="hero blue-field grid-lines has-grain">
+        <div class="wrap">
+            <p class="eyebrow">Competitive intelligence</p>
+            <h1 class="display">Know the rival.<br>Win the <em>room</em>.</h1>
+            <p class="lede">Three questions. Claude searches the public record, writes the
+               card against the Impact Analytics brand guide, and flags every claim it
+               could not verify.</p>
+            <div class="rule" id="heroRule"></div>
+        </div>
+    </section>
 
-        <div class="step">
-            <label class="q" for="competitor"><span class="n">1</span>
-                <span class="qt">Which competitor?</span></label>
-            <div class="hint">Pick one, or type any name to research it fresh.</div>
-            <input type="text" id="competitor" list="competitorList" placeholder="Start typing a competitor name" autocomplete="off">
-            <datalist id="competitorList"></datalist>
+    <div class="console">
+        <div class="glass">
+            <div class="step">
+                <span class="numeral">01</span>
+                <label class="h5 ask" for="competitor">Which competitor?</label>
+                <p class="why">Pick a known rival, or type any name to research it fresh.</p>
+                <div class="ctl">
+                    <input class="field" type="text" id="competitor" list="competitorList"
+                           placeholder="Start typing a competitor name" autocomplete="off">
+                    <datalist id="competitorList"></datalist>
+                </div>
+            </div>
+
+            <div class="step">
+                <span class="numeral">02</span>
+                <label class="h5 ask" for="product">Which Impact Analytics product?</label>
+                <p class="why">This picks the solution accent and the capabilities compared.</p>
+                <div class="ctl">
+                    <select class="field" id="product"></select>
+                    <div class="accent-line"><span class="chip"></span><span id="accentCopy"></span></div>
+                </div>
+            </div>
+
+            <div class="step">
+                <span class="numeral">03</span>
+                <span class="h5 ask">How long should the deck be?</span>
+                <p class="why">Every length is a complete card. Longer carries more evidence.</p>
+                <div class="ctl"><div class="depths" id="depths"></div></div>
+            </div>
+
+            <details class="extra">
+                <summary>Add context Claude cannot find on its own</summary>
+                <textarea class="field" id="notes" style="margin-top:12px"
+                          placeholder="A live deal, something the buyer told you, a gap you already know about."></textarea>
+            </details>
+
+            <div class="launch">
+                <button class="btn btn-primary" id="goBtn"><span id="goLabel">Research and build</span></button>
+                <button class="btn btn-ghost" id="pptxBtn" disabled>Download PPTX</button>
+                <button class="btn btn-ghost btn-sm" id="jsonBtn" disabled>JSON</button>
+            </div>
         </div>
 
-        <div class="step">
-            <label class="q" for="product"><span class="n">2</span>
-                <span class="qt">Which Impact Analytics product?</span></label>
-            <div class="hint">This sets the accent colour and the capabilities compared.</div>
-            <select id="product"></select>
-        </div>
-
-        <div class="step">
-            <label class="q"><span class="n">3</span>
-                <span class="qt">How long should the deck be?</span></label>
-            <div class="hint">Every depth is a full card. Longer means more evidence per section.</div>
-            <div class="depths" id="depths"></div>
-        </div>
-
-        <div class="accent-note" id="accentNote"></div>
-
-        <details class="step" style="margin-top:20px">
-            <summary style="cursor:pointer;font-size:13.5px;color:var(--impact-blue);font-weight:500">
-                Add context Claude cannot find on its own (optional)</summary>
-            <textarea id="notes" style="margin-top:11px" placeholder="A live deal, something the buyer told you, a gap you already know about."></textarea>
-        </details>
-
-        <div class="go">
-            <button class="btn btn-primary" id="goBtn"><span id="goLabel">Research and build</span></button>
-            <button class="btn btn-quiet" id="pptxBtn" disabled>Download PPTX</button>
-            <button class="btn btn-quiet" id="jsonBtn" disabled>Export JSON</button>
-        </div>
-
-        <div class="panel" id="progressPanel" hidden>
-            <h3>Progress</h3>
-            <div class="body">
-                <div class="steps" id="stepList"></div>
+        <div class="card-panel rise" id="progressPanel" hidden>
+            <div class="cap"><span class="eyebrow" style="color:var(--impact-blue)">Progress</span></div>
+            <div class="in">
+                <div class="track" id="track"></div>
                 <div class="feed" id="feed" hidden></div>
             </div>
         </div>
 
-        <div class="panel" id="resultPanel" hidden>
-            <h3>Result</h3>
-            <div class="body" id="resultBody"></div>
+        <div class="card-panel rise" id="resultPanel" hidden>
+            <div class="cap"><span class="eyebrow" style="color:var(--impact-blue)">Result</span></div>
+            <div class="in" id="resultBody"></div>
         </div>
     </div>
 </main>
 
 <aside>
-    <div class="ah">
-        <b>Ask about this card</b>
-        <span id="chatSub">Claude knows the card you have open.</span>
+    <div class="rail-top dot-field">
+        <span class="h3">Ask about this card</span>
+        <p class="caption" id="chatSub">Claude knows whatever you have open.</p>
     </div>
-    <div class="msgs" id="msgs"></div>
-    <div class="chips" id="chips"></div>
+    <div class="msgs" id="msgs">
+        <div class="prompts" id="prompts"></div>
+    </div>
     <div class="composer">
-        <label class="sr" for="chatIn">Message</label>
-        <textarea id="chatIn" placeholder="Ask anything about the card" rows="1"></textarea>
+        <label class="sr-only" for="chatIn">Message</label>
+        <textarea class="field" id="chatIn" rows="1" placeholder="Ask anything about the card"></textarea>
         <button id="chatSend" title="Send">&#8593;</button>
     </div>
 </aside>
@@ -295,62 +239,52 @@
 
 <script>
 const AI_ENABLED = {{ 'true' if ai_enabled else 'false' }};
-const SOLUTION_SWATCH = {
-    inventory_replenishment: 'var(--inventory)', merchandising: 'var(--merch)',
-    pricing_promotions: 'var(--pricing)', data_intelligence: 'var(--data)'
+const ACCENT = {
+    inventory_replenishment: '#E3F576', merchandising: '#BEA8EF',
+    pricing_promotions: '#3DD499', data_intelligence: '#BFD1F5'
 };
 
 let presets = { competitors: [], products: [], product_solutions: {} };
-let depths = [];
-let depth = 'standard';
-let card = null;
-let research = '';
-let busy = false;
-let chat = [];
+let depths = [], depth = 'standard';
+let card = null, research = '', chat = [];
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// ── boot ────────────────────────────────────────────────────────────────────
 (async function boot() {
     const [p, s] = await Promise.all([
         fetch('/api/battlecard/presets').then(r => r.json()),
         fetch('/api/battlecard/status').then(r => r.json())
     ]);
-    presets = p;
-    depths = s.depths || [];
+    presets = p; depths = s.depths || [];
 
     $('competitorList').innerHTML = presets.competitors
         .map(c => `<option value="${esc(c.name)}">${esc(c.category)}</option>`).join('');
-    $('product').innerHTML = presets.products
-        .map(x => `<option value="${esc(x.name)}"${x.name === 'AttributeSmart' ? ' selected' : ''}>${esc(x.name)} · ${esc(x.solution_label)}</option>`).join('');
-
+    $('product').innerHTML = presets.products.map(x =>
+        `<option value="${esc(x.name)}"${x.name === 'AttributeSmart' ? ' selected' : ''}>${esc(x.name)} · ${esc(x.solution_label)}</option>`).join('');
     $('depths').innerHTML = depths.map(d => `
         <button class="depth${d.key === depth ? ' on' : ''}" data-depth="${esc(d.key)}">
-            <span class="dl">${esc(d.label)}</span>
-            <span class="ds">${esc(d.slides)}</span>
-            <span class="db">${esc(d.blurb)}</span>
-        </button>`).join('');
+            <span class="dn">${esc(d.label)}</span>
+            <span class="dc">${esc(d.slides)}</span>
+            <span class="dd">${esc(d.blurb)}</span></button>`).join('');
     $('depths').querySelectorAll('.depth').forEach(b => b.onclick = () => {
         depth = b.dataset.depth;
         $('depths').querySelectorAll('.depth').forEach(x => x.classList.toggle('on', x === b));
     });
 
     $('product').onchange = paintAccent;
-    paintAccent();
-    renderChips();
+    paintAccent(); renderPrompts();
 
     if (!AI_ENABLED) {
-        say('assistant', 'Claude is not connected on this deployment, so I cannot research '
-            + 'a competitor or answer questions yet. Someone needs to set ANTHROPIC_API_KEY '
-            + 'on the service. The four saved AttributeSmart cards still build without me.');
-        $('goLabel').textContent = 'Claude not connected';
-        $('goBtn').disabled = true;
+        say('assistant', 'Claude is not connected on this deployment, so I cannot research a '
+            + 'competitor or answer questions yet. Someone needs to set ANTHROPIC_API_KEY on '
+            + 'the service. The saved cards in the library still build without me.');
+        $('goBtn').disabled = true; $('goLabel').textContent = 'Claude not connected';
     } else {
-        say('assistant', 'Pick a competitor and a product, then press Research and build. '
-            + 'I will search the public record, write the card, and flag anything I could '
-            + 'not verify so nobody walks into a meeting with a claim that does not hold.');
+        say('assistant', 'Pick a competitor and a product, then press Research and build. I '
+            + 'will search the public record, write the card, and flag anything I could not '
+            + 'verify so nobody walks into a meeting with a claim that does not hold.');
     }
 })();
 
@@ -358,10 +292,9 @@ function paintAccent() {
     const name = $('product').value;
     const key = presets.product_solutions[name] || 'data_intelligence';
     const label = (presets.products.find(x => x.name === name) || {}).solution_label || '';
-    $('accentNote').innerHTML =
-        `<span class="sw" style="background:${SOLUTION_SWATCH[key]}"></span>
-         <span><b>${esc(label)}</b> is the accent for this card. The brand guide allows one
-         solution colour per composition, so every slide pairs this with Impact Blue.</span>`;
+    document.documentElement.style.setProperty('--accent', ACCENT[key] || ACCENT.data_intelligence);
+    $('accentCopy').innerHTML = `<b>${esc(label)}</b> is the accent for this card. The brand
+        guide allows one solution colour per composition, so every slide pairs it with Impact Blue.`;
 }
 
 // ── generate ────────────────────────────────────────────────────────────────
@@ -370,55 +303,43 @@ $('goBtn').onclick = generate;
 async function generate() {
     const competitor = $('competitor').value.trim();
     if (!competitor) { $('competitor').focus(); return; }
-    setBusy(true);
+    busy(true);
     card = null; research = '';
     $('pptxBtn').disabled = true; $('jsonBtn').disabled = true;
     $('resultPanel').hidden = true;
     $('progressPanel').hidden = false;
     $('feed').hidden = false; $('feed').textContent = '';
-    steps([['Searching the public record', 'wait'], ['Writing the battlecard', 'wait']]);
-
+    track([['Searching the public record', 'now'], ['Writing the battlecard', 'wait']]);
     try {
         const res = await fetch('/api/battlecard/generate', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                competitor, ia_product: $('product').value,
-                depth, notes: $('notes').value.trim()
-            })
+            body: JSON.stringify({ competitor, ia_product: $('product').value, depth,
+                                   notes: $('notes').value.trim() })
         });
-        await readSSE(res, onGenerateEvent);
-    } catch (err) {
-        fail(String(err));
-    } finally {
-        setBusy(false);
-    }
+        await readSSE(res, onEvent);
+    } catch (err) { fail(String(err)); }
+    finally { busy(false); }
 }
 
-function onGenerateEvent(ev) {
+function onEvent(ev) {
     if (ev.type === 'status') {
-        steps(ev.step === 'research'
+        track(ev.step === 'research'
             ? [['Searching the public record', 'now'], ['Writing the battlecard', 'wait']]
             : [['Searched the public record', 'done'], ['Writing the battlecard', 'now']]);
     } else if (ev.type === 'research') {
         research += ev.text;
-        const f = $('feed');
-        f.textContent = research.slice(-4000);
-        f.scrollTop = f.scrollHeight;
+        $('feed').textContent = research.slice(-5000);
+        $('feed').scrollTop = $('feed').scrollHeight;
     } else if (ev.type === 'card') {
-        steps([['Searched the public record', 'done'], ['Wrote the battlecard', 'done']]);
-        card = ev.card;
-        buildDeck(ev.curated);
-    } else if (ev.type === 'error') {
-        fail(ev.message);
-    }
+        track([['Searched the public record', 'done'], ['Wrote the battlecard', 'done']]);
+        card = ev.card; build(ev.curated);
+    } else if (ev.type === 'error') { fail(ev.message); }
 }
 
-async function buildDeck(curated) {
+async function build(curated) {
     const res = await fetch('/api/battlecard/build', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({}, card, {
-            research: research, curated: !!curated, save_to_library: true
-        }))
+        body: JSON.stringify(Object.assign({}, card, { research, curated: !!curated, save_to_library: true }))
     });
     const data = await res.json();
     if (!res.ok) { fail(data.error || 'The deck could not be built.'); return; }
@@ -430,44 +351,37 @@ async function buildDeck(curated) {
     const unclear = (card.comparison || []).filter(r => r.competitor === 'unknown').length;
     const compat = data.compatibility || {};
     let html = `<div class="note ok"><b>${esc(card.meta.competitor)}</b> vs
-        ${esc(card.meta.ia_product || 'Impact Analytics')} is ready as
-        <b>${esc(data.filename)}</b>. Opens unchanged in PowerPoint, Keynote and
-        Google Slides (compatibility check: ${compat.ok ? 'passed' : 'needs attention'}).</div>`;
-    html += `<div class="stat-row">
-        <div class="stat"><b>${data.slide_count}</b><span>slides</span></div>
-        <div class="stat"><b>${(card.comparison || []).length}</b><span>capabilities compared</span></div>
-        <div class="stat"><b>${unclear}</b><span>need verifying</span></div></div>`;
-    if (curated) {
-        html += `<div class="note ok">This competitor has a hand researched card in the
-            repository. Its sourced sections were kept over anything generated.</div>`;
-    }
-    if (unclear) {
-        html += `<div class="note warn"><b>${unclear} capabilit${unclear === 1 ? 'y is' : 'ies are'}
-            marked Unclear.</b> The public record did not support a rating, so the deck tells
-            the seller to ask rather than asserting a gap. Ask me about any of them.</div>`;
-    }
-    if (data.library_entry) {
-        html += `<div class="note ok">Saved to the <a href="/library">shared library</a>
-            so the rest of the team can find it.</div>`;
-    }
+        ${esc(card.meta.ia_product || 'Impact Analytics')} is ready.
+        Opens unchanged in PowerPoint, Keynote and Google Slides
+        (check: ${compat.ok ? 'passed' : 'needs attention'}).</div>
+        <div class="tiles">
+          <div class="tile"><b>${data.slide_count}</b><span>slides</span></div>
+          <div class="tile"><b>${(card.comparison || []).length}</b><span>capabilities compared</span></div>
+          <div class="tile${unclear ? ' flag' : ''}"><b>${unclear}</b><span>need verifying</span></div>
+        </div>`;
+    if (curated) html += `<div class="note ok">This rival has a hand researched card in the
+        repository. Its sourced sections were kept over anything generated.</div>`;
+    if (unclear) html += `<div class="note warn"><b>${unclear}
+        capabilit${unclear === 1 ? 'y is' : 'ies are'} marked Unclear.</b> The public record did
+        not support a rating, so the deck tells the seller to ask rather than asserting a gap.
+        Ask me about any of them.</div>`;
+    if (data.library_entry) html += `<div class="note ok">Saved to the
+        <a href="/library">shared library</a> for the rest of the team.</div>`;
     const warnings = data.warnings || [];
-    if (warnings.length) {
-        html += `<div class="note warn"><b>Brand voice notes</b><ul class="warn-list">`
-            + warnings.map(w => `<li>${esc(w.where)}: ${esc(w.message)}</li>`).join('')
-            + `</ul></div>`;
-    }
+    if (warnings.length) html += `<div class="note warn"><b>Brand voice notes</b><ul>`
+        + warnings.map(w => `<li>${esc(w.where)}: ${esc(w.message)}</li>`).join('') + `</ul></div>`;
     $('resultBody').innerHTML = html;
     $('resultPanel').hidden = false;
     $('chatSub').textContent = 'Claude knows the ' + card.meta.competitor + ' card.';
-    renderChips();
+    renderPrompts();
     say('assistant', `The ${card.meta.competitor} card is built, ${data.slide_count} slides.`
         + (unclear ? ` ${unclear} capabilities came back unverified. Ask me what to do about any of them.` : ''));
 }
 
-function steps(rows) {
-    $('stepList').innerHTML = rows.map(([text, state]) => `
-        <div class="sline ${state === 'done' ? '' : 'wait'}">
-            <span class="mk${state === 'now' ? ' blink' : ''}">${state === 'done' ? '&#10003;' : '&#9679;'}</span>
+function track(rows) {
+    $('track').innerHTML = rows.map(([text, state], i) => `
+        <div class="tstep ${state}">
+            <span class="bead${state === 'now' ? ' pulse' : ''}">${state === 'done' ? '&#10003;' : i + 1}</span>
             <span>${esc(text)}</span></div>`).join('');
 }
 
@@ -476,10 +390,10 @@ function fail(message) {
     $('resultPanel').hidden = false;
 }
 
-function setBusy(state) {
-    busy = state;
+function busy(state) {
     $('goBtn').disabled = state || !AI_ENABLED;
-    $('goLabel').textContent = state ? 'Working' : (AI_ENABLED ? 'Research and build' : 'Claude not connected');
+    $('goLabel').innerHTML = state ? '<span class="spin">&#9696;</span> Working'
+        : (AI_ENABLED ? 'Research and build' : 'Claude not connected');
 }
 
 function exportJson() {
@@ -487,54 +401,49 @@ function exportJson() {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = (card.meta.competitor || 'battlecard').replace(/\W+/g, '_') + '.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    a.click(); URL.revokeObjectURL(a.href);
 }
 
-// ── shared SSE reader ───────────────────────────────────────────────────────
-async function readSSE(res, onEvent) {
+async function readSSE(res, onEach) {
     if (!res.body) throw new Error('This browser cannot stream the response.');
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
+    const reader = res.body.getReader(), decoder = new TextDecoder();
     let buffer = '';
     while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop();
+        const parts = buffer.split('\n\n'); buffer = parts.pop();
         for (const part of parts) {
             const line = part.split('\n').find(l => l.startsWith('data: '));
             if (!line) continue;
-            try { onEvent(JSON.parse(line.slice(6))); } catch (e) { /* partial frame */ }
+            try { onEach(JSON.parse(line.slice(6))); } catch (e) { /* partial frame */ }
         }
     }
 }
 
-// ── chat ────────────────────────────────────────────────────────────────────
-function renderChips() {
-    const base = card
+// ── assistant ───────────────────────────────────────────────────────────────
+function renderPrompts() {
+    const asks = card
         ? ['Which capabilities are unverified?', 'Sharpen the win theme',
            'What should I ask on the first call?', 'Write a cold email from this card']
-        : ['What makes a good battlecard?', 'Which competitors matter for AttributeSmart?',
+        : ['What makes a good battlecard?', 'Which rivals matter for AttributeSmart?',
            'What is the difference between the three lengths?'];
-    $('chips').innerHTML = base.map(q => `<button class="chip">${esc(q)}</button>`).join('');
-    $('chips').querySelectorAll('.chip').forEach(b => b.onclick = () => {
-        $('chatIn').value = b.textContent;
-        sendChat();
+    $('prompts').innerHTML = asks.map(q => `<button>${esc(q)}</button>`).join('');
+    $('prompts').querySelectorAll('button').forEach(b => b.onclick = () => {
+        $('chatIn').value = b.textContent; sendChat();
     });
 }
 
 function say(role, text) {
     chat.push({ role, content: text });
     const el = document.createElement('div');
-    el.className = 'msg' + (role === 'user' ? ' me' : '');
-    el.innerHTML = `<div class="who">${role === 'user' ? 'You' : 'Claude'}</div>
-                    <div class="bubble"></div>`;
-    el.querySelector('.bubble').textContent = text;
+    el.className = 'msg rise' + (role === 'user' ? ' me' : '');
+    el.innerHTML = `<div class="who">${role === 'user' ? 'You' : 'Claude'}</div><div class="said"></div>`;
+    el.querySelector('.said').textContent = text;
     $('msgs').appendChild(el);
+    $('msgs').appendChild($('prompts'));   // suggestions always follow the last reply
     $('msgs').scrollTop = $('msgs').scrollHeight;
-    return el.querySelector('.bubble');
+    return el.querySelector('.said');
 }
 
 $('chatSend').onclick = sendChat;
@@ -545,45 +454,35 @@ $('chatIn').addEventListener('keydown', e => {
 async function sendChat() {
     const text = $('chatIn').value.trim();
     if (!text || !AI_ENABLED) return;
-    $('chatIn').value = '';
-    $('chatSend').disabled = true;
+    $('chatIn').value = ''; $('chatSend').disabled = true;
     say('user', text);
-    const bubble = say('assistant', '');
-    bubble.classList.add('blink');
-    bubble.textContent = 'Thinking';
-
+    const said = say('assistant', 'Thinking');
+    said.classList.add('pulse');
     try {
         const res = await fetch('/api/battlecard/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                messages: chat.filter(m => m.content).map(m => ({ role: m.role, content: m.content })),
-                card
-            })
+            body: JSON.stringify({ messages: chat.filter(m => m.content), card })
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
-            bubble.classList.remove('blink');
-            bubble.textContent = data.error || 'The assistant is unavailable.';
+            said.classList.remove('pulse');
+            said.textContent = data.error || 'The assistant is unavailable.';
             return;
         }
         let first = true;
         await readSSE(res, ev => {
             if (ev.type === 'text') {
-                if (first) { bubble.textContent = ''; bubble.classList.remove('blink'); first = false; }
-                bubble.textContent += ev.text;
+                if (first) { said.textContent = ''; said.classList.remove('pulse'); first = false; }
+                said.textContent += ev.text;
                 $('msgs').scrollTop = $('msgs').scrollHeight;
             } else if (ev.type === 'error') {
-                bubble.classList.remove('blink');
-                bubble.textContent = ev.message;
+                said.classList.remove('pulse'); said.textContent = ev.message;
             }
         });
-        chat[chat.length - 1].content = bubble.textContent;
+        chat[chat.length - 1].content = said.textContent;
     } catch (err) {
-        bubble.classList.remove('blink');
-        bubble.textContent = String(err);
-    } finally {
-        $('chatSend').disabled = false;
-    }
+        said.classList.remove('pulse'); said.textContent = String(err);
+    } finally { $('chatSend').disabled = false; }
 }
 </script>
 </body>

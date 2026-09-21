@@ -137,6 +137,7 @@ HOW_TO_USE = [
 
 COMPETITORS = {
     'Oracle Retail': {
+        'theme': 'Their extraction reads text. Lead with the image and label inputs their public material never claims.',
         'category': 'Enterprise retail suite with a dedicated attribute extraction product',
         'claim': 'Machine learning extracts item attributes from free-form product '
                  'descriptions and normalises the values, correcting short forms, '
@@ -198,6 +199,7 @@ COMPETITORS = {
         ],
     },
     'Blue Yonder': {
+        'theme': 'They buy attribute quality from a content network. Lead with the private label share no network covers.',
         'category': 'Retail and supply chain suite, product content through partnership',
         'claim': 'A strategic partnership with Syndigo brings GS1 aligned product '
                  'content, validated attributes, standardised images and accurate '
@@ -260,6 +262,7 @@ COMPETITORS = {
         ],
     },
     'RELEX Solutions': {
+        'theme': 'Their attributes exist to serve a forecast. Lead with catalogue grade depth, forty fields not four.',
         'category': 'Retail planning and replenishment platform with a product attribute AI agent',
         'claim': 'The Product Attribute AI agent identifies relevant product '
                  'attributes and automatically finds best matched reference products '
@@ -323,6 +326,7 @@ COMPETITORS = {
         ],
     },
     'o9 Solutions': {
+        'theme': "They consume attributes. Lead with who produces them today, and what that team's error rate is.",
         'category': 'Planning platform that consumes attributes through a knowledge graph',
         'claim': 'The Enterprise Knowledge Graph connects customer behaviour, product '
                  'attributes, financial targets and execution constraints, and plans '
@@ -434,7 +438,7 @@ def card_for(competitor: str, owner: str = '', date_label: str = '') -> dict:
             'distribution': 'internal',
             'headline': 'AttributeSmart generates the attributes. %s consumes them.'
                         % competitor,
-            'win_theme': profile['wedge'],
+            'win_theme': profile.get('theme') or profile['wedge'],
         },
         'how_to_use': list(HOW_TO_USE),
         'snapshot': {

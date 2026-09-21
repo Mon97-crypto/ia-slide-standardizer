@@ -1,0 +1,322 @@
+/* Impact Analytics design system for the battlecard builder.
+ *
+ * Built from the IA brand guide rather than approximated. The devices that make
+ * IA look like IA and not like stock SaaS:
+ *
+ *   - Spectral Light for display and headings, the guide's web alternate for
+ *     ABC Otto. The serif headline is what separates IA from the usual
+ *     sans-serif SaaS look, so it carries every heading here.
+ *   - The clarifying glass effect: solid Impact Blue with a pattern beneath, a
+ *     blurring layer, then a sharp edged panel that clarifies what sits under it.
+ *   - Grain over blue for tactility, at low opacity, visible only up close.
+ *   - The primary grid pattern at 10 percent, always bleeding off every edge.
+ *   - Solution colours used one at a time, never mixed in one composition.
+ */
+
+/* ── Tokens ─────────────────────────────────────────────────────────────── */
+:root {
+    --impact-blue: #264CD7;
+    --blue-deep: #1B3AA8;
+    --blue-ink: #14297A;
+    --off-white: #F4F4F6;
+    --black: #1C1B1B;
+    --white: #FFFFFF;
+    --orange: #FF6F1C;
+    --gray1: #E4E4E4;
+    --gray2: #D7D6D2;
+    --gray3: #B3B2AD;
+
+    /* Use-case palette. One per composition. */
+    --merch: #BEA8EF;
+    --inventory: #E3F576;
+    --pricing: #3DD499;
+    --data: #BFD1F5;
+
+    /* The active solution accent, set per page by script. */
+    --accent: #BFD1F5;
+
+    --serif: 'Spectral', Georgia, 'Times New Roman', serif;
+    --sans: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono-ish: 'Lato', system-ui, sans-serif;
+
+    --r: 18px;
+    --r-sm: 11px;
+    --r-xs: 7px;
+
+    --lift: 0 1px 2px rgba(28, 27, 27, .04), 0 10px 30px rgba(28, 27, 27, .06);
+    --lift-hi: 0 2px 6px rgba(28, 27, 27, .05), 0 22px 54px rgba(38, 76, 215, .16);
+    --edge: inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: var(--sans);
+    background: var(--off-white);
+    color: var(--black);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+a { color: var(--impact-blue); }
+::selection { background: var(--data); color: var(--black); }
+
+/* ── Brand surfaces ─────────────────────────────────────────────────────── */
+
+/* Grain. An SVG turbulence field, so no image asset ships for it. */
+.grain::after,
+.has-grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: .5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+}
+
+/* The primary grid pattern: thin lines at 10 percent, bleeding off all edges. */
+.grid-lines::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    pointer-events: none;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, .10) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, .10) 1px, transparent 1px);
+    background-size: 52px 52px;
+    background-position: -1px -1px;
+}
+
+/* A secondary pattern. Never combined with the grid in one composition. */
+.dot-field::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(38, 76, 215, .16) 1.2px, transparent 1.3px);
+    background-size: 22px 22px;
+}
+
+/* Impact Blue field, the base layer of the clarifying glass. */
+.blue-field {
+    position: relative;
+    background: var(--impact-blue);
+    color: var(--white);
+    overflow: hidden;
+    isolation: isolate;
+}
+.blue-field > * { position: relative; z-index: 2; }
+
+/* Solution gradient, starting colour fading to white, per the gradient palette. */
+.accent-wash {
+    background: linear-gradient(135deg, var(--accent) 0%, rgba(255, 255, 255, 0) 72%);
+}
+
+/* The glass module: a sharp edged panel that clarifies whatever sits beneath. */
+.glass {
+    position: relative;
+    background: rgba(255, 255, 255, .86);
+    backdrop-filter: blur(12px) saturate(1.1);
+    -webkit-backdrop-filter: blur(12px) saturate(1.1);
+    border: 1px solid rgba(255, 255, 255, .7);
+    border-radius: var(--r);
+    box-shadow: var(--lift), var(--edge);
+}
+.glass-dark {
+    background: rgba(255, 255, 255, .10);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: var(--r);
+}
+
+/* ── Type ───────────────────────────────────────────────────────────────── */
+.display {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: clamp(38px, 5.4vw, 66px);
+    line-height: 1.03;
+    letter-spacing: -1.6px;
+}
+.h1 {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: clamp(30px, 3.4vw, 42px);
+    line-height: 1.1;
+    letter-spacing: -1px;
+}
+.h2 {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 28px;
+    line-height: 1.16;
+    letter-spacing: -.6px;
+}
+.h3 { font-family: var(--serif); font-weight: 400; font-size: 22px; letter-spacing: -.4px; }
+/* H5 and below are Inter Tight, per the hierarchy. */
+.h5 { font-family: var(--sans); font-weight: 600; font-size: 19px; letter-spacing: -.3px; }
+.lede { font-size: 18px; line-height: 1.55; }
+.body-sm { font-size: 15px; }
+.caption { font-size: 13px; color: var(--gray3); }
+.eyebrow {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+}
+/* Italic single words for emphasis, never whole phrases. */
+.display em, .h1 em, .h2 em { font-style: italic; font-weight: 300; }
+
+.numeral {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 42px;
+    line-height: 1;
+    letter-spacing: -2px;
+}
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+.field {
+    width: 100%;
+    padding: 15px 17px;
+    border: 1px solid var(--gray1);
+    border-radius: var(--r-sm);
+    font-family: var(--sans);
+    font-size: 16.5px;
+    color: var(--black);
+    background: var(--white);
+    appearance: none;
+    transition: border-color .14s, box-shadow .14s;
+}
+.field:hover { border-color: var(--gray2); }
+.field:focus {
+    outline: none;
+    border-color: var(--impact-blue);
+    box-shadow: 0 0 0 4px rgba(38, 76, 215, .12);
+}
+select.field {
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--black) 50%),
+        linear-gradient(135deg, var(--black) 50%, transparent 50%);
+    background-position: calc(100% - 21px) 24px, calc(100% - 15px) 24px;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    padding-right: 42px;
+    cursor: pointer;
+}
+textarea.field { min-height: 88px; resize: vertical; line-height: 1.55; font-size: 15.5px; }
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border: none;
+    border-radius: var(--r-sm);
+    padding: 15px 26px;
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform .12s, background .14s, box-shadow .14s;
+}
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary {
+    background: var(--impact-blue);
+    color: var(--white);
+    box-shadow: 0 6px 18px rgba(38, 76, 215, .26);
+}
+.btn-primary:hover:not(:disabled) { background: var(--blue-deep); box-shadow: 0 8px 24px rgba(38, 76, 215, .32); }
+.btn-ghost { background: var(--white); color: var(--black); border: 1px solid var(--gray1); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--impact-blue); color: var(--impact-blue); }
+.btn-onblue { background: var(--white); color: var(--impact-blue); }
+.btn-onblue:hover:not(:disabled) { background: var(--off-white); }
+.btn:disabled { background: var(--gray1); color: var(--gray3); cursor: not-allowed; box-shadow: none; }
+.btn-sm { padding: 10px 16px; font-size: 14px; }
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 30px;
+    background: var(--off-white);
+    color: #5a5a5a;
+    white-space: nowrap;
+}
+.pill-blue { background: rgba(38, 76, 215, .09); color: var(--impact-blue); }
+.pill-warn { background: rgba(255, 111, 28, .12); color: #a8490d; }
+.pill-good { background: rgba(61, 212, 153, .18); color: #157052; }
+.pill-accent { background: color-mix(in srgb, var(--accent) 42%, white); color: var(--black); }
+
+/* ── Masthead ───────────────────────────────────────────────────────────── */
+.masthead {
+    background: var(--black);
+    height: 62px;
+    padding: 0 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 30;
+}
+.masthead .mark { display: flex; align-items: center; gap: 14px; }
+.masthead .mark img { height: 28px; }
+.masthead .mark b {
+    color: var(--white);
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 19px;
+    letter-spacing: -.3px;
+}
+.masthead nav { display: flex; align-items: center; gap: 22px; }
+.masthead nav a {
+    color: rgba(255, 255, 255, .58);
+    font-size: 14px;
+    text-decoration: none;
+    padding: 4px 0;
+    border-bottom: 1px solid transparent;
+    transition: color .14s, border-color .14s;
+}
+.masthead nav a:hover { color: var(--white); }
+.masthead nav a.here { color: var(--white); border-bottom-color: var(--accent); }
+
+.status-dot { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255, 255, 255, .58); }
+.status-dot i { width: 7px; height: 7px; border-radius: 50%; background: var(--pricing); box-shadow: 0 0 0 3px rgba(61, 212, 153, .2); }
+.status-dot.off i { background: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 28, .2); }
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+.spin { display: inline-block; animation: ia-spin 1s linear infinite; }
+@keyframes ia-spin { to { transform: rotate(360deg); } }
+.pulse { animation: ia-pulse 1.5s ease-in-out infinite; }
+@keyframes ia-pulse { 50% { opacity: .38; } }
+.rise { animation: ia-rise .42s cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes ia-rise { from { opacity: 0; transform: translateY(12px); } }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ── Narrow screens ─────────────────────────────────────────────────────── */
+/* The masthead is the one row that cannot wrap, so it compacts instead: the
+ * status wording drops to its dot, and the nav tightens. */
+@media (max-width: 760px) {
+    .masthead { padding: 0 16px; gap: 12px; }
+    .masthead .mark { gap: 10px; min-width: 0; }
+    .masthead .mark img { height: 24px; }
+    .masthead .mark b { font-size: 15px; white-space: nowrap; }
+    .masthead nav { gap: 14px; }
+    .masthead nav a { font-size: 13px; white-space: nowrap; }
+    .status-dot .label { display: none; }
+}
+@media (max-width: 460px) {
+    .masthead .mark b { display: none; }
+    .masthead nav { gap: 11px; }
+    .masthead nav a { font-size: 12.5px; }
+}
