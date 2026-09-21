@@ -254,7 +254,9 @@ reason the Teach page reports that nothing can be saved.
 
 Check which situation you are in at `/healthz`. `"library": false` means no
 reachable database; `"intel"` counts the claims currently loaded, committed seeds
-included.
+included. When it says false, `/api/intel/diagnose` says why: it connects once
+and reports the host, database, user, and the error, with the credential
+stripped out. It is behind the same auth as everything else.
 
 To attach one to an existing service: create a Postgres instance in the Render
 dashboard **in the same region as the web service**, copy its *Internal Database
@@ -283,12 +285,21 @@ Neon is the one that stays. Create a project, copy the connection string, and se
 it as `DATABASE_URL` on the web service. Nothing else changes: the tables are
 created on boot either way.
 
+Either endpoint works, pooled or direct. The pooled one suits this app, which
+opens a connection per operation and closes it.
+
 Parking the compute is what makes it free, and `store._connect()` is built for
 it. A parked endpoint refuses the first connection outright while it wakes, so a
 longer timeout would not help and the fix is to try again: three attempts,
 backing off, which turns a wake into a slow save rather than a failed one.
-`DB_CONNECT_TIMEOUT` raises the per attempt timeout if a provider is slower
-still.
+
+Waiting is only right when something is coming up, so the retry is fenced in
+two directions. A message that names a wrong password, a missing database or an
+unresolvable host raises on the first attempt, because retrying only delays the
+news. And only a **write** waits: boot, a read and the page's own status check
+each try once, so an unreachable database costs a page load milliseconds rather
+than half a minute. `DB_CONNECT_TIMEOUT` raises the per attempt timeout if a
+provider is slower still.
 
 TLS is required for any host that is not local. A development URL carries
 credentials, so the host is parsed rather than prefix matched, which is how

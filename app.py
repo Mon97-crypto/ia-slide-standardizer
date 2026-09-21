@@ -36,10 +36,12 @@ os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 battlecard_auth.install(app)
 
 # Prepare the shared library if a database is attached. A missing DATABASE_URL
-# is not an error: the builder works without a library.
-battlecard_store.init()
-# The taught claims live beside the library, in the same database.
-battlecard_intel.init()
+# is not an error: the builder works without a library. One attempt each: the
+# app is meant to degrade, so waiting out a retry here only delays serving, and
+# a serverless database that has parked its compute is woken by the first write
+# rather than by this.
+battlecard_store.init(attempts=1)
+battlecard_intel.init(attempts=1)
 
 
 @app.route('/healthz')
@@ -1211,6 +1213,27 @@ def intel_upload():
     return app.response_class(stream(), mimetype='text/event-stream',
                               headers={'Cache-Control': 'no-cache',
                                        'X-Accel-Buffering': 'no'})
+
+
+@app.route('/api/intel/diagnose')
+def intel_diagnose():
+    """Why the claim library is not answering.
+
+    Behind the same auth as everything else, and the credential never comes
+    back: only the host, database and user, with the error class and message.
+    """
+    state = battlecard_store.describe()
+    if state.get('ok'):
+        state['tables'] = {'library': battlecard_store.init(),
+                           'intel': battlecard_intel.init()}
+    else:
+        state['hint'] = (
+            'Set DATABASE_URL on the service.' if not state.get('configured') else
+            'Check the password, the database name and that the host is right. '
+            'A Neon connection string ends with sslmode=require, and the whole '
+            'string including the password has to be pasted, not the masked one '
+            'shown in the dashboard.')
+    return jsonify(state)
 
 
 @app.route('/api/intel/export')

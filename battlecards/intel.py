@@ -254,7 +254,7 @@ def enabled() -> bool:
     return store.enabled()
 
 
-def init(force: bool = False) -> bool:
+def init(force: bool = False, attempts: int = None) -> bool:
     global _ready
     if not enabled():
         return False
@@ -263,7 +263,7 @@ def init(force: bool = False) -> bool:
         if _ready and not force:
             return True
         try:
-            with store._connect() as conn:
+            with store._connect(attempts=attempts) as conn:
                 with conn.cursor() as cur:
                     cur.execute(SCHEMA)
                 conn.commit()
@@ -315,7 +315,7 @@ def add(entry: dict, author: str = '') -> dict:
 def listing(competitor: str = '', product: str = '', limit: int = 300) -> list:
     """Every live claim, seeds included. Newest first."""
     rows = []
-    if init():
+    if init(attempts=1):
         from . import store
         clauses, params = ['NOT retired'], []
         if competitor:
@@ -368,9 +368,14 @@ def retire(entry_id) -> bool:
 
 
 def stats() -> dict:
+    from . import store
     rows = listing()
     return {
-        'enabled': enabled(),
+        # Reachable, not merely configured. A wrong password used to read as
+        # attached right up to the first failed write. One attempt only: the
+        # page is asking a question, not trying to get work done.
+        'enabled': init(attempts=1),
+        'configured': bool(store.database_url()),
         'claims': len(rows),
         'competitors': len({row['competitor'].lower() for row in rows}),
         'verified': sum(1 for row in rows if row['confidence'] == 'verified'),

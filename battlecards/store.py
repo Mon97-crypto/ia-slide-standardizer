@@ -78,12 +78,29 @@ def enabled() -> bool:
 CONNECT_ATTEMPTS = 3
 CONNECT_BACKOFF = (0.75, 2.5)
 
+# Retrying is only right for a database that is coming up. These say it is not:
+# the URL, the password or the name is wrong, and trying again just multiplies
+# the wait before anybody finds out. A parked endpoint refuses fast, so failing
+# fast here costs a wake nothing.
+_FATAL = re.compile(
+    r'password authentication failed'
+    r'|role ".*" does not exist'
+    r'|database ".*" does not exist'
+    r'|could not translate host name'
+    r'|name or service not known'
+    r'|nodename nor servname'
+    r'|no pg_hba.conf entry'
+    r'|server does not support ssl'
+    r'|channel binding'
+    r'|certificate verify failed',
+    re.IGNORECASE)
+
 
 def connect_timeout() -> int:
     try:
-        return max(3, min(int(os.environ.get('DB_CONNECT_TIMEOUT', 15)), 60))
+        return max(3, min(int(os.environ.get('DB_CONNECT_TIMEOUT', 8)), 60))
     except ValueError:
-        return 15
+        return 8
 
 
 def _dsn() -> str:
@@ -111,26 +128,39 @@ def _is_local(url: str) -> bool:
     return host.lower() in _LOCAL_HOSTS
 
 
-def _connect():
+def _connect(attempts: int = None, timeout: int = None):
+    """Open a connection, waiting out a wake but not a wrong password.
+
+    `attempts` defaults to the full retry, which is what a write wants: a parked
+    serverless endpoint refuses the first connection and is up a second later.
+    A read or a probe passes 1, because a page load must not sit for half a
+    minute to tell somebody the database is unreachable.
+    """
     import psycopg
     url = _dsn()
-    timeout = connect_timeout()
+    attempts = CONNECT_ATTEMPTS if attempts is None else max(1, attempts)
+    timeout = connect_timeout() if timeout is None else timeout
     last = None
-    for attempt in range(CONNECT_ATTEMPTS):
+    for attempt in range(attempts):
         try:
             return psycopg.connect(url, connect_timeout=timeout)
         except psycopg.OperationalError as exc:
             last = exc
-            if attempt == CONNECT_ATTEMPTS - 1:
+            first = (str(exc).strip().splitlines() or [''])[0]
+            if _FATAL.search(first):
+                log.warning('Database refused the connection for good: %s',
+                            first[:160])
+                raise
+            if attempt == attempts - 1:
                 break
             delay = CONNECT_BACKOFF[min(attempt, len(CONNECT_BACKOFF) - 1)]
             log.info('Database not up yet (%s). Waking it, retry in %.2fs.',
-                     str(exc).strip().splitlines()[0][:120], delay)
+                     first[:120], delay)
             time.sleep(delay)
     raise last
 
 
-def init(force: bool = False) -> bool:
+def init(force: bool = False, attempts: int = None) -> bool:
     """Create the table if it is missing. Safe to call on every boot."""
     global _ready
     if not enabled():
@@ -139,7 +169,7 @@ def init(force: bool = False) -> bool:
         if _ready and not force:
             return True
         try:
-            with _connect() as conn:
+            with _connect(attempts=attempts) as conn:
                 with conn.cursor() as cur:
                     cur.execute(SCHEMA)
                 conn.commit()
@@ -261,6 +291,55 @@ def delete(card_id: int) -> bool:
     except Exception:
         log.exception('Could not delete battlecard %s.', card_id)
         return False
+
+
+def describe() -> dict:
+    """Say whether the database answers, and why not when it does not.
+
+    `enabled()` only reports that a URL is set and psycopg imports, which is not
+    the same as reachable. A wrong password looks identical to a working setup
+    until the first write fails, so this actually connects.
+
+    The credential never comes back out. Only the host, database and user, taken
+    from the parsed URL, plus the error class and message, which name the cause
+    without quoting the string that holds the password.
+    """
+    url = database_url()
+    if not url:
+        return {'configured': False, 'ok': False,
+                'error': 'DATABASE_URL is not set.'}
+
+    try:
+        parts = urllib.parse.urlsplit(url)
+        where = {'host': parts.hostname or '', 'port': parts.port or 5432,
+                 'database': (parts.path or '/').lstrip('/'),
+                 'user': parts.username or '',
+                 'pooled': '-pooler' in (parts.hostname or '')}
+    except ValueError as exc:
+        return {'configured': True, 'ok': False,
+                'error': 'DATABASE_URL could not be parsed: %s' % exc}
+
+    try:
+        import psycopg
+    except ImportError:
+        return dict(where, configured=True, ok=False,
+                    error='psycopg is not installed in this deployment.')
+
+    try:
+        with _connect(attempts=1, timeout=6) as conn:
+            with conn.cursor() as cur:
+                cur.execute('SELECT version()')
+                version = (cur.fetchone() or [''])[0]
+    except Exception as exc:
+        # The message can carry the whole DSN, so only the first line is kept and
+        # anything password shaped is dropped.
+        first = str(exc).strip().splitlines()[0] if str(exc).strip() else ''
+        first = re.sub(r'://[^@\s]+@', '://REDACTED@', first)[:300]
+        return dict(where, configured=True, ok=False,
+                    error='%s: %s' % (type(exc).__name__, first))
+
+    return dict(where, configured=True, ok=True,
+                server=version.split(' on ')[0][:80])
 
 
 def stats() -> dict:

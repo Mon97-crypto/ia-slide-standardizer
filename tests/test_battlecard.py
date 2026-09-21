@@ -2168,9 +2168,143 @@ def test_a_malformed_url_does_not_crash_the_check(monkeypatch):
 def test_the_connect_timeout_is_bounded_and_configurable(monkeypatch):
     from battlecards import store
     monkeypatch.delenv('DB_CONNECT_TIMEOUT', raising=False)
-    assert store.connect_timeout() == 15
+    assert store.connect_timeout() == 8
     monkeypatch.setenv('DB_CONNECT_TIMEOUT', '45')
     assert store.connect_timeout() == 45
     for bad in ('0', '-5', 'soon', '9999'):
         monkeypatch.setenv('DB_CONNECT_TIMEOUT', bad)
         assert 3 <= store.connect_timeout() <= 60, bad
+
+
+# ── waiting for a wake, but not for a wrong password ────────────────────────
+# The retry that survives a parked endpoint made an unreachable database block
+# for the better part of a minute, which a page load cannot afford.
+
+@pytest.mark.parametrize('message', [
+    'connection failed: password authentication failed for user "neondb_owner"',
+    'connection failed: could not translate host name "ep-typo.neon.tech"',
+    'connection failed: database "wrongname" does not exist',
+    'connection failed: server does not support SSL, but SSL was required',
+])
+def test_a_misconfigured_database_fails_on_the_first_attempt(message, monkeypatch):
+    import psycopg
+    from battlecards import store
+
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://u:p@ep-x.neon.tech/db')
+    monkeypatch.setattr(store.time, 'sleep',
+                        lambda s: pytest.fail('a wrong setting must not be retried'))
+    tries = []
+
+    def refuse(url, **kwargs):
+        tries.append(1)
+        raise psycopg.OperationalError(message)
+
+    monkeypatch.setattr(psycopg, 'connect', refuse)
+    with pytest.raises(psycopg.OperationalError):
+        store._connect()
+    assert len(tries) == 1, 'retrying a wrong password only delays the news'
+
+
+def test_a_probe_tries_once_so_a_page_never_hangs(monkeypatch):
+    import psycopg
+    from battlecards import store
+
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://u:p@ep-x.neon.tech/db')
+    monkeypatch.setattr(store.time, 'sleep', lambda s: None)
+    tries = []
+
+    def down(url, **kwargs):
+        tries.append(kwargs.get('connect_timeout'))
+        raise psycopg.OperationalError('connection refused')
+
+    monkeypatch.setattr(psycopg, 'connect', down)
+    result = store.describe()
+    assert result['ok'] is False
+    assert len(tries) == 1, 'a diagnostic answers quickly or it is not one'
+    assert tries[0] <= 8
+
+
+def test_a_read_tries_once_and_a_write_waits_for_the_wake(monkeypatch):
+    from battlecards import intel
+
+    calls = []
+
+    def fake_init(force=False, attempts=None):
+        calls.append(attempts)
+        return False
+
+    monkeypatch.setattr(intel, 'init', fake_init)
+    intel.listing('o9 Solutions')
+    assert calls == [1], 'a read must not sit through three attempts'
+
+
+def test_the_probe_never_returns_the_password(monkeypatch):
+    from battlecards import store
+    import psycopg
+
+    secret = 'sup3rs3cr3t'
+    monkeypatch.setenv('DATABASE_URL',
+                       'postgresql://neondb_owner:%s@ep-square-union-pooler.'
+                       'c-10.us-east-1.aws.neon.tech/neondb'
+                       '?sslmode=require&channel_binding=require' % secret)
+    monkeypatch.setattr(store.time, 'sleep', lambda s: None)
+
+    def leaky(url, **kwargs):
+        # A real psycopg error quotes the whole connection string back.
+        raise psycopg.OperationalError('connection failed for %s' % url)
+
+    monkeypatch.setattr(psycopg, 'connect', leaky)
+    result = store.describe()
+    assert secret not in json.dumps(result), result
+    assert result['host'].endswith('.aws.neon.tech')
+    assert result['user'] == 'neondb_owner'
+    assert result['database'] == 'neondb'
+    assert result['pooled'] is True
+
+
+def test_the_probe_reports_a_missing_url_plainly(monkeypatch):
+    from battlecards import store
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    result = store.describe()
+    assert result == {'configured': False, 'ok': False,
+                      'error': 'DATABASE_URL is not set.'}
+
+
+def test_the_diagnose_route_reports_a_missing_url(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    body = client.get('/api/intel/diagnose').get_json()
+    assert body['configured'] is False and body['ok'] is False
+    assert 'DATABASE_URL' in body['hint']
+
+
+def test_the_diagnose_route_hints_at_the_real_causes(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app.battlecard_store, 'describe', lambda: {
+        'configured': True, 'ok': False, 'host': 'ep-x.aws.neon.tech',
+        'error': 'OperationalError: password authentication failed'})
+    body = client.get('/api/intel/diagnose').get_json()
+    assert 'password' in body['hint']
+    assert 'sslmode=require' in body['hint']
+
+
+def test_the_diagnose_route_confirms_the_tables_when_it_works(client, monkeypatch):
+    import app as flask_app
+    monkeypatch.setattr(flask_app.battlecard_store, 'describe', lambda: {
+        'configured': True, 'ok': True, 'host': 'ep-x.aws.neon.tech',
+        'server': 'PostgreSQL 17.5'})
+    monkeypatch.setattr(flask_app.battlecard_store, 'init', lambda force=False: True)
+    monkeypatch.setattr(flask_app.battlecard_intel, 'init',
+                        lambda force=False, attempts=None: True)
+    body = client.get('/api/intel/diagnose').get_json()
+    assert body['tables'] == {'library': True, 'intel': True}
+    assert 'hint' not in body
+
+
+def test_the_page_tells_the_two_failures_apart():
+    page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
+        __file__))), 'templates', 'intel.html')).read()
+    assert 'No database is attached' in page
+    assert 'set but did not answer' in page
+    assert 'stats.configured' in page
+    assert '/api/intel/diagnose' in page

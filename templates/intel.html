@@ -418,14 +418,19 @@ async function load() {
     const data = await res.json();
     const stats = data.stats || {};
     storeReady = stats.enabled !== false;
-    // Say it up front. Finding out the store is missing after reviewing fifteen
-    // claims is the worst moment to learn it.
-    $('storeState').innerHTML = storeReady ? '' : `<div class="flash tell">
-        <b>No database is attached</b>, so claims cannot be saved on the server
-        yet. You can still read documents and download the result as a file to
-        commit into <code>content/intel/</code>, which is the durable store
-        either way. To attach one, set <code>DATABASE_URL</code> on the service.
-        </div>`;
+    // Say it up front, and say which of the two it is. "Not attached" and "set
+    // but not answering" need completely different things done about them.
+    const keep = `You can still read documents and download the result as a file
+        to commit into <code>content/intel/</code>, which is the durable store
+        either way.`;
+    $('storeState').innerHTML = storeReady ? '' : (stats.configured
+        ? `<div class="flash bad"><b>The database is set but did not answer</b>,
+           so claims cannot be saved yet. ${keep}
+           <a href="/api/intel/diagnose" target="_blank">See why</a>, which names
+           the host and the error without showing the password.</div>`
+        : `<div class="flash tell"><b>No database is attached</b>, so claims
+           cannot be saved on the server yet. ${keep} To attach one, set
+           <code>DATABASE_URL</code> on the service.</div>`);
     $('cClaims').textContent = stats.claims || 0;
     $('cRivals').textContent = stats.competitors || 0;
     $('cVerified').textContent = stats.verified || 0;
