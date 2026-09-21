@@ -608,11 +608,42 @@ plainly that it is unverified and give them the question to ask on the call. Nev
 fill the gap with a guess."""
 
 
+def _chat_messages(history: list) -> list:
+    """Turn the browser's transcript into a messages array the API accepts.
+
+    The panel seeds itself with a greeting from Claude and shows a placeholder
+    bubble while a reply streams, so the transcript it posts can both begin and
+    end with an assistant turn. Neither is allowed: the conversation has to open
+    with a user turn, and a trailing assistant turn is a prefill, which this
+    model rejects with a 400. Fix it here rather than trusting the client, and
+    fold a repeated role into one turn while we are at it.
+    """
+    turns = []
+    for turn in history[-20:]:
+        role = 'assistant' if turn.get('role') == 'assistant' else 'user'
+        text = str(turn.get('content') or '').strip()[:8000]
+        if not text:
+            continue
+        if not turns and role == 'assistant':
+            continue
+        if turns and turns[-1]['role'] == role:
+            turns[-1]['content'] += '\n\n' + text
+        else:
+            turns.append({'role': role, 'content': text})
+    while turns and turns[-1]['role'] == 'assistant':
+        turns.pop()
+    return turns
+
+
 def chat_stream(history: list, card: dict = None, product: str = ''):
     """Yield answer text for the builder's chat panel.
 
     A generator so the Flask route can stream it to the browser.
     """
+    messages = _chat_messages(history)
+    if not messages:
+        return                      # nothing to answer, so nothing to spend
+
     client = _client()
     competitor = (card or {}).get('meta', {}).get('competitor') or 'no competitor yet'
 
@@ -622,15 +653,6 @@ def chat_stream(history: list, card: dict = None, product: str = ''):
         system.append({'type': 'text',
                        'text': 'The card currently open, as JSON:\n%s'
                                % json.dumps(_card_digest(card), indent=1)})
-
-    messages = []
-    for turn in history[-20:]:
-        role = 'assistant' if turn.get('role') == 'assistant' else 'user'
-        text = str(turn.get('content', ''))[:8000]
-        if text:
-            messages.append({'role': role, 'content': text})
-    if not messages:
-        return
 
     with client.messages.stream(
         model=MODEL,

@@ -863,3 +863,113 @@ def test_token_ceilings_are_generous_enough_for_a_full_card():
     # Economy still costs less, through effort and searches.
     assert ai.ECONOMY['effort'] == 'low'
     assert ai.ECONOMY['searches'] < ai.STANDARD['searches']
+
+
+# ── the chat transcript ─────────────────────────────────────────────────────
+# A real run failed with "This model does not support assistant message prefill.
+# The conversation must end with a user message." The panel greets the seller
+# before they type and shows a placeholder bubble while a reply streams, so the
+# transcript it posted began and ended with an assistant turn.
+
+@pytest.mark.parametrize('history', [
+    [{'role': 'assistant', 'content': 'Pick a competitor.'},
+     {'role': 'user', 'content': 'which rows are unverified?'}],
+    [{'role': 'user', 'content': 'hi'},
+     {'role': 'assistant', 'content': 'Thinking'}],
+    [{'role': 'assistant', 'content': 'welcome'},
+     {'role': 'user', 'content': 'hi'},
+     {'role': 'assistant', 'content': 'hello'},
+     {'role': 'user', 'content': 'sharpen the win theme'},
+     {'role': 'assistant', 'content': 'Thinking'}],
+    [{'role': 'user', 'content': 'a'}, {'role': 'user', 'content': 'b'}],
+])
+def test_the_transcript_always_opens_and_closes_on_the_seller(history):
+    from battlecards import ai
+    messages = ai._chat_messages(history)
+    assert messages, history
+    assert messages[0]['role'] == 'user'
+    assert messages[-1]['role'] == 'user'
+    roles = [turn['role'] for turn in messages]
+    assert all(a != b for a, b in zip(roles, roles[1:])), roles
+
+
+@pytest.mark.parametrize('history', [
+    [],
+    [{'role': 'assistant', 'content': 'welcome'}],
+    [{'role': 'assistant', 'content': 'welcome'}, {'role': 'assistant', 'content': 'and'}],
+    [{'role': 'user', 'content': '   '}],
+    [{'role': 'user', 'content': None}],
+])
+def test_a_transcript_with_nothing_to_answer_is_dropped(history):
+    """No request at all beats a request the API will reject."""
+    from battlecards import ai
+    assert ai._chat_messages(history) == []
+
+
+def test_a_repeated_role_is_folded_rather_than_sent_twice():
+    from battlecards import ai
+    messages = ai._chat_messages([{'role': 'user', 'content': 'first'},
+                                  {'role': 'user', 'content': 'second'}])
+    assert messages == [{'role': 'user', 'content': 'first\n\nsecond'}]
+
+
+def test_chat_sends_a_valid_transcript_to_the_api(monkeypatch):
+    """End to end through chat_stream, with the client faked out."""
+    from battlecards import ai
+
+    seen = {}
+
+    class FakeStream:
+        text_stream = iter(['Rows 3 and 7 ', 'are unverified.'])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class FakeMessages:
+        def stream(self, **kwargs):
+            seen.update(kwargs)
+            return FakeStream()
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    monkeypatch.setattr(ai, '_client', lambda: FakeClient())
+    answer = ''.join(ai.chat_stream(
+        [{'role': 'assistant', 'content': 'Pick a competitor and a product.'},
+         {'role': 'user', 'content': 'which rows are unverified?'},
+         {'role': 'assistant', 'content': 'Thinking'}],
+        card=attributesmart.card_for('o9 Solutions'), product='AttributeSmart'))
+    assert answer == 'Rows 3 and 7 are unverified.'
+    assert seen['messages'] == [{'role': 'user',
+                                 'content': 'which rows are unverified?'}]
+    assert seen['model'] == 'claude-opus-5'
+    # The card reaches the model as system context, not as a fake dialogue turn.
+    assert any('o9 Solutions' in block['text'] for block in seen['system'])
+
+
+def test_chat_with_only_a_greeting_never_calls_the_api():
+    from battlecards import ai
+
+    def explode():
+        raise AssertionError('there is no question to answer yet')
+
+    original = ai._client
+    ai._client = explode
+    try:
+        assert list(ai.chat_stream([{'role': 'assistant', 'content': 'welcome'}])) == []
+    finally:
+        ai._client = original
+
+
+def test_the_panel_does_not_post_its_own_bubbles():
+    """The client half of the fix, guarded so a UI edit cannot undo it."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    page = open(os.path.join(root, 'templates', 'battlecard.html')).read()
+    # The transcript is snapshotted before the placeholder bubble is drawn.
+    assert 'const history = chat.filter(m => m.content);' in page
+    assert "say('assistant', 'Thinking', false)" in page
+    # And the greeting is an interface note, so it is never sent as a turn.
+    assert page.count('if (track) chat.push(') == 1

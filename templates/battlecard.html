@@ -291,12 +291,12 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
     if (!AI_ENABLED) {
         say('assistant', 'Claude is not connected on this deployment, so I cannot research a '
             + 'competitor or answer questions yet. Someone needs to set ANTHROPIC_API_KEY on '
-            + 'the service. The saved cards in the library still build without me.');
+            + 'the service. The saved cards in the library still build without me.', false);
         $('goBtn').disabled = true; $('goLabel').textContent = 'Claude not connected';
     } else {
         say('assistant', 'Pick a competitor and a product, then press Research and build. I '
             + 'will search the public record, write the card, and flag anything I could not '
-            + 'verify so nobody walks into a meeting with a claim that does not hold.');
+            + 'verify so nobody walks into a meeting with a claim that does not hold.', false);
     }
 })();
 
@@ -395,7 +395,7 @@ async function build(curated) {
     $('chatSub').textContent = 'Claude knows the ' + card.meta.competitor + ' card.';
     renderPrompts();
     say('assistant', `The ${card.meta.competitor} card is built, ${data.slide_count} slides.`
-        + (unclear ? ` ${unclear} capabilities came back unverified. Ask me what to do about any of them.` : ''));
+        + (unclear ? ` ${unclear} capabilities came back unverified. Ask me what to do about any of them.` : ''), false);
 }
 
 function showSpend() {
@@ -469,8 +469,12 @@ function renderPrompts() {
     });
 }
 
-function say(role, text) {
-    chat.push({ role, content: text });
+function say(role, text, track = true) {
+    // Untracked bubbles are interface notes, not conversation. The greeting and
+    // the build confirmation stay out of the history we post: a transcript that
+    // starts with an assistant turn is rejected, and the card goes up as JSON
+    // anyway, so repeating it as dialogue buys nothing.
+    if (track) chat.push({ role, content: text });
     const el = document.createElement('div');
     el.className = 'msg rise' + (role === 'user' ? ' me' : '');
     el.innerHTML = `<div class="who">${role === 'user' ? 'You' : 'Claude'}</div><div class="said"></div>`;
@@ -491,12 +495,17 @@ async function sendChat() {
     if (!text || !AI_ENABLED) return;
     $('chatIn').value = ''; $('chatSend').disabled = true;
     say('user', text);
-    const said = say('assistant', 'Thinking');
+    // Snapshot the history before the placeholder below goes on screen. The
+    // request has to end on this user turn; an assistant turn at the end is a
+    // prefill and the model refuses it.
+    const history = chat.filter(m => m.content);
+    const said = say('assistant', 'Thinking', false);
     said.classList.add('pulse');
+    let reply = '';
     try {
         const res = await fetch('/api/battlecard/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: chat.filter(m => m.content), card })
+            body: JSON.stringify({ messages: history, card })
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
@@ -509,15 +518,20 @@ async function sendChat() {
             if (ev.type === 'text') {
                 if (first) { said.textContent = ''; said.classList.remove('pulse'); first = false; }
                 said.textContent += ev.text;
+                reply += ev.text;
                 $('msgs').scrollTop = $('msgs').scrollHeight;
             } else if (ev.type === 'error') {
                 said.classList.remove('pulse'); said.textContent = ev.message;
             }
         });
-        chat[chat.length - 1].content = said.textContent;
     } catch (err) {
         said.classList.remove('pulse'); said.textContent = String(err);
-    } finally { $('chatSend').disabled = false; }
+    } finally {
+        // Only a real answer joins the history. A failed round leaves the user
+        // turn last, so retrying sends a conversation that still ends on them.
+        if (reply.trim()) chat.push({ role: 'assistant', content: reply });
+        $('chatSend').disabled = false;
+    }
 }
 </script>
 </body>
