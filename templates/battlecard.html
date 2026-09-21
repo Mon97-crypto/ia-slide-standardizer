@@ -60,7 +60,13 @@
         details.extra summary::before { content: '+ '; font-family: var(--serif); }
         details.extra[open] summary::before { content: '\2212  '; }
 
-        .launch { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 28px; }
+        .launch { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 22px; }
+        .thrift { display: flex; gap: 11px; align-items: flex-start; margin-top: 22px; padding: 14px 16px;
+            background: var(--off-white); border-radius: var(--r-sm); font-size: 13.5px;
+            line-height: 1.5; color: #5c5c5c; cursor: pointer; }
+        .thrift input { margin-top: 3px; flex: none; accent-color: var(--impact-blue); width: 16px; height: 16px; }
+        .spend { display: flex; gap: 9px; align-items: baseline; margin-top: 12px; font-size: 13px; color: #6c6c6c; }
+        .spend b { font-family: var(--serif); font-weight: 300; font-size: 26px; letter-spacing: -1px; color: var(--impact-blue); }
 
         /* ── Progress and result ─────────────────────────────────────────── */
         .card-panel { background: var(--white); border: 1px solid var(--gray1); border-radius: var(--r); box-shadow: var(--lift); margin-top: 22px; overflow: hidden; }
@@ -199,6 +205,12 @@
                           placeholder="A live deal, something the buyer told you, a gap you already know about."></textarea>
             </details>
 
+            <label class="thrift" for="economy">
+                <input type="checkbox" id="economy">
+                <span><b>Economy run.</b> Shallower effort and three searches instead of
+                eight. Cheaper and faster, with a thinner brief.</span>
+            </label>
+
             <div class="launch">
                 <button class="btn btn-primary" id="goBtn"><span id="goLabel">Research and build</span></button>
                 <button class="btn btn-ghost" id="pptxBtn" disabled>Download PPTX</button>
@@ -246,7 +258,7 @@ const ACCENT = {
 
 let presets = { competitors: [], products: [], product_solutions: {} };
 let depths = [], depth = 'standard';
-let card = null, research = '', chat = [];
+let card = null, research = '', chat = [], spend = null;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
@@ -304,7 +316,7 @@ async function generate() {
     const competitor = $('competitor').value.trim();
     if (!competitor) { $('competitor').focus(); return; }
     busy(true);
-    card = null; research = '';
+    card = null; research = ''; spend = null;
     $('pptxBtn').disabled = true; $('jsonBtn').disabled = true;
     $('resultPanel').hidden = true;
     $('progressPanel').hidden = false;
@@ -314,7 +326,8 @@ async function generate() {
         const res = await fetch('/api/battlecard/generate', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ competitor, ia_product: $('product').value, depth,
-                                   notes: $('notes').value.trim() })
+                                   notes: $('notes').value.trim(),
+                                   economy: $('economy').checked })
         });
         await readSSE(res, onEvent);
     } catch (err) { fail(String(err)); }
@@ -330,6 +343,9 @@ function onEvent(ev) {
         research += ev.text;
         $('feed').textContent = research.slice(-5000);
         $('feed').scrollTop = $('feed').scrollHeight;
+    } else if (ev.type === 'usage') {
+        spend = ev.cost;
+        showSpend();
     } else if (ev.type === 'card') {
         track([['Searched the public record', 'done'], ['Wrote the battlecard', 'done']]);
         card = ev.card; build(ev.curated);
@@ -365,6 +381,10 @@ async function build(curated) {
         capabilit${unclear === 1 ? 'y is' : 'ies are'} marked Unclear.</b> The public record did
         not support a rating, so the deck tells the seller to ask rather than asserting a gap.
         Ask me about any of them.</div>`;
+    if (spend) html += `<div class="note ok">This run cost about
+        <b>$${spend.usd.toFixed(3)}</b> in tokens across ${spend.calls} calls${
+        card.meta && card.meta.depth ? ', at ' + esc(card.meta.depth) + ' depth' : ''}.
+        The web search fee is billed separately and is not counted here.</div>`;
     if (data.library_entry) html += `<div class="note ok">Saved to the
         <a href="/library">shared library</a> for the rest of the team.</div>`;
     const warnings = data.warnings || [];
@@ -376,6 +396,21 @@ async function build(curated) {
     renderPrompts();
     say('assistant', `The ${card.meta.competitor} card is built, ${data.slide_count} slides.`
         + (unclear ? ` ${unclear} capabilities came back unverified. Ask me what to do about any of them.` : ''));
+}
+
+function showSpend() {
+    if (!spend) return;
+    let el = document.getElementById('spendLine');
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'spend'; el.id = 'spendLine';
+        $('track').parentNode.insertBefore(el, $('feed'));
+    }
+    const tok = (spend.input + spend.cache_write + spend.cache_read + spend.output);
+    el.innerHTML = `<b>$${spend.usd.toFixed(3)}</b>
+        <span>token cost so far, ${tok.toLocaleString()} tokens across
+        ${spend.calls} call${spend.calls === 1 ? '' : 's'}.
+        Web search bills separately.</span>`;
 }
 
 function track(rows) {

@@ -32,6 +32,26 @@ which the deck renders as "Unclear" with "Ask the question, do not assert the ga
 battlecard that overstates a rival's gap loses the deal the moment the buyer corrects it,
 so the builder would rather hand a seller a question than a guess.
 
+### What a run costs
+
+Every run reports its own token spend, live during generation and again in the result,
+computed from `response.usage` at the published Claude Opus 5 rates ($5 per million input,
+$25 per million output, cache writes 1.25x input, cache reads 0.1x).
+
+| Path | Token cost |
+|---|---|
+| Building a card already in the library, at any depth | **$0**, no API call |
+| Economy run: low effort, 3 searches | roughly **$0.20** |
+| Standard run: high effort, 8 searches | roughly **$0.55 to $0.75** |
+
+**Web search bills a separate per-search fee** that does not appear in `usage`, so the
+figure the app shows is a floor rather than the whole invoice. Check the Anthropic pricing
+page for the current per-search rate.
+
+The economy checkbox drops effort to `low`, cuts searches from eight to three and tightens
+`max_tokens`. The brief comes back thinner, and the card has more Unclear ratings, which is
+the honest tradeoff of searching less.
+
 ### Depths
 
 | Depth | Slides | What it is |

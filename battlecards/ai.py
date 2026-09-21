@@ -36,6 +36,50 @@ RESEARCH_MAX_TOKENS = 32000
 STRUCTURE_MAX_TOKENS = 32000
 CHAT_MAX_TOKENS = 8000
 
+# Claude Opus 5 token pricing, USD per million tokens. Cache writes bill at about
+# 1.25x input and cache reads at about 0.1x.
+PRICING = {'input': 5.00, 'output': 25.00, 'cache_write': 6.25, 'cache_read': 0.50}
+
+# Economy mode trades thoroughness for a predictable bill: shallower effort, fewer
+# searches and tighter ceilings. Useful for a first run on a small budget.
+ECONOMY = {'effort': 'low', 'searches': 3, 'max_tokens': 10000}
+STANDARD = {'effort': 'high', 'searches': 8, 'max_tokens': RESEARCH_MAX_TOKENS}
+
+
+def _search_tool(max_uses: int) -> dict:
+    return {'type': 'web_search_20260209', 'name': 'web_search', 'max_uses': max_uses}
+
+
+def usage_cost(usage) -> dict:
+    """Turn one response's usage into token counts and a dollar figure.
+
+    Token cost only. Web search bills a separate per-search fee that does not
+    appear in `usage`, so the number here is a floor, not the whole invoice.
+    """
+    def count(name):
+        return int(getattr(usage, name, 0) or 0)
+
+    plain = count('input_tokens')
+    cache_write = count('cache_creation_input_tokens')
+    cache_read = count('cache_read_input_tokens')
+    output = count('output_tokens')
+    dollars = (plain * PRICING['input']
+               + cache_write * PRICING['cache_write']
+               + cache_read * PRICING['cache_read']
+               + output * PRICING['output']) / 1_000_000.0
+    return {'input': plain, 'cache_write': cache_write, 'cache_read': cache_read,
+            'output': output, 'usd': round(dollars, 4)}
+
+
+def add_cost(total: dict, usage) -> dict:
+    """Accumulate usage from several calls into one running total."""
+    one = usage_cost(usage)
+    for key in ('input', 'cache_write', 'cache_read', 'output'):
+        total[key] = total.get(key, 0) + one[key]
+    total['usd'] = round(total.get('usd', 0) + one['usd'], 4)
+    total['calls'] = total.get('calls', 0) + 1
+    return total
+
 
 class AIUnavailable(RuntimeError):
     """Raised when no Anthropic credential is configured."""
@@ -300,8 +344,9 @@ def _research(client, competitor: str, product: str, notes: str) -> str:
 
 
 def _structure(client, competitor: str, product: str, preset: dict,
-               research: str, notes: str) -> dict:
+               research: str, notes: str, mode: dict = None, cost: dict = None) -> dict:
     """Phase two: turn the brief into a card payload matching the schema."""
+    mode = mode or STANDARD
     caps = preset.get('caps') or {}
     cap_text = ('\n'.join('- at most %d %s' % (cap, key.replace('_', ' '))
                           for key, cap in sorted(caps.items()))
@@ -330,15 +375,17 @@ def _structure(client, competitor: str, product: str, preset: dict,
 
     with client.messages.stream(
         model=MODEL,
-        max_tokens=STRUCTURE_MAX_TOKENS,
+        max_tokens=mode['max_tokens'],
         system=_system_prompt(product, competitor),
         thinking={'type': 'adaptive'},
-        output_config={'effort': 'high',
+        output_config={'effort': mode['effort'],
                        'format': {'type': 'json_schema', 'schema': CARD_SCHEMA}},
         messages=[{'role': 'user', 'content': ask}],
     ) as stream:
         message = stream.get_final_message()
 
+    if cost is not None:
+        add_cost(cost, message.usage)
     if message.stop_reason == 'refusal':
         raise RuntimeError('The card request was declined.')
     text = next((block.text for block in message.content if block.type == 'text'), '')
@@ -381,7 +428,7 @@ def _merge_curated(card: dict, competitor: str, product: str) -> dict:
 # ─── Streaming generation, for the browser ──────────────────────────────────────
 
 def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
-                    notes: str = ''):
+                    notes: str = '', economy: bool = False):
     """Generate a card while yielding progress events.
 
     Research and structuring each take a while, and a silent connection gets cut
@@ -404,6 +451,8 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         return
 
     preset = DEPTHS.get(depth, DEPTHS[DEFAULT_DEPTH])
+    mode = ECONOMY if economy else STANDARD
+    cost = {}
 
     try:
         yield {'type': 'status', 'step': 'research',
@@ -411,11 +460,11 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         chunks = []
         with client.messages.stream(
             model=MODEL,
-            max_tokens=RESEARCH_MAX_TOKENS,
+            max_tokens=mode['max_tokens'],
             system=_system_prompt(product, competitor),
             thinking={'type': 'adaptive'},
-            output_config={'effort': 'high'},
-            tools=[WEB_SEARCH_TOOL],
+            output_config={'effort': mode['effort']},
+            tools=[_search_tool(mode['searches'])],
             messages=[{'role': 'user',
                        'content': _research_prompt(competitor, product, notes)}],
         ) as stream:
@@ -423,6 +472,8 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
                 chunks.append(chunk)
                 yield {'type': 'research', 'text': chunk}
             message = stream.get_final_message()
+        add_cost(cost, message.usage)
+        yield {'type': 'usage', 'cost': dict(cost), 'phase': 'research'}
         if message.stop_reason == 'refusal':
             yield {'type': 'error', 'message': 'The research request was declined.'}
             return
@@ -430,7 +481,9 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
 
         yield {'type': 'status', 'step': 'structure',
                'message': 'Writing the battlecard'}
-        card = _structure(client, competitor, product, preset, research, notes)
+        card = _structure(client, competitor, product, preset, research, notes,
+                          mode=mode, cost=cost)
+        yield {'type': 'usage', 'cost': dict(cost), 'phase': 'card'}
         card = _merge_curated(card, competitor, product)
         card['meta'] = dict(card.get('meta', {}), **{
             'competitor': competitor,
@@ -442,7 +495,8 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         })
         yield {'type': 'card', 'card': card,
                'curated': bool(card.pop('_curated', False)),
-               'research': research}
+               'research': research, 'cost': dict(cost),
+               'economy': bool(economy)}
     except AIUnavailable as exc:
         yield {'type': 'error', 'message': str(exc)}
     except Exception as exc:  # surfaced to the UI rather than a blank failure

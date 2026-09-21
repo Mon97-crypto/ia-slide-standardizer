@@ -550,10 +550,10 @@ def test_chat_route_refuses_without_a_credential(client, monkeypatch):
 def test_generate_route_streams_events(client, monkeypatch):
     import app as flask_app
 
-    def fake(competitor, product, depth, notes):
+    def fake(competitor, product, depth, notes, economy=False):
         yield {'type': 'status', 'step': 'research', 'message': 'searching'}
         yield {'type': 'card', 'card': {'meta': {'competitor': competitor}},
-               'curated': False, 'research': 'brief'}
+               'curated': False, 'research': 'brief', 'cost': {}}
 
     monkeypatch.setattr(flask_app.battlecard_ai, 'generate_events', fake)
     response = client.post('/api/battlecard/generate',
@@ -700,3 +700,93 @@ def test_generated_cards_land_in_the_library(client):
     assert store.stats()['cards'] == before + 1
     assert store.get(entry['id'])['research'] == 'brief'
     store.delete(entry['id'])
+
+
+# ── cost accounting ─────────────────────────────────────────────────────────
+
+class _Usage:
+    """Stands in for an SDK usage object."""
+
+    def __init__(self, input_tokens=0, cache_creation_input_tokens=0,
+                 cache_read_input_tokens=0, output_tokens=0):
+        self.input_tokens = input_tokens
+        self.cache_creation_input_tokens = cache_creation_input_tokens
+        self.cache_read_input_tokens = cache_read_input_tokens
+        self.output_tokens = output_tokens
+
+
+def test_cost_uses_the_published_opus_5_rates():
+    from battlecards import ai
+    assert ai.PRICING['input'] == 5.00 and ai.PRICING['output'] == 25.00
+    # One million of each, so the arithmetic is readable.
+    one = ai.usage_cost(_Usage(input_tokens=1_000_000))
+    assert one['usd'] == 5.0
+    assert ai.usage_cost(_Usage(output_tokens=1_000_000))['usd'] == 25.0
+    # Cache writes bill above input, reads well below it.
+    assert ai.usage_cost(_Usage(cache_creation_input_tokens=1_000_000))['usd'] == 6.25
+    assert ai.usage_cost(_Usage(cache_read_input_tokens=1_000_000))['usd'] == 0.50
+
+
+def test_cost_accumulates_across_calls():
+    from battlecards import ai
+    total = {}
+    ai.add_cost(total, _Usage(input_tokens=40_000, output_tokens=8_000))
+    ai.add_cost(total, _Usage(input_tokens=5_000, cache_read_input_tokens=1_000,
+                              output_tokens=6_000))
+    assert total['calls'] == 2
+    assert total['input'] == 45_000 and total['output'] == 14_000
+    expected = (45_000 * 5 + 1_000 * 0.5 + 14_000 * 25) / 1_000_000
+    assert total['usd'] == round(expected, 4)
+
+
+def test_usage_survives_a_usage_object_missing_cache_fields():
+    """Older or partial usage payloads must not raise."""
+    from battlecards import ai
+
+    class Bare:
+        input_tokens = 100
+        output_tokens = 50
+
+    assert ai.usage_cost(Bare())['usd'] > 0
+
+
+def test_economy_mode_is_cheaper_on_every_axis():
+    from battlecards import ai
+    assert ai.ECONOMY['searches'] < ai.STANDARD['searches']
+    assert ai.ECONOMY['max_tokens'] < ai.STANDARD['max_tokens']
+    assert ai.ECONOMY['effort'] == 'low' and ai.STANDARD['effort'] == 'high'
+    assert ai._search_tool(3)['max_uses'] == 3
+
+
+def test_generate_route_passes_the_economy_flag(client, monkeypatch):
+    import app as flask_app
+    seen = {}
+
+    def fake(competitor, product, depth, notes, economy=False):
+        seen['economy'] = economy
+        yield {'type': 'card', 'card': {'meta': {'competitor': competitor}},
+               'curated': False, 'research': '', 'cost': {}}
+
+    monkeypatch.setattr(flask_app.battlecard_ai, 'generate_events', fake)
+    client.post('/api/battlecard/generate',
+                json={'competitor': 'Acme', 'economy': True})
+    assert seen['economy'] is True
+    client.post('/api/battlecard/generate', json={'competitor': 'Acme'})
+    assert seen['economy'] is False
+
+
+def test_status_route_publishes_the_rates(client):
+    pricing = client.get('/api/battlecard/status').get_json()['pricing']
+    assert pricing['input'] == 5.00 and pricing['output'] == 25.00
+
+
+def test_building_a_saved_card_costs_nothing(tmp_path, monkeypatch):
+    """The curated cards must never touch the API. That is the zero cost path."""
+    from battlecards import ai
+
+    def explode(*args, **kwargs):
+        raise AssertionError('the API must not be called to build a saved card')
+
+    monkeypatch.setattr(ai, '_client', explode)
+    result = service.build(attributesmart.card_for('o9 Solutions'), str(tmp_path))
+    assert result['slide_count'] >= 15

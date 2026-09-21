@@ -952,6 +952,7 @@ def battlecard_status():
         'ai_enabled': battlecard_ai.available(),
         'library': battlecard_store.stats(),
         'model': battlecard_ai.MODEL,
+        'pricing': battlecard_ai.PRICING,
         'depths': [{'key': key, **{field: value for field, value in preset.items()
                                    if field in ('label', 'blurb', 'slides')}}
                    for key, preset in battlecard_schema.DEPTHS.items()],
@@ -974,7 +975,8 @@ def battlecard_generate():
     data = request.get_json(silent=True) or {}
     events = battlecard_ai.generate_events(
         data.get('competitor', ''), data.get('ia_product', ''),
-        data.get('depth', battlecard_schema.DEFAULT_DEPTH), data.get('notes', ''))
+        data.get('depth', battlecard_schema.DEFAULT_DEPTH), data.get('notes', ''),
+        economy=bool(data.get('economy')))
     return app.response_class(_sse(events), mimetype='text/event-stream',
                               headers={'Cache-Control': 'no-cache',
                                        'X-Accel-Buffering': 'no'})
