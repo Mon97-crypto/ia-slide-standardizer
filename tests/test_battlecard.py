@@ -3,6 +3,7 @@
 Run with: python3 -m pytest tests -q
 """
 
+import io
 import json
 import os
 import re
@@ -1458,3 +1459,439 @@ def test_teaching_never_guesses_a_higher_confidence():
     from battlecards import ai
     assert 'choose hearsay' in ai.TEACH_SYSTEM
     assert 'Overstating confidence' in ai.TEACH_SYSTEM
+
+
+# ── learning from an uploaded document ──────────────────────────────────────
+# The intelligence that matters most is the kind a search cannot reach: a win
+# loss report, an RFP response, a rival's datasheet handed over in a meeting.
+
+def _pptx_bytes(slides):
+    from pptx import Presentation
+    from pptx.util import Inches
+    deck = Presentation()
+    for title, body, notes in slides:
+        slide = deck.slides.add_slide(deck.slide_layouts[5])
+        slide.shapes.title.text = title
+        box = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(6), Inches(3))
+        box.text_frame.text = body
+        if notes:
+            slide.notes_slide.notes_text_frame.text = notes
+    buffer = io.BytesIO()
+    deck.save(buffer)
+    return buffer.getvalue()
+
+
+def _docx_bytes(paragraphs):
+    import docx
+    document = docx.Document()
+    for text in paragraphs:
+        document.add_paragraph(text)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def _xlsx_bytes(sheets):
+    import openpyxl
+    book = openpyxl.Workbook()
+    book.remove(book.active)
+    for name, rows in sheets.items():
+        sheet = book.create_sheet(name)
+        for row in rows:
+            sheet.append(row)
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+LONG = ('Their connector list names SAP and Oracle only, with nothing for the '
+        'middleware most of our accounts already run. ') * 4
+
+
+def test_a_deck_is_read_slide_by_slide_with_the_notes():
+    from battlecards import docs
+    data = _pptx_bytes([
+        ('Platform overview', LONG, 'Say the taxonomy is maintained by services.'),
+        ('Pricing', 'Priced per SKU per month. ' + LONG, ''),
+    ])
+    document = docs.read('Rival deck.pptx', data)
+    assert document['kind'] == 'PowerPoint'
+    assert [segment['label'] for segment in document['segments']] == ['slide 1', 'slide 2']
+    assert 'Speaker notes: Say the taxonomy' in document['segments'][0]['text']
+    assert 'per SKU per month' in document['segments'][1]['text']
+
+
+def test_a_word_file_and_a_workbook_are_read():
+    from battlecards import docs
+    word = docs.read('Win loss.docx', _docx_bytes([LONG, 'They lost on data quality.']))
+    assert 'lost on data quality' in word['segments'][0]['text']
+
+    book = docs.read('Deal review.xlsx', _xlsx_bytes({
+        'Losses': [['Account', 'Reason'], ['A grocer', LONG]],
+        'Notes': [['Their SE said tagging is a service'], [LONG]],
+    }))
+    assert [segment['label'] for segment in book['segments']] == ['sheet Losses',
+                                                                 'sheet Notes']
+    assert 'tagging is a service' in book['segments'][1]['text']
+
+
+def test_a_transcript_loses_its_timing_cues():
+    from battlecards import docs
+    vtt = ("WEBVTT\n\n1\n00:00:01.000 --> 00:00:04.000\n"
+           "Their engineer said the taxonomy is maintained by hand. " + LONG)
+    document = docs.read('call.vtt', vtt.encode())
+    body = document['segments'][0]['text']
+    assert '00:00:01' not in body and 'WEBVTT' not in body
+    assert 'maintained by hand' in body
+
+
+def test_a_csv_and_a_text_file_are_read():
+    from battlecards import docs
+    rows = ('competitor,note\no9,"' + LONG + '"\n').encode()
+    assert 'connector list' in docs.read('notes.csv', rows)['segments'][0]['text']
+    assert 'connector list' in docs.read('note.txt', LONG.encode())['segments'][0]['text']
+
+
+def test_an_unreadable_upload_says_why():
+    from battlecards import docs
+    with pytest.raises(docs.Unreadable) as caught:
+        docs.read('rival.key', b'x' * 500)
+    assert 'not a format' in str(caught.value)
+
+    with pytest.raises(docs.Unreadable) as caught:
+        docs.read('empty.txt', b'')
+    assert 'empty' in str(caught.value)
+
+    with pytest.raises(docs.Unreadable) as caught:
+        docs.read('huge.pdf', b'x' * (docs.MAX_BYTES + 1))
+    assert 'limit' in str(caught.value)
+
+
+def test_a_scan_with_no_text_layer_is_named_as_such():
+    """The most likely real failure, and the least obvious one to a reader."""
+    from battlecards import docs
+    with pytest.raises(docs.Unreadable) as caught:
+        docs.read('scanned.txt', b'   \n  ')
+    assert 'scan' in str(caught.value) and 'images' in str(caught.value)
+
+
+def _pdf_bytes(pages):
+    """A minimal text bearing PDF, so the reader is tested without a fixture file."""
+    from pypdf import PdfWriter
+    from pypdf.generic import (ArrayObject, DecodedStreamObject, DictionaryObject,
+                               NameObject)
+    writer = PdfWriter()
+    font = writer._add_object(DictionaryObject({
+        NameObject('/Type'): NameObject('/Font'),
+        NameObject('/Subtype'): NameObject('/Type1'),
+        NameObject('/BaseFont'): NameObject('/Helvetica'),
+    }))
+    for body in pages:
+        page = writer.add_blank_page(width=612, height=792)
+        lines = []
+        for index, line in enumerate(body.split('\n')):
+            safe = line.replace('\\', '').replace('(', '').replace(')', '')
+            lines.append(b'BT /F1 12 Tf 72 %d Td (%s) Tj ET'
+                         % (700 - index * 16, safe.encode('latin-1', 'replace')))
+        stream = DecodedStreamObject()
+        stream.set_data(b'\n'.join(lines))
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        page[NameObject('/Resources')] = DictionaryObject({
+            NameObject('/Font'): DictionaryObject({NameObject('/F1'): font})})
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def test_a_pdf_is_read_page_by_page():
+    from battlecards import docs
+    data = _pdf_bytes(['Their connector list names SAP and Oracle only.\n' + LONG,
+                       'Tagging is delivered as a services engagement.\n' + LONG])
+    document = docs.read('Their datasheet.pdf', data)
+    assert document['kind'] == 'PDF'
+    assert [segment['label'] for segment in document['segments']] == ['page 1', 'page 2']
+    assert 'SAP and Oracle' in document['segments'][0]['text']
+    assert 'services engagement' in document['segments'][1]['text']
+
+
+def test_a_pdf_with_no_text_layer_is_refused_clearly():
+    """A scanned datasheet is the most likely real upload failure."""
+    from battlecards import docs
+    from pypdf import PdfWriter
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    with pytest.raises(docs.Unreadable) as caught:
+        docs.read('scan.pdf', buffer.getvalue())
+    assert 'scan' in str(caught.value)
+
+
+def test_chunks_carry_the_page_they_came_from():
+    from battlecards import docs
+    document = {'filename': 'Rival deck.pptx', 'chars': 100, 'segments': [
+        {'label': 'slide %d' % number, 'text': chr(96 + number) * 4000}
+        for number in range(1, 5)
+    ]}
+    pieces, skipped = docs.chunks(document, budget=10000)
+    assert not skipped
+    assert [piece['range'] for piece in pieces] == ['slide 1 to slide 2',
+                                                    'slide 3 to slide 4']
+    assert pieces[0]['citation'] == 'Rival deck.pptx, slide 1 to slide 2'
+    # The label is inside the text too, so a claim can cite the exact page.
+    assert '[slide 1]' in pieces[0]['text'] and '[slide 2]' in pieces[0]['text']
+    assert [piece['index'] for piece in pieces] == [1, 2]
+    assert all(piece['total'] == 2 for piece in pieces)
+
+
+def test_a_segment_too_big_for_one_chunk_stands_alone():
+    from battlecards import docs
+    document = {'filename': 'Deck.pptx', 'chars': 1, 'segments': [
+        {'label': 'slide 1', 'text': 'a' * 6000},
+        {'label': 'slide 2', 'text': 'b' * 6000},
+    ]}
+    pieces, _ = docs.chunks(document, budget=10000)
+    assert [piece['range'] for piece in pieces] == ['slide 1', 'slide 2']
+
+
+def test_one_enormous_segment_is_split_not_dropped():
+    from battlecards import docs
+    document = {'filename': 'Report.docx', 'chars': 1,
+                'segments': [{'label': 'document', 'text': 'x' * 25000}]}
+    pieces, skipped = docs.chunks(document, budget=10000)
+    assert len(pieces) == 3 and not skipped
+    assert 'part 1' in pieces[0]['range']
+    joined = ''.join(piece['text'] for piece in pieces)
+    assert joined.count('x') == 25000, 'no text may be lost in the split'
+
+
+def test_a_document_past_the_cap_reports_what_it_left_out():
+    """Silently reading half a deck would be the worst outcome here."""
+    from battlecards import docs
+    document = {'filename': 'Big.pptx', 'chars': 1, 'segments': [
+        {'label': 'slide %d' % number, 'text': 'y' * 9000} for number in range(1, 9)]}
+    pieces, skipped = docs.chunks(document, budget=10000, cap=3)
+    assert len(pieces) == 3
+    assert len(skipped) == 5
+    assert skipped[0].startswith('slide')
+
+
+def test_a_document_claim_is_documented_not_verified():
+    from battlecards import intel
+    entry = intel.normalize(_claim(confidence='documented',
+                                   source='Rival deck.pptx, slide 4'))
+    assert entry['confidence'] == 'documented'
+    assert intel.CONFIDENCE['documented']['needs_source'] is True
+
+
+def test_a_file_citation_cannot_pass_as_verified_in_public():
+    """The distinction the whole tier exists for. A file is not a link."""
+    from battlecards import intel
+    with pytest.raises(ValueError) as caught:
+        intel.normalize(_claim(confidence='verified',
+                               source='Rival deck.pptx, slide 4'))
+    assert 'public link' in str(caught.value)
+    assert 'document we hold' in str(caught.value)
+    # A real link still passes.
+    assert intel.normalize(_claim(confidence='verified',
+                                  source='https://o9solutions.com/news/'))
+
+
+def test_the_documented_tier_forbids_implying_the_buyer_can_look_it_up():
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', '', entries=[
+        dict(intel.normalize(_claim(confidence='documented',
+                                    source='Their datasheet.pdf, page 2')),
+             stale=False)])
+    assert 'IN A DOCUMENT WE HOLD' in block
+    assert 'cite the document' in block
+    assert 'not public' in block
+
+
+def test_every_tier_appears_in_the_order_used_everywhere():
+    from battlecards import intel
+    assert set(intel.TIER_ORDER) == set(intel.CONFIDENCE)
+    assert intel.TIER_ORDER[0] == 'verified', 'strongest evidence first'
+    assert intel.TIER_ORDER[-1] == 'hearsay'
+
+
+def test_reading_a_document_never_claims_a_public_source():
+    from battlecards import ai
+    assert 'Never use "verified"' in ai.DOC_SYSTEM
+    assert 'empty array' in ai.DOC_SYSTEM
+
+
+def _doc_client(bodies):
+    """A client that returns each body in turn, one per chunk."""
+    queue = list(bodies)
+
+    class FakeStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return type('M', (), {
+                'stop_reason': 'end_turn', 'usage': _SearchUsage(0),
+                'content': [type('B', (), {'type': 'text',
+                                           'text': queue.pop(0)})()]})()
+
+    return type('C', (), {'messages': type('M', (), {
+        'stream': lambda self, **kw: FakeStream()})()})()
+
+
+def test_a_document_is_read_into_claims_with_progress(monkeypatch):
+    from battlecards import ai
+
+    document = {'filename': 'Rival deck.pptx', 'chars': 18000, 'segments': [
+        {'label': 'slide 1', 'text': 'a' * 9000},
+        {'label': 'slide 2', 'text': 'b' * 9000},
+    ]}
+    bodies = [
+        json.dumps([{'kind': 'gap', 'claim': 'Connectors cover SAP and Oracle only.',
+                     'detail': 'Their own connector page.', 'confidence': 'documented',
+                     'source': 'Rival deck.pptx, slide 1'}]),
+        json.dumps([{'kind': 'news', 'claim': 'They expect to launch a tagger.',
+                     'detail': 'Written as an expectation.', 'confidence': 'hearsay',
+                     'source': 'Rival deck.pptx, slide 2'}]),
+    ]
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: _doc_client(bodies))
+    events = list(ai.learn_from_document_events(document, 'o9 Solutions',
+                                                'AttributeSmart', 'me'))
+    kinds = [event['type'] for event in events]
+    assert kinds[0] == 'plan' and kinds[-1] == 'done'
+    assert 'status' in kinds
+    claims = [event['claim'] for event in events if event['type'] == 'claim']
+    assert [row['confidence'] for row in claims] == ['documented', 'hearsay']
+    assert claims[0]['source'] == 'Rival deck.pptx, slide 1'
+    assert claims[0]['competitor'] == 'o9 Solutions'
+    assert claims[0]['author'] == 'me'
+    assert events[-1]['found'] == 2
+
+
+def test_a_claim_repeated_across_slides_is_kept_once(monkeypatch):
+    from battlecards import ai
+    same = json.dumps([{'kind': 'gap', 'claim': 'Tagging is a services engagement.',
+                        'detail': '', 'confidence': 'documented',
+                        'source': 'Deck.pptx, slide 1'}])
+    document = {'filename': 'Deck.pptx', 'chars': 18000, 'segments': [
+        {'label': 'slide %d' % n, 'text': 'z' * 9000} for n in (1, 2)]}
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: _doc_client([same, same]))
+    events = list(ai.learn_from_document_events(document, 'o9 Solutions'))
+    assert len([e for e in events if e['type'] == 'claim']) == 1
+
+
+def test_one_bad_chunk_does_not_lose_the_rest(monkeypatch):
+    from battlecards import ai
+    document = {'filename': 'Deck.pptx', 'chars': 18000, 'segments': [
+        {'label': 'slide %d' % n, 'text': 'z' * 9000} for n in (1, 2)]}
+    good = json.dumps([{'kind': 'gap', 'claim': 'A real claim from slide two.',
+                        'detail': '', 'confidence': 'documented',
+                        'source': 'Deck.pptx, slide 2'}])
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: _doc_client(['not json at all', good]))
+    events = list(ai.learn_from_document_events(document, 'o9 Solutions'))
+    assert any(event['type'] == 'warning' for event in events)
+    claims = [event['claim'] for event in events if event['type'] == 'claim']
+    assert len(claims) == 1 and 'slide two' in claims[0]['claim']
+
+
+def test_reading_a_document_without_a_credential_says_so(monkeypatch):
+    from battlecards import ai
+    monkeypatch.setattr(ai, 'available', lambda: False)
+    events = list(ai.learn_from_document_events(
+        {'filename': 'x.pptx', 'chars': 1, 'segments': []}, 'o9 Solutions'))
+    assert events[0]['type'] == 'error'
+    assert 'ANTHROPIC_API_KEY' in events[0]['message']
+
+
+def test_the_upload_route_needs_a_file_and_a_rival(client):
+    assert client.post('/api/intel/upload', data={}).status_code == 400
+    response = client.post('/api/intel/upload', data={
+        'file': (io.BytesIO(LONG.encode()), 'note.txt')})
+    assert response.status_code == 400
+    assert 'rival' in response.get_json()['error']
+
+
+def test_the_upload_route_streams_the_claims(client, monkeypatch):
+    import app as flask_app
+
+    def fake(document, competitor, product='', author=''):
+        yield {'type': 'plan', 'filename': document['filename'],
+               'chars': document['chars'], 'chunks': 1, 'skipped': []}
+        yield {'type': 'claim', 'claim': {'claim': 'From the document.',
+                                          'confidence': 'documented'}}
+        yield {'type': 'done', 'cost': {}, 'found': 1}
+
+    monkeypatch.setattr(flask_app.battlecard_ai, 'learn_from_document_events', fake)
+    response = client.post('/api/intel/upload', data={
+        'file': (io.BytesIO(LONG.encode()), 'Win loss.txt'),
+        'competitor': 'o9 Solutions', 'ia_product': 'AttributeSmart'})
+    assert response.status_code == 200
+    assert response.mimetype == 'text/event-stream'
+    body = response.get_data(as_text=True)
+    assert '"type": "plan"' in body and 'From the document.' in body
+
+
+def test_a_bad_upload_is_a_plain_400_not_a_stream(client):
+    response = client.post('/api/intel/upload', data={
+        'file': (io.BytesIO(b'too short'), 'note.txt'),
+        'competitor': 'o9 Solutions'})
+    assert response.status_code == 400
+    assert 'characters' in response.get_json()['error']
+
+
+def test_the_page_offers_the_formats_the_readers_support(client):
+    from battlecards import docs
+    body = client.get('/intel').data.decode()
+    for extension in docs.EXTENSIONS:
+        assert extension in body
+    assert 'read once and thrown away' in body
+
+
+def test_a_down_store_is_reported_once_not_once_per_claim(client, monkeypatch):
+    """Fifteen copies of "refused" after approving fifteen claims is useless."""
+    import app as flask_app
+    from battlecards import intel
+
+    monkeypatch.setattr(flask_app.battlecard_intel, 'enabled', lambda: True)
+
+    def down(entry, author=''):
+        intel.normalize(entry, author)
+        raise intel.StoreUnavailable('The claim library is not reachable.')
+
+    monkeypatch.setattr(flask_app.battlecard_intel, 'add', down)
+    response = client.post('/api/intel', json={'claims': [_claim(), _claim(), _claim()]})
+    assert response.status_code == 503
+    data = response.get_json()
+    assert data['error'].count('not reachable') == 1
+    assert not data['failed'], 'a store outage is not a problem with the claim'
+
+
+def test_a_bad_claim_still_lets_the_good_ones_save(client, monkeypatch):
+    import app as flask_app
+    from battlecards import intel
+
+    kept = []
+
+    def fake(entry, author=''):
+        clean = intel.normalize(entry, author)
+        kept.append(clean)
+        return dict(clean, id=len(kept))
+
+    monkeypatch.setattr(flask_app.battlecard_intel, 'enabled', lambda: True)
+    monkeypatch.setattr(flask_app.battlecard_intel, 'add', fake)
+    response = client.post('/api/intel', json={'claims': [
+        _claim(claim='A good one.'),
+        _claim(confidence='verified', source='not-a-link'),
+        _claim(claim='Another good one.'),
+    ]})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert [row['claim'] for row in data['saved']] == ['A good one.',
+                                                       'Another good one.']
+    assert len(data['failed']) == 1

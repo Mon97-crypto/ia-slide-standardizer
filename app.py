@@ -21,6 +21,7 @@ from battlecards import service as battlecard_service
 from battlecards import schema as battlecard_schema
 from battlecards import store as battlecard_store
 from battlecards import intel as battlecard_intel
+from battlecards import docs as battlecard_docs
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -1091,6 +1092,9 @@ def intel_page():
                                      in battlecard_service.presets()['products']],
                            kinds=battlecard_intel.KINDS,
                            kind_labels=battlecard_intel.KIND_LABELS,
+                           tier_order=battlecard_intel.TIER_ORDER,
+                           formats=sorted(battlecard_docs.EXTENSIONS),
+                           max_upload_mb=battlecard_docs.MAX_BYTES // 1048576,
                            confidence=battlecard_intel.CONFIDENCE)
 
 
@@ -1141,14 +1145,17 @@ def intel_add():
         try:
             entry = battlecard_intel.add(row, _author())
         except ValueError as exc:
+            # A claim the reviewer needs to correct. The rest still save.
             failed.append({'claim': str(row.get('claim', ''))[:200],
                            'problem': str(exc)})
             continue
+        except battlecard_intel.StoreUnavailable as exc:
+            # The store itself is down, so nothing further will land either.
+            # Stop and say it once, keeping whatever did save.
+            return jsonify({'saved': saved, 'failed': failed,
+                            'error': str(exc)}), 503
         if entry:
             saved.append(entry)
-        else:
-            failed.append({'claim': str(row.get('claim', ''))[:200],
-                           'problem': 'The database refused the write.'})
     status = 200 if saved else (400 if failed else 204)
     return jsonify({'saved': saved, 'failed': failed}), status
 
@@ -1162,6 +1169,48 @@ def intel_retire(entry_id):
     if not gone:
         return jsonify({'error': 'That claim is not in the store.'}), 404
     return jsonify({'retired': entry_id})
+
+
+@app.route('/api/intel/upload', methods=['POST'])
+def intel_upload():
+    """Read an uploaded document and stream out the claims it proposes.
+
+    The file is parsed in this request and discarded. Only the claims the person
+    then approves are stored, so a competitor document under an agreement never
+    lands on the disk.
+    """
+    upload = request.files.get('file')
+    if upload is None or not upload.filename:
+        return jsonify({'error': 'Choose a file to read.'}), 400
+
+    competitor = request.form.get('competitor', '').strip()
+    if not competitor:
+        return jsonify({'error': 'Name the rival this document is about.'}), 400
+
+    try:
+        document = battlecard_docs.read(upload.filename, upload.read())
+    except battlecard_docs.Unreadable as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        app.logger.exception('reading an upload failed')
+        return jsonify({'error': 'That file could not be read: %s' % exc}), 400
+
+    product = request.form.get('ia_product', '').strip()
+    author = _author()
+
+    def stream():
+        try:
+            for event in battlecard_ai.learn_from_document_events(
+                    document, competitor, product, author):
+                yield 'data: %s\n\n' % json.dumps(event)
+        except Exception as exc:
+            app.logger.exception('learning from a document failed')
+            yield 'data: %s\n\n' % json.dumps(
+                {'type': 'error', 'message': '%s: %s' % (type(exc).__name__, exc)})
+
+    return app.response_class(stream(), mimetype='text/event-stream',
+                              headers={'Cache-Control': 'no-cache',
+                                       'X-Accel-Buffering': 'no'})
 
 
 @app.route('/api/intel/export')

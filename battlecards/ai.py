@@ -22,7 +22,7 @@ import logging
 import os
 import re
 
-from . import attributesmart, intel, library
+from . import attributesmart, docs, intel, library
 from .brand import PRODUCT_SOLUTIONS, SOLUTION_LABELS
 from .schema import DEPTHS, DEFAULT_DEPTH, RATING_VALUES
 
@@ -840,3 +840,139 @@ def extract_intel(text: str, competitor: str, product: str = '',
             rejected.append({'claim': str(row.get('claim', ''))[:200],
                              'problem': str(exc)})
     return {'proposals': proposals, 'rejected': rejected, 'cost': cost}
+
+
+DOC_SYSTEM = """You are reading a document a colleague uploaded, to learn what it
+says about a competitor.
+
+The document is the evidence. Every claim you record must be supported by words
+actually in the extract you were given, and must cite the page or slide label
+shown in brackets above the text it came from.
+
+- Default every claim to confidence "documented", and put the document citation
+  in `source`. The document is not public, so "verified" is wrong even when the
+  document is the competitor's own datasheet.
+- Use "hearsay" when the document itself is reporting a rumour, an expectation or
+  somebody's opinion. A slide that says "we believe they will launch X" is a
+  rumour written down, not a fact.
+- Never use "verified": that tier means a public link, and this is a file.
+- Record nothing the extract does not say. If a page is a title, an agenda or a
+  legal notice, return an empty array for it. Silence is the correct output for a
+  page with no competitive content, and padding the list with vague claims makes
+  the whole store useless.
+- Prefer the specific over the sweeping. "Their connector list names SAP and
+  Oracle only" beats "limited integrations".
+- One fact per claim. Do not merge two capabilities into one sentence."""
+
+
+def _doc_ask(chunk: dict, competitor: str, product: str) -> str:
+    return ('Read this extract and record what it says about %(comp)s%(prod)s.\n\n'
+            'DOCUMENT: %(file)s\n'
+            'CITE THIS SOURCE EXACTLY: %(cite)s\n\n'
+            'EXTRACT\n%(text)s\n\n'
+            'Return one JSON array and nothing else. No prose, no code fence. An '
+            'empty array is the right answer when the extract says nothing about '
+            'them. Each element has exactly these keys:\n'
+            '{"kind": one of %(kinds)s, "claim": "one sentence", '
+            '"detail": "the rest, including what the document says around it", '
+            '"confidence": "documented" or "hearsay", '
+            '"source": "%(cite)s, page or slide label from the extract"}'
+            % {'comp': competitor or 'the competitor',
+               'prod': (' as it relates to %s' % product) if product else '',
+               'file': chunk.get('citation', 'the document'),
+               'cite': chunk.get('citation', 'the document'),
+               'text': chunk['text'],
+               'kinds': ', '.join(sorted(intel.KINDS))})
+
+
+def learn_from_document_events(document: dict, competitor: str, product: str = '',
+                               author: str = ''):
+    """Read an uploaded document and yield proposed claims as they come.
+
+    A generator, because a long deck takes minutes and a silent connection gets
+    cut. Nothing is saved: the proposals go to the browser for approval, exactly
+    like a typed note.
+    """
+    if not available():
+        yield {'type': 'error',
+               'message': 'No Anthropic credential is configured, so a document '
+                          'cannot be read. Set ANTHROPIC_API_KEY on the service.'}
+        return
+    try:
+        client = _client()
+    except AIUnavailable as exc:
+        yield {'type': 'error', 'message': str(exc)}
+        return
+
+    pieces, skipped = docs.chunks(document)
+    yield {'type': 'plan', 'filename': document['filename'],
+           'chars': document['chars'], 'chunks': len(pieces),
+           'skipped': skipped}
+
+    system = [{'type': 'text', 'text': SYSTEM_RULES,
+               'cache_control': {'type': 'ephemeral'}},
+              {'type': 'text', 'text': TEACH_SYSTEM},
+              {'type': 'text', 'text': DOC_SYSTEM}]
+    cost = {}
+    seen = set()
+
+    for chunk in pieces:
+        yield {'type': 'status', 'range': chunk['range'],
+               'index': chunk['index'], 'total': chunk['total'],
+               'message': 'Reading %s' % chunk['range']}
+        try:
+            with client.messages.stream(
+                model=MODEL,
+                max_tokens=12000,
+                system=system,
+                thinking={'type': 'adaptive'},
+                output_config={'effort': 'low'},
+                messages=[{'role': 'user',
+                           'content': _doc_ask(chunk, competitor, product)}],
+            ) as stream:
+                message = stream.get_final_message()
+        except Exception as exc:
+            log.exception('reading %s failed', chunk['range'])
+            yield {'type': 'warning',
+                   'message': 'Could not read %s: %s' % (chunk['range'], exc)}
+            continue
+
+        add_cost(cost, message.usage)
+        if message.stop_reason == 'refusal':
+            yield {'type': 'warning',
+                   'message': 'Reading %s was declined.' % chunk['range']}
+            continue
+
+        body = ''.join(block.text for block in message.content
+                       if block.type == 'text')
+        try:
+            rows = _parse_intel_json(body)
+        except ValueError as exc:
+            yield {'type': 'warning',
+                   'message': '%s came back unreadable: %s' % (chunk['range'], exc)}
+            continue
+
+        for row in rows:
+            row.setdefault('competitor', competitor)
+            row.setdefault('ia_product', product)
+            row.setdefault('author', author)
+            if not str(row.get('source') or '').strip():
+                row['source'] = chunk['citation']
+            try:
+                entry = intel.normalize(row, author)
+            except ValueError as exc:
+                yield {'type': 'warning',
+                       'message': 'A claim from %s was dropped: %s'
+                                  % (chunk['range'], exc)}
+                continue
+            # A deck repeats itself across slides, so the same claim arrives more
+            # than once. Keep the first, which cites the page it first appeared on.
+            fingerprint = entry['claim'].lower().strip()
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            yield {'type': 'claim', 'claim': entry}
+
+        yield {'type': 'usage', 'cost': dict(cost)}
+
+    yield {'type': 'done', 'cost': dict(cost), 'found': len(seen)}

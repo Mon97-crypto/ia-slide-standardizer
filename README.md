@@ -200,6 +200,31 @@ and tags each one, you correct it, and nothing is stored until you approve it. A
 claim never edits a card that already exists; it changes what the next card is written
 from.
 
+### Uploading documents
+
+The documents that matter here are the ones a search cannot reach: a win loss
+report, an RFP response, a rival's datasheet handed over in a meeting, a call
+transcript. Drop them on `/intel` and `battlecards/docs.py` reads PDF,
+PowerPoint, Word, Excel, CSV, text and transcript files, page by page or slide by
+slide, so a claim can cite "Their datasheet.pdf, page 4" rather than pointing at
+nothing.
+
+The file is parsed in the request that uploaded it and then discarded. Only the
+claims somebody approves are stored, so a competitor document under an agreement
+never lands on a disk here. Reading it does send its text to the Anthropic API,
+which the page says plainly next to the drop zone.
+
+A long document is read in passes of about 14,000 characters, streamed back so
+the page shows progress instead of hanging. One upload is capped at twelve
+passes; anything past that is reported by page range rather than silently
+skipped. A file with almost no text is refused with the reason, because a scan
+with no text layer is the most likely real failure and the least obvious one.
+
+Claims read from a document default to the `documented` tier, and `intel`
+refuses to record a file citation as `verified`: that tier means a link a buyer
+could open. Where the document is itself reporting a rumour, "we believe they
+will launch X", the claim comes back as `hearsay`.
+
 ### Confidence decides what a card may do
 
 The tier on a claim is the whole mechanism. `intel.CONFIDENCE` holds the rule for each
@@ -207,7 +232,8 @@ one, and that wording goes into the prompt verbatim:
 
 | Tier | Means | What a card may do |
 | --- | --- | --- |
-| `verified` | A public page, filing or release backs it. A source is required. | State it as fact and cite the source. |
+| `verified` | A public page, filing or release backs it. The source must be an http link. | State it as fact and cite the source. |
+| `documented` | A file we hold backs it, cited by name and page. Not findable online. | State it as fact and cite the document. Never imply the buyer can look it up, and leave it off a customer facing card. |
 | `field` | A colleague saw it first hand in a live deal. | Use it, attributed as a field note with the date, never as the competitor's own published claim. Never name the account. |
 | `hearsay` | Heard from a buyer, an analyst or the market. Unconfirmed. | Never assert it. It becomes a question the seller asks on the call. |
 

@@ -7,3 +7,9 @@ Pillow==11.2.1
 pytesseract==0.3.13
 gunicorn==23.0.0
 werkzeug==3.1.3
+# Readers for the documents the team uploads on the Teach page.
+# pypdf treats cryptography as optional and falls back without it,
+# and an encrypted PDF is refused with a message either way.
+pypdf==6.1.1
+python-docx==1.2.0
+openpyxl==3.1.5

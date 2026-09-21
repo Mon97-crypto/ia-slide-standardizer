@@ -33,6 +33,30 @@
         .acts { display: flex; gap: 12px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
         .acts .note { font-size: 13.5px; color: var(--gray3); }
 
+        /* ── Upload a document ───────────────────────────────────────────── */
+        .modes { display: flex; gap: 6px; margin-top: 26px; padding: 5px; background: rgba(38,76,215,.06); border-radius: 999px; width: fit-content; }
+        .modes button { font-family: var(--sans); font-size: 13.5px; font-weight: 600; padding: 9px 18px; border-radius: 999px; border: 0; background: transparent; color: #5f5f5f; cursor: pointer; }
+        .modes button.on { background: var(--white); color: var(--impact-blue); box-shadow: var(--lift); }
+
+        .dropzone { display: block; margin-top: 20px; border: 2px dashed var(--gray2); border-radius: var(--r); background: rgba(255,255,255,.55); padding: 44px 28px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+        .dropzone:hover, .dropzone.over { border-color: var(--impact-blue); background: rgba(38,76,215,.05); }
+        .dropzone .big { font-family: var(--serif); font-weight: 300; font-size: 23px; letter-spacing: -.6px; }
+        .dropzone .small { font-size: 13.5px; color: var(--gray3); margin-top: 9px; line-height: 1.55; }
+        .dropzone input { display: none; }
+
+        .files { margin-top: 16px; display: grid; gap: 9px; }
+        .fl { background: var(--white); border: 1px solid var(--gray1); border-left: 3px solid var(--gray2); border-radius: var(--r-xs); padding: 12px 15px; font-size: 14px; }
+        .fl.go { border-left-color: var(--impact-blue); }
+        .fl.ok { border-left-color: #3DD499; }
+        .fl.bad { border-left-color: var(--orange); }
+        .fl b { font-weight: 600; }
+        .fl .where { font-family: var(--mono-ish); font-size: 12px; color: var(--gray3); margin-top: 5px; }
+        .fl .bar { height: 3px; background: var(--gray1); border-radius: 2px; margin-top: 9px; overflow: hidden; }
+        .fl .bar i { display: block; height: 100%; background: var(--impact-blue); width: 0; transition: width .3s; }
+        .fl .warn { font-size: 12.5px; color: #a8490d; margin-top: 6px; line-height: 1.5; }
+
+        .privacy { margin-top: 14px; font-size: 12.5px; color: var(--gray3); line-height: 1.6; max-width: 72ch; }
+
         /* ── Proposals awaiting approval ─────────────────────────────────── */
         .review { margin-top: 28px; }
         .review > h3 { font-family: var(--serif); font-weight: 300; font-size: 25px; letter-spacing: -.8px; margin: 0 0 4px; }
@@ -54,6 +78,7 @@
         .tiers button { font-family: var(--sans); font-size: 12.5px; font-weight: 600; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--gray1); background: var(--white); color: #5f5f5f; cursor: pointer; }
         .tiers button.on { border-color: transparent; color: var(--black); }
         .tiers button.on[data-t=verified] { background: rgba(61,212,153,.26); }
+        .tiers button.on[data-t=documented] { background: rgba(20,41,122,.12); color: var(--blue-ink); }
         .tiers button.on[data-t=field] { background: rgba(38,76,215,.13); color: var(--blue-ink); }
         .tiers button.on[data-t=hearsay] { background: rgba(255,111,28,.16); color: #a8490d; }
 
@@ -150,16 +175,37 @@
             </label>
         </div>
 
-        <div style="margin-top:16px">
-            <span class="cap" style="display:block;font-size:10.5px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--gray3);margin-bottom:7px">What you know</span>
-            <textarea class="field" id="note" placeholder="Their solution engineer told the buyer that attribute tagging is a services engagement, not a product. We saw it in a bake off in August. They also priced per SKU per month, which got expensive above two million items."></textarea>
+        <div class="modes" id="modes">
+            <button data-mode="doc" class="on">Upload documents</button>
+            <button data-mode="type">Type a note</button>
         </div>
 
-        <div class="acts">
-            <button class="btn btn-primary" id="go"{% if not ai_enabled %} disabled{% endif %}>
-                <span id="goLabel">{% if ai_enabled %}Structure this{% else %}Claude not connected{% endif %}</span>
-            </button>
-            <span class="note" id="hint">Two or three sentences per note works best. Split a long brain dump into a few.</span>
+        <div id="docMode">
+            <label class="dropzone" id="drop">
+                <input type="file" id="picker" multiple
+                       accept="{{ formats | join(',') }}">
+                <div class="big">Drop the documents here</div>
+                <div class="small">Win loss reports, RFP responses, their datasheets,
+                    call transcripts, analyst notes, battlecards from the field.<br>
+                    {{ formats | join('  ') }} · up to {{ max_upload_mb }}MB each</div>
+            </label>
+            <div class="files" id="files"></div>
+            <p class="privacy">The file is read once and thrown away. Nothing is stored
+                except the claims you approve, so a document under an agreement never
+                lands on a disk here. Reading it does send its text to the Anthropic API,
+                so upload what you are allowed to share, and take the same care you would
+                with any competitor material.</p>
+        </div>
+
+        <div id="typeMode" hidden>
+            <span class="cap" style="display:block;font-size:10.5px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--gray3);margin-bottom:7px">What you know</span>
+            <textarea class="field" id="note" placeholder="Their solution engineer told the buyer that attribute tagging is a services engagement, not a product. We saw it in a bake off in August. They also priced per SKU per month, which got expensive above two million items."></textarea>
+            <div class="acts">
+                <button class="btn btn-primary" id="go"{% if not ai_enabled %} disabled{% endif %}>
+                    <span id="goLabel">{% if ai_enabled %}Structure this{% else %}Claude not connected{% endif %}</span>
+                </button>
+                <span class="note">Two or three sentences per note works best. Split a long brain dump into a few.</span>
+            </div>
         </div>
         <div id="flash"></div>
         <div class="review" id="review" hidden></div>
@@ -181,7 +227,9 @@ const KINDS = {{ kinds | tojson }};
 const KIND_LABELS = {{ kind_labels | tojson }};
 const TIERS = {{ confidence | tojson }};
 const AI_ENABLED = {{ 'true' if ai_enabled else 'false' }};
-const TIER_COLOR = { verified: '#3DD499', field: '#264CD7', hearsay: '#FF6F1C' };
+const TIER_ORDER = {{ tier_order | tojson }};
+const TIER_COLOR = { verified: '#3DD499', documented: '#14297A',
+                     field: '#264CD7', hearsay: '#FF6F1C' };
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
@@ -287,8 +335,10 @@ function countKeepers() {
 
 async function save() {
     const claims = proposals.filter(p => p.keep).map(p => ({
-        competitor: $('competitor').value.trim(),
-        ia_product: $('product').value,
+        // A claim read out of a document already knows which page it came from.
+        // Only fall back to the form for one the form produced.
+        competitor: p.competitor || $('competitor').value.trim(),
+        ia_product: p.ia_product || $('product').value,
         kind: p.kind, claim: p.claim, detail: p.detail,
         confidence: p.confidence, source: p.source,
     }));
@@ -344,7 +394,7 @@ function draw(claims) {
         rebuildFilter(claims);
         return;
     }
-    body.innerHTML = ['verified', 'field', 'hearsay'].map(tier => {
+    body.innerHTML = TIER_ORDER.map(tier => {
         const rows = claims.filter(row => row.confidence === tier);
         if (!rows.length) return '';
         return `<div class="tier" style="--tier:${TIER_COLOR[tier]}">
@@ -401,6 +451,135 @@ async function retire(id) {
         return;
     }
     load();
+}
+
+// ── Mode switch ────────────────────────────────────────────────────────────
+$('modes').querySelectorAll('button').forEach(b => b.onclick = () => {
+    $('modes').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('docMode').hidden = b.dataset.mode !== 'doc';
+    $('typeMode').hidden = b.dataset.mode !== 'type';
+});
+
+// ── Documents ──────────────────────────────────────────────────────────────
+const zone = $('drop');
+['dragenter', 'dragover'].forEach(name => zone.addEventListener(name, e => {
+    e.preventDefault(); zone.classList.add('over');
+}));
+['dragleave', 'drop'].forEach(name => zone.addEventListener(name, e => {
+    e.preventDefault(); zone.classList.remove('over');
+}));
+zone.addEventListener('drop', e => queue([...e.dataTransfer.files]));
+$('picker').onchange = e => { queue([...e.target.files]); e.target.value = ''; };
+
+let reading = false;
+
+async function queue(files) {
+    if (!files.length) return;
+    if (!AI_ENABLED) { flash('Claude is not connected, so a document cannot be read.', 'bad'); return; }
+    const competitor = $('competitor').value.trim();
+    if (!competitor) { flash('Name the rival these documents are about first.', 'bad'); return; }
+    if (reading) { flash('One document at a time. Wait for this one to finish.', 'bad'); return; }
+    flash('', '');
+    reading = true;
+    try {
+        for (const file of files) await readOne(file, competitor);
+    } finally { reading = false; }
+}
+
+function row(file) {
+    const el = document.createElement('div');
+    el.className = 'fl go';
+    el.innerHTML = `<b></b> <span class="n"></span>
+        <div class="where"></div>
+        <div class="bar"><i></i></div>
+        <div class="warns"></div>`;
+    el.querySelector('b').textContent = file.name;
+    $('files').appendChild(el);
+    return {
+        el,
+        say: text => { el.querySelector('.n').textContent = text; },
+        where: text => { el.querySelector('.where').textContent = text; },
+        bar: fraction => { el.querySelector('.bar i').style.width =
+                           Math.round(fraction * 100) + '%'; },
+        warn: text => {
+            const w = document.createElement('div');
+            w.className = 'warn'; w.textContent = text;
+            el.querySelector('.warns').appendChild(w);
+        },
+        done: kind => { el.className = 'fl ' + kind; },
+    };
+}
+
+async function readOne(file, competitor) {
+    const ui = row(file);
+    ui.say('reading');
+    const body = new FormData();
+    body.append('file', file);
+    body.append('competitor', competitor);
+    body.append('ia_product', $('product').value);
+
+    let found = 0;
+    try {
+        const res = await fetch('/api/intel/upload', { method: 'POST', body });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            ui.say('could not be read');
+            ui.warn(data.error || 'That file could not be read.');
+            ui.done('bad');
+            return;
+        }
+        await readSSE(res, ev => {
+            if (ev.type === 'plan') {
+                ui.where(ev.chars.toLocaleString() + ' characters, '
+                         + ev.chunks + ' pass' + (ev.chunks === 1 ? '' : 'es'));
+                if (ev.skipped && ev.skipped.length) {
+                    ui.warn('Too long to read in one go. ' + ev.skipped.length
+                            + ' section(s) were left out: ' + ev.skipped.join(', ')
+                            + '. Upload those pages separately.');
+                }
+            } else if (ev.type === 'status') {
+                ui.say(ev.message);
+                ui.bar((ev.index - 1) / ev.total);
+            } else if (ev.type === 'claim') {
+                found++;
+                proposals.push({ ...ev.claim, keep: true });
+                drawProposals();
+                ui.say(found + ' claim' + (found === 1 ? '' : 's') + ' so far');
+            } else if (ev.type === 'warning') {
+                ui.warn(ev.message);
+            } else if (ev.type === 'usage' && ev.cost) {
+                ui.where('$' + (ev.cost.usd || 0).toFixed(3) + ' in tokens so far');
+            } else if (ev.type === 'done') {
+                ui.bar(1);
+                ui.say(found ? found + ' claim' + (found === 1 ? '' : 's')
+                               + ' proposed, waiting on you'
+                             : 'nothing about them in this one');
+                ui.done(found ? 'ok' : '');
+            } else if (ev.type === 'error') {
+                ui.say('failed'); ui.warn(ev.message); ui.done('bad');
+            }
+        });
+    } catch (err) {
+        ui.say('failed'); ui.warn(String(err)); ui.done('bad');
+    }
+}
+
+async function readSSE(response, onEvent) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop();
+        for (const part of parts) {
+            const line = part.split('\n').find(l => l.startsWith('data: '));
+            if (!line) continue;
+            try { onEvent(JSON.parse(line.slice(6))); } catch (err) { /* partial */ }
+        }
+    }
 }
 
 $('filter').onchange = load;

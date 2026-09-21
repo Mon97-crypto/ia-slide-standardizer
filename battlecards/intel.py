@@ -27,11 +27,21 @@ import glob
 import json
 import logging
 import os
+import re
 import threading
 
 from .schema import sanitize_text
 
 log = logging.getLogger(__name__)
+
+
+class StoreUnavailable(Exception):
+    """The database could not be reached, so the write never happened.
+
+    Distinct from a refused write on purpose. A reviewer who has just approved
+    fifteen claims needs to hear "try again", not fifteen copies of "refused".
+    """
+
 
 _lock = threading.Lock()
 _ready = False
@@ -49,6 +59,16 @@ CONFIDENCE = {
         'rule': 'A public source backs this claim. The card may state it as fact '
                 'and must cite the source.',
     },
+    'documented': {
+        'label': 'In a document we hold',
+        'blurb': 'A file we have: their datasheet, an RFP response, a win loss '
+                 'report, a transcript. Not findable online.',
+        'needs_source': True,
+        'rule': 'A document we hold backs this claim. The card may state it as '
+                'fact and must cite the document by name and page. Never imply '
+                'the buyer can look it up: it is not public. A customer facing '
+                'card needs a public source instead, so leave it off one.',
+    },
     'field': {
         'label': 'Seen in a deal',
         'blurb': 'A colleague saw this first hand in a live opportunity.',
@@ -65,6 +85,10 @@ CONFIDENCE = {
                 'Turn it into a question the seller asks on the call.',
     },
 }
+
+# Strongest evidence first. The prompt, the page and the tests all read this,
+# so a new tier cannot be half added.
+TIER_ORDER = ('verified', 'documented', 'field', 'hearsay')
 
 # What the claim is about. The two guarded kinds carry a house rule that outranks
 # the confidence tier, because printing either one costs more than it is worth.
@@ -120,6 +144,10 @@ CREATE INDEX IF NOT EXISTS intel_competitor_idx ON intel (lower(competitor));
 CREATE INDEX IF NOT EXISTS intel_product_idx ON intel (ia_product);
 """
 
+# "Verified in public" has to mean a link a buyer could open. Anything else is a
+# document we hold, which is a different promise.
+_PUBLIC = re.compile(r'^https?://', re.IGNORECASE)
+
 _COLUMNS = ('id, competitor, ia_product, kind, claim, detail, confidence, '
             'source, author, as_of, retired, created_at')
 
@@ -152,8 +180,16 @@ def normalize(entry: dict, author: str = '') -> dict:
 
     source = (entry.get('source') or '').strip()[:600]
     if CONFIDENCE[confidence]['needs_source'] and not source:
-        raise ValueError('A verified claim needs its source. Paste the link, or '
-                         'record it as seen in a deal instead.')
+        raise ValueError(
+            'A claim marked "%s" needs its source. %s'
+            % (CONFIDENCE[confidence]['label'],
+               'Paste the public link, or record it as seen in a deal instead.'
+               if confidence == 'verified' else
+               'Name the document and the page it came from.'))
+    if confidence == 'verified' and not _PUBLIC.match(source):
+        raise ValueError('"Verified in public" means a public link. This source is '
+                         '"%s", which nobody outside can open. Record it as in a '
+                         'document we hold instead.' % source[:80])
 
     as_of = (entry.get('as_of') or '').strip()[:10]
     if as_of:
@@ -253,7 +289,9 @@ def add(entry: dict, author: str = '') -> dict:
     """Store one taught claim. Returns it, or {} when there is no database."""
     clean = normalize(entry, author)
     if not init():
-        return {}
+        raise StoreUnavailable(
+            'The claim library is not reachable right now, so nothing was saved. '
+            'Your claims are still on screen, so try Save again in a moment.')
     from . import store
     try:
         with store._connect() as conn:
@@ -268,9 +306,10 @@ def add(entry: dict, author: str = '') -> dict:
                 saved = cur.fetchone()
             conn.commit()
         return _row(saved)
-    except Exception:
+    except Exception as exc:
         log.exception('Could not save the taught claim.')
-        return {}
+        raise StoreUnavailable('The claim library refused the write: %s. Your '
+                               'claims are still on screen.' % exc)
 
 
 def listing(competitor: str = '', product: str = '', limit: int = 300) -> list:
@@ -367,7 +406,7 @@ def prompt_block(competitor: str, product: str = '', entries: list = None) -> st
              'what the card may do with the claim. The honesty rules still apply: '
              'where a tier forbids asserting something, write the question instead.']
 
-    for tier in ('verified', 'field', 'hearsay'):
+    for tier in TIER_ORDER:
         tier_rows = [row for row in rows if row['confidence'] == tier]
         if not tier_rows:
             continue
