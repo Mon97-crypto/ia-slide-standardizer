@@ -1895,3 +1895,118 @@ def test_a_bad_claim_still_lets_the_good_ones_save(client, monkeypatch):
     assert [row['claim'] for row in data['saved']] == ['A good one.',
                                                        'Another good one.']
     assert len(data['failed']) == 1
+
+
+# ── Word files cite a heading, not a page ───────────────────────────────────
+# A real comparison document came back citing "document part 2", which tells a
+# reader nothing. Word has no pages until it is laid out, but it has headings.
+
+def _docx_with_headings():
+    import docx
+    document = docx.Document()
+    document.add_heading('1.1 Company Info', level=2)
+    document.add_paragraph('Founded in 2009. ' + LONG)
+    table = document.add_table(rows=2, cols=3)
+    for column, value in enumerate(['Feature', 'Impact Analytics', 'o9']):
+        table.cell(0, column).text = value
+    for column, value in enumerate(['Multi level cadence', 'yes', 'no']):
+        table.cell(1, column).text = value
+    document.add_heading('1.2 Pricing', level=2)
+    document.add_paragraph('Quoted per SKU per month. ' + LONG)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def test_a_word_file_is_segmented_by_its_headings():
+    from battlecards import docs
+    document = docs.read('Comparison.docx', _docx_with_headings())
+    labels = [segment['label'] for segment in document['segments']]
+    assert labels == ['under "1.1 Company Info"', 'under "1.2 Pricing"']
+    # The table has to stay under the heading that says what it compares.
+    assert 'Multi level cadence | yes | no' in document['segments'][0]['text']
+    assert 'per SKU per month' in document['segments'][1]['text']
+
+
+def test_a_heading_styled_paragraph_of_prose_does_not_cut_the_document():
+    """Real documents style whole sentences as Heading 1. That is not a section."""
+    import docx
+    from battlecards import docs
+    document = docx.Document()
+    document.add_heading('1.1 Company Info', level=2)
+    para = document.add_paragraph('The information was taken from the respective '
+                                  'product websites, as well as other sources '
+                                  'such as ads and third party tools. ' + LONG)
+    para.style = document.styles['Heading 1']
+    buffer = io.BytesIO()
+    document.save(buffer)
+    parsed = docs.read('Comparison.docx', buffer.getvalue())
+    assert [segment['label'] for segment in parsed['segments']] == [
+        'under "1.1 Company Info"']
+    assert 'third party tools' in parsed['segments'][0]['text']
+
+
+def test_a_word_file_with_no_headings_still_reads():
+    from battlecards import docs
+    document = docs.read('Notes.docx', _docx_bytes([LONG, 'They lost on price.']))
+    assert document['segments'][0]['label'] == 'document'
+    assert 'lost on price' in document['segments'][0]['text']
+
+
+# ── the committed o9 claims ─────────────────────────────────────────────────
+
+def test_the_committed_o9_claims_load_and_are_keyed_by_product():
+    from battlecards import intel
+    rows = [row for row in intel.seeds() if row['competitor'] == 'o9 Solutions']
+    assert len(rows) >= 25
+    products = {row['ia_product'] for row in rows}
+    assert {'PriceSmart', 'PromoSmart', 'MarkSmart', 'InventorySmart',
+            'AssortSmart'} <= products
+    assert '' in products, 'company level claims apply to every product'
+
+
+def test_an_internal_assessment_is_never_stored_as_public():
+    """The document is ours. Only a real link may carry the verified tier."""
+    from battlecards import intel
+    for row in intel.seeds():
+        if row['confidence'] == 'verified':
+            assert row['source'].startswith('http'), row['claim']
+        if row['source'].endswith('.docx') or '.docx,' in row['source']:
+            assert row['confidence'] != 'verified', row['claim']
+
+
+def test_a_claimed_rival_gap_tells_the_seller_to_ask_first():
+    """The claim that loses a deal when the buyer corrects it."""
+    from battlecards import intel
+    gaps = [row for row in intel.seeds()
+            if row['kind'] == 'gap' and row['competitor'] == 'o9 Solutions']
+    assert gaps
+    for row in gaps:
+        assert 'ask' in row['detail'].lower(), row['claim']
+        assert 'our assessment' in row['claim'].lower(), row['claim']
+
+
+def test_what_the_document_marked_unclear_became_a_question():
+    from battlecards import intel
+    unsure = [row for row in intel.seeds() if row['confidence'] == 'hearsay']
+    assert len(unsure) >= 10
+    for row in unsure:
+        assert row['claim'].startswith('Ask '), row['claim']
+
+
+def test_the_rival_strengths_are_recorded_too():
+    """A card that denies the overlap gets corrected in the meeting."""
+    from battlecards import intel
+    strengths = [row for row in intel.seeds() if row['kind'] == 'strength']
+    assert strengths
+    joined = ' '.join(row['claim'] for row in strengths).lower()
+    assert 'markdown' in joined and 'assortment' in joined
+
+
+def test_the_committed_claims_reach_a_pricesmart_card():
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', 'PriceSmart')
+    assert 'Digital Brain' in block
+    assert 'PriceSmart: our assessment' in block
+    # A claim for another product must not leak into this one.
+    assert 'AssortSmart:' not in block

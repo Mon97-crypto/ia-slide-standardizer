@@ -129,8 +129,18 @@ def _read_pptx(data: bytes) -> list:
 
 
 def _read_docx(data: bytes) -> list:
+    """Segment a Word file by its headings, keeping tables in their section.
+
+    Word has no page numbers until it is laid out, so "page 4" is not available.
+    Headings are, and they make a far better citation: "under 1.4 Product and
+    Features-wise Comparison" tells a reader where to look, where "part 2 of the
+    document" tells them nothing. A comparison table also has to stay under the
+    heading that says what it compares, or the rows lose their meaning.
+    """
     try:
         import docx
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
     except ImportError:
         raise Unreadable('This deployment cannot read Word files. Add '
                          'python-docx to requirements.txt, or paste the text.')
@@ -138,16 +148,44 @@ def _read_docx(data: bytes) -> list:
         document = docx.Document(io.BytesIO(data))
     except Exception as exc:
         raise Unreadable('That Word file could not be opened: %s' % exc)
-    parts = [para.text for para in document.paragraphs if para.text.strip()]
-    for table in document.tables:
-        for row in table.rows:
-            cells = [cell.text.strip() for cell in row.cells]
-            if any(cells):
-                parts.append(' | '.join(cells))
-    # Word has no page numbers until it is laid out, so the whole body is one
-    # segment and the chunker below splits it on length.
-    text = tidy('\n'.join(parts))
-    return [{'label': 'document', 'text': text}] if text else []
+
+    segments, heading, parts, table_count = [], '', [], 0
+
+    def flush():
+        text = tidy('\n'.join(parts))
+        if text:
+            segments.append({'label': 'under "%s"' % heading if heading
+                                      else 'document', 'text': text})
+        parts.clear()
+
+    for child in document.element.body.iterchildren():
+        tag = child.tag.split('}')[-1]
+        if tag == 'p':
+            para = Paragraph(child, document)
+            text = para.text.strip()
+            if not text:
+                continue
+            style = (para.style.name or '').lower()
+            # A heading starts a new section. Word files in the wild also use a
+            # heading style for body text, so a long "heading" is treated as
+            # prose rather than cutting the document into useless slivers.
+            if style.startswith('heading') and len(text) <= 120:
+                flush()
+                heading = text
+                parts.append(text)
+            else:
+                parts.append(text)
+        elif tag == 'tbl':
+            table_count += 1
+            rows = []
+            for row in Table(child, document).rows:
+                cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
+                if any(cells):
+                    rows.append(' | '.join(cells))
+            if rows:
+                parts.append('Table %d:\n%s' % (table_count, '\n'.join(rows)))
+    flush()
+    return segments
 
 
 def _read_xlsx(data: bytes) -> list:
