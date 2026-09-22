@@ -259,7 +259,8 @@ const ACCENT = {
 
 let presets = { competitors: [], products: [], product_solutions: {} };
 let depths = [], depth = 'standard';
-let card = null, research = '', chat = [], spend = null, searches = null;
+let card = null, research = '', chat = [], spend = null, searches = null,
+    taught = null;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
@@ -317,7 +318,7 @@ async function generate() {
     const competitor = $('competitor').value.trim();
     if (!competitor) { $('competitor').focus(); return; }
     busy(true);
-    card = null; research = ''; spend = null; searches = null;
+    card = null; research = ''; spend = null; searches = null; taught = null;
     $('pptxBtn').disabled = true; $('jsonBtn').disabled = true;
     $('resultPanel').hidden = true;
     $('progressPanel').hidden = false;
@@ -347,6 +348,13 @@ function onEvent(ev) {
     } else if (ev.type === 'usage') {
         spend = ev.cost;
         showSpend();
+    } else if (ev.type === 'taught') {
+        // Say what the card is being built from, so it is obvious whether the
+        // teaching landed rather than something to take on trust.
+        taught = ev;
+        if (ev.count) $('feed').textContent =
+            `Building from ${ev.count} claim${ev.count === 1 ? '' : 's'} the team `
+            + `taught about this rival${ev.curated ? ', plus the curated card' : ''}.\n\n`;
     } else if (ev.type === 'searches') {
         // A card of "not found" reads the same whether the record is silent or
         // nothing was ever searched. The count is how the seller tells them apart.
@@ -391,6 +399,10 @@ async function build(curated) {
         <b>$${spend.usd.toFixed(3)}</b> in tokens across ${spend.calls} calls${
         card.meta && card.meta.depth ? ', at ' + esc(card.meta.depth) + ' depth' : ''}.
         The web search fee is billed separately and is not counted here.</div>`;
+    if (taught && taught.count) html += `<div class="note ok">Written with
+        <b>${taught.count}</b> claim${taught.count === 1 ? '' : 's'} the team taught
+        about ${esc(card.meta.competitor)}${taught.curated ? ', on top of the curated card' : ''}.
+        <a href="/intel">Teach it more</a> and rebuild to sharpen this.</div>`;
     if (data.library_entry) html += `<div class="note ok">Saved to the
         <a href="/library">shared library</a> for the rest of the team.</div>`;
     const warnings = data.warnings || [];

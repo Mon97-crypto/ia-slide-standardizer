@@ -445,7 +445,14 @@ def _structure(client, competitor: str, product: str, preset: dict,
         'with the exact source string given there.\n'
         '- resources: only URLs that appeared in the brief.\n'
         '- pricing.competitor_model: leave a note that nothing is sourced unless '
-        'the brief found published pricing.\n\n'
+        'the brief found published pricing.\n'
+        '- win_theme and headline: lead with what the field intelligence gives '
+        'you, not with what a web search would have found. If the team has taught '
+        'the builder something about this rival, the card has to read as though a '
+        'colleague who has met them wrote it.\n'
+        '- talk_track and landmines: these are where a taught claim earns its '
+        'place. A claim the tiers forbid asserting still belongs here, as the '
+        'question to ask.\n\n'
         'BRIEF\n%(research)s'
         % {'label': preset['label'].lower(), 'comp': competitor,
            'caps': cap_text, 'research': research})
@@ -456,10 +463,15 @@ def _structure(client, competitor: str, product: str, preset: dict,
             'present:\n%s' % _shape_contract())
     messages = [{'role': 'user', 'content': ask}]
 
+    system = _system_prompt(product, competitor)
+    curated = _curated_block(competitor, product)
+    if curated:
+        system.append({'type': 'text', 'text': curated})
+
     with client.messages.stream(
         model=MODEL,
         max_tokens=mode['max_tokens'],
-        system=_system_prompt(product, competitor),
+        system=system,
         thinking={'type': 'adaptive'},
         output_config={'effort': mode['effort']},
         messages=messages,
@@ -518,38 +530,126 @@ def _retry_structure(client, messages: list, bad: str, mode: dict,
             'The model did not return usable JSON after a retry. %s' % exc) from exc
 
 
-def _merge_curated(card: dict, competitor: str, product: str) -> dict:
-    """Let curated research win over generated content where we have it.
-
-    The four AttributeSmart cards were written against sources by hand. A model
-    should not overwrite them, so its output only fills sections the curated card
-    leaves thin.
-    """
+def curated_for(competitor: str, product: str) -> dict:
+    """The hand written card for this pairing, or {} when there is none."""
     if (product or '').lower() != 'attributesmart':
-        return card
+        return {}
     for name in attributesmart.COMPETITORS:
-        if name.lower() != competitor.lower():
+        if name.lower() == (competitor or '').lower():
+            return attributesmart.card_for(name)
+    return {}
+
+
+# Which field identifies a row, so a curated row and a generated one that say the
+# same thing are recognised as one. First match wins.
+_ROW_KEYS = ('capability', 'objection', 'question', 'title', 'stat', 'url',
+             'label', 'claim')
+
+_MERGE_LISTS = ('their_strengths', 'their_weaknesses', 'comparison', 'objections',
+                'landmines', 'proof_points', 'our_advantages', 'dos', 'donts',
+                'resources', 'next_steps', 'discovery')
+# The model wins on these, because it wrote them with the curated text and the
+# taught claims in front of it and should be able to sharpen both.
+_MERGE_DICTS = ('positioning', 'talk_track', 'pricing')
+
+# The snapshot is the other way round. A hand sourced company fact outranks
+# anything a research pass produced, and "Not found" must never beat "Dallas,
+# Texas." A field the curated card leaves blank still takes the research.
+_CURATED_FIRST_DICTS = ('snapshot',)
+
+
+def _row_key(row) -> str:
+    if isinstance(row, dict):
+        for field in _ROW_KEYS:
+            if row.get(field):
+                return re.sub(r'\W+', ' ', str(row[field])).strip().lower()[:90]
+        return json.dumps(row, sort_keys=True)[:90]
+    return re.sub(r'\W+', ' ', str(row)).strip().lower()[:90]
+
+
+def _merge_curated(card: dict, competitor: str, product: str) -> dict:
+    """Add the hand written card to the generated one, rather than over it.
+
+    This used to replace eleven sections outright, which meant a generated card
+    for one of the four curated rivals was byte identical to the hand written one
+    however much the team had taught the builder. The model's work, and with it
+    every taught claim, was thrown away after the fact.
+
+    So curated content is now a floor, not a ceiling. Every curated row survives,
+    because each was written against a source by hand. The model's rows are added
+    after them where they say something new, which is where the taught
+    intelligence and the fresh research arrive. The model also receives the
+    curated card as ground truth while it writes, so it is building on that text
+    rather than competing with it.
+    """
+    curated = curated_for(competitor, product)
+    if not curated:
+        return card
+
+    merged = dict(card)
+    for key in _MERGE_LISTS:
+        mine = curated.get(key) or []
+        theirs = card.get(key) or []
+        if not mine:
             continue
-        curated = attributesmart.card_for(name)
-        merged = dict(card)
-        for key in ('their_strengths', 'their_weaknesses', 'comparison',
-                    'objections', 'landmines', 'proof_points', 'our_advantages',
-                    'positioning', 'talk_track', 'dos', 'donts', 'resources'):
-            if curated.get(key):
-                merged[key] = curated[key]
-        # Company facts merge field by field, not wholesale. A hand sourced fact
-        # wins, and a field the curated card leaves blank keeps what the research
-        # found, so the snapshot is the best of both rather than one or the other.
-        snapshot = dict(card.get('snapshot') or {})
-        for field, value in (curated.get('snapshot') or {}).items():
+        seen = {_row_key(row) for row in mine}
+        added = [row for row in theirs if _row_key(row) not in seen]
+        merged[key] = list(mine) + added
+
+    # Scalars: the model wins where it wrote something, because it had the
+    # curated text and the taught claims in front of it and should be able to
+    # sharpen both. Curated fills anything it left empty.
+    for key in _MERGE_DICTS:
+        mine = curated.get(key) or {}
+        theirs = card.get(key) or {}
+        if not isinstance(mine, dict) or not isinstance(theirs, dict):
+            continue
+        merged[key] = {field: (theirs.get(field) or mine.get(field) or '')
+                       for field in set(mine) | set(theirs)}
+
+    for key in _CURATED_FIRST_DICTS:
+        mine = curated.get(key) or {}
+        theirs = dict(card.get(key) or {})
+        if not isinstance(mine, dict):
+            continue
+        for field, value in mine.items():
             if value:
-                snapshot[field] = value
-        if snapshot:
-            merged['snapshot'] = snapshot
-        merged['meta'] = dict(card.get('meta', {}), **curated['meta'])
-        merged['_curated'] = True
-        return merged
-    return card
+                theirs[field] = value
+        if theirs:
+            merged[key] = theirs
+
+    for key in ('how_to_use', 'options'):
+        if curated.get(key) and not card.get(key):
+            merged[key] = curated[key]
+
+    meta = dict(curated.get('meta', {}))
+    meta.update({field: value for field, value in (card.get('meta') or {}).items()
+                 if value})
+    merged['meta'] = meta
+    merged['_curated'] = True
+    return merged
+
+
+def _curated_block(competitor: str, product: str) -> str:
+    """The hand written card as ground truth, so the model builds on it.
+
+    Without this the model wrote blind and its work was then merged against text
+    it had never seen, which produced either duplication or contradiction.
+    """
+    curated = curated_for(competitor, product)
+    if not curated:
+        return ''
+    keep = {key: curated.get(key) for key in
+            ('positioning', 'their_strengths', 'their_weaknesses', 'comparison',
+             'objections', 'landmines', 'our_advantages', 'talk_track')
+            if curated.get(key)}
+    return ('CURATED CARD ALREADY WRITTEN FOR %s, AGAINST SOURCES, BY HAND\n\n'
+            'Treat every line as verified. It is kept in the finished card, so do '
+            'not repeat it: write what it does not already say. Where the field '
+            'intelligence above sharpens one of these lines, say so in your own '
+            'rows rather than contradicting it. Where it is silent and you have '
+            'something sourced, add it.\n\n%s'
+            % (competitor, json.dumps(keep, indent=1)))
 
 
 # ─── Streaming generation, for the browser ──────────────────────────────────────
@@ -582,6 +682,13 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
     cost = {}
 
     try:
+        try:
+            taught = intel.listing(competitor, product, product_only=False)
+        except Exception:
+            log.exception('could not count the taught claims')
+            taught = []
+        yield {'type': 'taught', 'count': len(taught),
+               'curated': bool(curated_for(competitor, product))}
         yield {'type': 'status', 'step': 'research',
                'message': 'Searching the public record for %s' % competitor}
         chunks = []

@@ -225,6 +225,23 @@ refuses to record a file citation as `verified`: that tier means a link a buyer
 could open. Where the document is itself reporting a rumour, "we believe they
 will launch X", the claim comes back as `hearsay`.
 
+### How a taught claim reaches the card
+
+Everything taught about a rival goes into the prompt, not just the claims keyed
+to the product being written. A claim taught against another IA product still
+describes the same rival, so it appears under a fence that says it may shape the
+win theme, the talk track and the questions to ask, but not this card's
+capability comparison.
+
+Where a curated card exists, the model is shown it as verified ground truth
+while it writes, and the finished card is the **union** of the two: every curated
+row survives, and the model's rows are added where they say something new. This
+replaced an earlier merge that overwrote eleven sections outright, which meant a
+generated card for one of the four curated rivals came out identical to the hand
+written one no matter how much the team had taught the builder. Company facts are
+the one exception and run the other way: a hand sourced fact outranks anything a
+research pass produced, because "Not found" must never beat "Dallas, Texas."
+
 ### Confidence decides what a card may do
 
 The tier on a claim is the whole mechanism. `intel.CONFIDENCE` holds the rule for each

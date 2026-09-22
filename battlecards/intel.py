@@ -312,8 +312,15 @@ def add(entry: dict, author: str = '') -> dict:
                                'claims are still on screen.' % exc)
 
 
-def listing(competitor: str = '', product: str = '', limit: int = 300) -> list:
-    """Every live claim, seeds included. Newest first."""
+def listing(competitor: str = '', product: str = '', limit: int = 300,
+            product_only: bool = True) -> list:
+    """Every live claim, seeds included. Newest first.
+
+    `product_only` filters to claims about this IA product plus the company wide
+    ones. Pass False to get everything taught about the rival: a claim keyed to
+    another product still describes the rival, and a card is better for knowing
+    it even though it cannot be asserted as this product's comparison.
+    """
     rows = []
     if init(attempts=1):
         from . import store
@@ -321,7 +328,7 @@ def listing(competitor: str = '', product: str = '', limit: int = 300) -> list:
         if competitor:
             clauses.append('lower(competitor) = lower(%s)')
             params.append(competitor)
-        if product:
+        if product and product_only:
             clauses.append("(ia_product = %s OR ia_product = '')")
             params.append(product)
         params.append(max(1, min(int(limit or 300), 1000)))
@@ -338,7 +345,7 @@ def listing(competitor: str = '', product: str = '', limit: int = 300) -> list:
     for entry in seeds():
         if competitor and entry['competitor'].lower() != competitor.lower():
             continue
-        if product and entry['ia_product'] not in ('', product):
+        if product and product_only and entry['ia_product'] not in ('', product):
             continue
         rows.append(entry)
     for entry in rows:
@@ -395,22 +402,52 @@ def export() -> dict:
 # ─── What Claude sees ───────────────────────────────────────────────────────────
 
 def prompt_block(competitor: str, product: str = '', entries: list = None) -> str:
-    """The taught claims, grouped by how well each one is known.
+    """The taught claims, grouped by relevance and then by how well each is known.
+
+    Everything the team has taught about this rival goes in, because a claim
+    about another IA product still describes the rival. It is split so the model
+    knows what it may assert on this card and what is only background.
 
     Returns '' when there is nothing taught, so the prompt stays unchanged rather
     than carrying an empty heading.
     """
-    rows = entries if entries is not None else listing(competitor, product)
+    rows = (entries if entries is not None
+            else listing(competitor, product, product_only=False))
     if not rows:
         return ''
 
     lines = ['IMPACT ANALYTICS FIELD INTELLIGENCE ON %s' % competitor.upper(),
              '',
-             'Colleagues taught the builder these claims. They are not public '
-             'research. Each tier below carries its own rule, and the rule decides '
-             'what the card may do with the claim. The honesty rules still apply: '
-             'where a tier forbids asserting something, write the question instead.']
+             'Colleagues taught the builder these claims, from deals, documents '
+             'and calls. This is the part of the card a search cannot produce, so '
+             'it outranks generic public research for deciding what to lead with. '
+             'Use it. A card that ignores what the team knows is no better than a '
+             'web search.',
+             '',
+             'Each tier carries its own rule, and the rule decides what the card '
+             'may do with the claim. The honesty rules still apply: where a tier '
+             'forbids asserting something, write the question instead.']
 
+    here = [row for row in rows
+            if not row.get('ia_product') or row['ia_product'] == product]
+    elsewhere = [row for row in rows if row not in here]
+
+    _tiers(lines, here)
+    if elsewhere:
+        others = sorted({row['ia_product'] for row in elsewhere})
+        lines.append('')
+        lines.append('BACKGROUND, TAUGHT AGAINST OTHER IMPACT ANALYTICS PRODUCTS '
+                     '(%s). These describe the same rival, so they inform the win '
+                     'theme, the talk track and the questions to ask. Do not put '
+                     'them in this card\'s capability comparison, which is about '
+                     '%s only.' % (', '.join(others), product or 'this product'))
+        _tiers(lines, elsewhere)
+
+    return '\n'.join(lines)
+
+
+def _tiers(lines: list, rows: list) -> None:
+    """Append rows grouped by confidence, strongest evidence first."""
     for tier in TIER_ORDER:
         tier_rows = [row for row in rows if row['confidence'] == tier]
         if not tier_rows:
@@ -433,5 +470,3 @@ def prompt_block(competitor: str, product: str = '', entries: list = None) -> st
             if row['kind'] in GUARDED:
                 parts.append('  HOUSE RULE: %s' % GUARDED[row['kind']])
             lines.extend(parts)
-
-    return '\n'.join(lines)

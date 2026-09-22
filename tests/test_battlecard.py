@@ -492,13 +492,17 @@ def test_generated_card_schema_restricts_ratings():
     assert 'unknown' in ratings['competitor']['enum']
 
 
-def test_curated_research_wins_over_generated_content():
+def test_curated_research_is_a_floor_not_a_ceiling():
+    """It used to replace the generated content, which discarded the model's
+    work and with it every taught claim. Now both survive."""
     from battlecards import ai
     thin = {'their_strengths': ['generated guess'], 'comparison': [],
             'meta': {'headline': 'generated'}}
     merged = ai._merge_curated(thin, 'o9 Solutions', 'AttributeSmart')
     curated = attributesmart.COMPETITORS['o9 Solutions']
-    assert merged['their_strengths'] == curated['strengths']
+    for row in curated['strengths']:
+        assert row in merged['their_strengths'], 'a curated row was lost'
+    assert 'generated guess' in merged['their_strengths'], 'the model was erased'
     assert merged['_curated'] is True
     # A competitor with no curated card keeps the generated content.
     untouched = ai._merge_curated(dict(thin), 'Some New Vendor', 'AttributeSmart')
@@ -2018,10 +2022,13 @@ def test_the_rival_strengths_are_recorded_too():
 def test_the_committed_claims_reach_a_pricesmart_card():
     from battlecards import intel
     block = intel.prompt_block('o9 Solutions', 'PriceSmart')
-    assert 'Digital Brain' in block
-    assert 'PriceSmart: our assessment' in block
-    # A claim for another product must not leak into this one.
-    assert 'AssortSmart:' not in block
+    head, background = block.split('BACKGROUND, TAUGHT AGAINST OTHER', 1)
+    assert 'Digital Brain' in head
+    assert 'PriceSmart: our assessment' in head
+    # Another product's claim is background about the rival, below the fence,
+    # never mixed into this card's comparison.
+    assert 'AssortSmart:' not in head
+    assert 'AssortSmart:' in background
 
 
 # ── when no database is attached ────────────────────────────────────────────
@@ -2320,3 +2327,169 @@ def test_the_page_tells_the_two_failures_apart():
     assert 'set but did not answer' in page
     assert 'stats.configured' in page
     assert '/api/intel/diagnose' in page
+
+
+# ── the taught claims have to survive into the card ─────────────────────────
+# A real complaint: a generated AttributeSmart card ignored everything taught
+# about o9. Two causes. _merge_curated replaced eleven sections outright, so the
+# model's work was discarded after the fact, and the product filter dropped 22
+# of the 30 claims before the model ever saw them.
+
+def test_everything_taught_about_a_rival_reaches_the_prompt():
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', 'AttributeSmart')
+    seeds = [row for row in intel.seeds() if row['competitor'] == 'o9 Solutions']
+    assert block.count('\n- [') == len(seeds), 'no claim may be filtered away'
+    # A claim taught against another product is background, clearly fenced.
+    assert 'BACKGROUND, TAUGHT AGAINST OTHER' in block
+    assert "capability comparison, which is about" in block
+
+
+def test_a_claim_for_another_product_is_not_mixed_into_this_comparison():
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', 'AttributeSmart')
+    head, background = block.split('BACKGROUND, TAUGHT AGAINST OTHER', 1)
+    # PriceSmart rows belong below the fence, not above it.
+    assert 'PriceSmart: our assessment' not in head
+    assert 'PriceSmart: our assessment' in background
+
+
+def test_product_filtering_is_still_available():
+    from battlecards import intel
+    only = intel.listing('o9 Solutions', 'PriceSmart', product_only=True)
+    assert only, 'the narrow view still has to work'
+    assert all(row['ia_product'] in ('', 'PriceSmart') for row in only)
+
+
+def test_the_curated_card_no_longer_erases_the_model(monkeypatch):
+    """The bug: a generated card was byte identical to the hand written one."""
+    from battlecards import ai
+    generated = {
+        'their_weaknesses': ['MODEL: tagging is a services engagement.'],
+        'landmines': [{'question': 'MODEL: who owns the taxonomy?', 'why': 'w',
+                       'listen_for': 'l'}],
+        'comparison': [{'capability': 'MODEL: a capability the curated card omits',
+                        'ia': 'strong', 'competitor': 'unknown', 'note': 'n'}],
+        'meta': {'headline': 'MODEL HEADLINE', 'win_theme': 'MODEL WIN THEME'},
+    }
+    curated = ai.curated_for('o9 Solutions', 'AttributeSmart')
+    merged = ai._merge_curated(generated, 'o9 Solutions', 'AttributeSmart')
+
+    for key in ('their_weaknesses', 'landmines', 'comparison'):
+        rows = json.dumps(merged[key])
+        assert 'MODEL' in rows, '%s lost the model rows again' % key
+        assert len(merged[key]) == len(curated[key]) + 1, (
+            '%s should hold every curated row plus the new one' % key)
+    # The model wrote these with the curated text in front of it, so it wins.
+    assert merged['meta']['headline'] == 'MODEL HEADLINE'
+    assert merged['meta']['win_theme'] == 'MODEL WIN THEME'
+
+
+def test_the_curated_rows_all_survive_the_merge():
+    from battlecards import ai
+    curated = ai.curated_for('o9 Solutions', 'AttributeSmart')
+    merged = ai._merge_curated({'meta': {}}, 'o9 Solutions', 'AttributeSmart')
+    for key in ('their_strengths', 'their_weaknesses', 'comparison', 'objections',
+                'landmines', 'our_advantages', 'dos', 'donts'):
+        assert len(merged[key]) >= len(curated[key]), key
+
+
+def test_a_repeated_row_is_not_duplicated_by_the_merge():
+    from battlecards import ai
+    curated = ai.curated_for('o9 Solutions', 'AttributeSmart')
+    # The model returning a curated row verbatim must not double it.
+    echo = {'their_strengths': list(curated['their_strengths']), 'meta': {}}
+    merged = ai._merge_curated(echo, 'o9 Solutions', 'AttributeSmart')
+    assert len(merged['their_strengths']) == len(curated['their_strengths'])
+
+
+def test_a_hand_sourced_fact_outranks_the_research():
+    """Caught in review: the first additive merge let the model win everywhere,
+    so a "Not found" from the research beat the hand sourced city."""
+    from battlecards import ai
+    merged = ai._merge_curated(
+        {'snapshot': {'headquarters': 'Not found. Verify before the call.',
+                      'founded': 'Not found.'}, 'meta': {}},
+        'o9 Solutions', 'AttributeSmart')
+    assert merged['snapshot']['headquarters'] == 'Dallas, Texas.'
+    assert 'Sidhu' in merged['snapshot']['founded']
+
+
+def test_a_curated_blank_is_filled_by_the_model():
+    from battlecards import ai
+    merged = ai._merge_curated(
+        {'snapshot': {'go_to_market': 'MODEL GTM'}, 'meta': {}},
+        'o9 Solutions', 'AttributeSmart')
+    assert merged['snapshot']['go_to_market'] == 'MODEL GTM'
+    assert merged['snapshot']['headquarters'] == 'Dallas, Texas.'
+
+
+def test_the_model_is_shown_the_curated_card_while_it_writes():
+    """Merging against text the model never saw produced contradictions."""
+    from battlecards import ai
+    block = ai._curated_block('o9 Solutions', 'AttributeSmart')
+    assert 'CURATED CARD ALREADY WRITTEN' in block
+    assert 'do not repeat it' in block
+    assert 'Enterprise Knowledge Graph' in block
+    assert ai._curated_block('Lily AI', 'AttributeSmart') == ''
+
+
+def test_the_prompt_tells_the_model_the_taught_claims_lead():
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', 'AttributeSmart')
+    assert 'outranks generic public research' in block
+    assert 'no better than a web search' in block
+
+
+def _echo_client(card):
+    class FakeStream:
+        def __init__(self, **kw):
+            FakeStream.seen = kw
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        @property
+        def text_stream(self):
+            return iter(['brief'])
+
+        def get_final_message(self):
+            return type('M', (), {
+                'stop_reason': 'end_turn', 'usage': _SearchUsage(2),
+                'content': [type('B', (), {'type': 'text',
+                                           'text': json.dumps(card)})()]})()
+
+    FakeStream.seen = {}
+    return type('C', (), {'messages': type('M', (), {
+        'stream': lambda self, **kw: FakeStream(**kw)})()})(), FakeStream
+
+
+def test_a_generated_card_carries_both_the_curated_and_the_taught(monkeypatch):
+    """End to end, which is the check that would have caught this."""
+    from battlecards import ai
+
+    client, stream = _echo_client({
+        'competitor_category': 'Planning platform',
+        'headline': 'H', 'win_theme': 'W',
+        'their_weaknesses': ['MODEL: tagging is a services engagement.'],
+        'landmines': [{'question': 'MODEL: who owns the taxonomy?', 'why': 'w',
+                       'listen_for': 'l'}],
+    })
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: client)
+    events = list(ai.generate_events('o9 Solutions', 'AttributeSmart'))
+
+    counted = [event for event in events if event['type'] == 'taught']
+    assert counted and counted[0]['count'] >= 25, counted
+    assert counted[0]['curated'] is True
+
+    card = [event for event in events if event['type'] == 'card'][0]['card']
+    assert 'MODEL' in json.dumps(card['their_weaknesses'])
+    assert len(card['their_weaknesses']) > 1, 'the curated rows must remain'
+
+    system = '\n'.join(block['text'] for block in stream.seen['system'])
+    assert 'FIELD INTELLIGENCE' in system
+    assert 'CURATED CARD ALREADY WRITTEN' in system
