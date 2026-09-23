@@ -1,0 +1,213 @@
+{
+  "intel": [
+    {
+      "ia_product": "AssortSmart",
+      "kind": "mechanism",
+      "claim": "AssortSmart builds customer centric, localised assortments across many locations rather than one plan pushed to every store.",
+      "detail": "From the AssortSmart product page. How the localisation is computed, the models and the inputs, is not described publicly: teach it from the product documents.",
+      "source": "https://impactanalytics.co/solutions/retail-assortment-planning",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "AssortSmart",
+      "kind": "strength",
+      "claim": "AssortSmart tracks real time demand, in stock rates, sell through and markdown impact against the assortment plan.",
+      "detail": "Published as benefits: higher inventory turns, higher gross margin and fewer markdowns. No figures are published, so this is an argument, not a proof point.",
+      "source": "https://impactanalytics.co/solutions/retail-assortment-planning",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "AssortSmart",
+      "kind": "customer",
+      "claim": "Briscoe Group runs AssortSmart alongside PlanSmart, InventorySmart and AttributeSmart.",
+      "detail": "Announced as a partnership on the Impact Analytics newsroom, so the name is public. The four product combination is the suite story: the plan, the assortment, the inventory and the attributes feeding them.",
+      "source": "https://www.impactanalytics.co/the-news/briscoe-group-partners-with-impact-analytics",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "PlanSmart",
+      "kind": "mechanism",
+      "claim": "PlanSmart handles merchandise financial planning and open to buy, with AI forecasting behind the plan.",
+      "detail": "Aligns the financial plan with demand and inventory to cut overstock and stockout risk.",
+      "source": "https://www.impactanalytics.co/solutions/merchandise-financial-planning-software",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "InventorySmart",
+      "kind": "proof",
+      "claim": "A multi brand jewelry retailer unified inventory planning across its banners and unlocked 22 million dollars in savings with InventorySmart.",
+      "detail": "Published case study. Check the year on the page before using it as a proof point.",
+      "source": "https://www.impactanalytics.ai/case-studies/multi-brand-jewelry-retailer",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "InventorySmart",
+      "kind": "proof",
+      "claim": "One InventorySmart client moved in stock from about 90 percent to 95 to 96 percent, and sales rose about 37 percent.",
+      "detail": "Stated on the InventorySmart page without a year or a customer shape, so it belongs in the talk track, not on a proof point slide.",
+      "source": "https://www.impactanalytics.co/solutions/retail-inventory-management-software",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "InventorySmart",
+      "kind": "mechanism",
+      "claim": "InventorySmart automates allocation and replenishment, including new product planning with automated supersessions.",
+      "detail": "Published as cutting manual effort by up to 90 percent, which is a marketing figure rather than a measured result.",
+      "source": "https://www.impactanalytics.co/solutions/retail-inventory-management-software",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "InventorySmart",
+      "kind": "strength",
+      "claim": "Impact Analytics publicly positions InventorySmart as an alternative to o9 Supply Chain, Oracle Inventory Optimization and Aptos.",
+      "detail": "Our own comparison page, so it is our positioning, not a third party verdict. Useful to know what the website already tells a buyer.",
+      "source": "https://www.impactanalytics.co/solutions/inventory-planning-software-best-alternative-to-aptos-o9-oracle-inventory-optimization",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "ForecastSmart",
+      "kind": "strength",
+      "claim": "ForecastSmart publishes 90 percent plus location level forecast accuracy across billions of SKU and store combinations a week.",
+      "detail": "Our own published claim, driven by hundreds of causal factors and built for new, low volume and volatile products. A buyer will ask how accuracy is measured, so have the definition and a reference ready.",
+      "source": "https://impactanalytics.co/solutions/demand-forecasting",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "ForecastSmart",
+      "kind": "news",
+      "claim": "ForecastSmart was named Demand Forecasting Solution of the Year by SupplyTech Breakthrough.",
+      "detail": "The year is not in the result, so check the page before quoting it.",
+      "source": "https://www.impactanalytics.co/the-news/demand-forecasting-solution-of-the-year",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "PromoSmart",
+      "kind": "proof",
+      "claim": "A discount retailer with more than 1,400 stores cut margin drain by 10 percent with PromoSmart.",
+      "detail": "Published case study. Check the year before using it as a proof point.",
+      "source": "https://www.impactanalytics.co/case-studies/discount-retailer-optimizes-promotions-with-ai",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "PriceSmart",
+      "kind": "mechanism",
+      "claim": "PriceSmart runs lifecycle pricing in one product: base price, promotions and markdowns, with weekly recommendations.",
+      "detail": "Price sensitivity at SKU and store level, discounts by customer segment, tier and location, and rollout in phases by region, category or business unit.",
+      "source": "https://www.impactanalytics.co/solutions/pricesmart-analytics",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "StoreSmart",
+      "kind": "mechanism",
+      "claim": "StoreSmart turns central pricing, inventory, merchandising and promotion decisions into prioritised store level actions and measures the impact.",
+      "detail": "Store execution, which corrects the older description of it as store clustering.",
+      "source": "https://www.impactanalytics.ai/solutions/store-optimization",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "CortexEye",
+      "kind": "news",
+      "claim": "CortexEye launched on 11 March 2026 as agentic AI decision intelligence over retail knowledge graphs.",
+      "detail": "A reasoning layer across merchandising, marketing, pricing, supply chain, stores and external drivers that explains why performance moved.",
+      "source": "https://www.impactanalytics.ai/news/impact-analytics-launches-cortexeye",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "",
+      "kind": "news",
+      "claim": "Impact Analytics was founded in 2015 by Prashant Agrawal, its founder and chief executive.",
+      "detail": "",
+      "source": "https://yourstory.com/2024/01/retail-saas-firm-impact-analytics-raises-40-million-funding",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "",
+      "kind": "news",
+      "claim": "Blue Cloud Ventures led a Series D in May 2025, with Sageview Capital and Vistara Growth, to fund global expansion and agentic AI.",
+      "detail": "Follows a 40 million dollar round led by Sageview Capital in January 2024.",
+      "source": "https://www.globenewswire.com/news-release/2025/05/07/3076193/0/en/Impact-Analytics-Secures-Series-D-Funding-to-Accelerate-Global-Expansion-and-Lead-in-Agentic-AI.html",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "",
+      "kind": "news",
+      "claim": "Gartner included Impact Analytics in its 2025 Competitive Landscape for retail unified price, promotion and markdown optimisation, as a short life cycle specialist.",
+      "detail": "Announced 10 December 2025. Short life cycle means fashion, apparel, footwear, specialty and seasonal, which is also the honest description of where we are strongest.",
+      "source": "https://www.impactanalytics.ai/news/gartner-competitive-landscape-2025",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "",
+      "kind": "customer",
+      "claim": "The Series D release names Calvin Klein, Tommy Hilfiger, Puma and Belk among retailers using Impact Analytics.",
+      "detail": "The same release also names JoAnn, which wound down its stores in 2025, so do not lead with that one.",
+      "source": "https://www.globenewswire.com/news-release/2025/05/07/3076193/0/en/Impact-Analytics-Secures-Series-D-Funding-to-Accelerate-Global-Expansion-and-Lead-in-Agentic-AI.html",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    },
+    {
+      "ia_product": "",
+      "kind": "mechanism",
+      "claim": "Impact Analytics Platform Agents are retail native AI agents that plan, price, forecast and replenish with shared business context.",
+      "detail": "The agentic layer across the suite, and the direction the Series D was raised to fund.",
+      "source": "https://www.impactanalytics.ai/agentic-ai-platform-agents",
+      "competitor": "Impact Analytics",
+      "author": "Public research",
+      "as_of": "2026-09-23",
+      "confidence": "verified"
+    }
+  ]
+}

@@ -86,6 +86,17 @@ CONFIDENCE = {
     },
 }
 
+# Claims about our own products are stored against this name, in the same store
+# and under the same tiers as a rival's. They feed the product's ground truth
+# rather than the rival's intelligence, because the honesty rules forbid a card
+# from claiming any Impact Analytics capability that is not in its ground truth.
+IA_SUBJECT = 'Impact Analytics'
+
+
+def is_ia(name: str) -> bool:
+    return (name or '').strip().lower() in ('impact analytics', 'ia', 'impactanalytics')
+
+
 # Strongest evidence first. The prompt, the page and the tests all read this,
 # so a new tier cannot be half added.
 TIER_ORDER = ('verified', 'documented', 'field', 'hearsay')
@@ -102,6 +113,7 @@ KINDS = {
     'customer': 'An account they run, won or lost',
     'news': 'Funding, leadership, product or partnership news',
     'discovery': 'A question worth asking every buyer',
+    'proof': 'A measured result, with where and when it was measured',
 }
 
 # Short names for the browse list. KINDS carries the explanation for the picker,
@@ -110,6 +122,7 @@ KIND_LABELS = {
     'mechanism': 'How it works', 'strength': 'Their strength', 'gap': 'Gap',
     'objection': 'Their objection', 'landmine': 'Landmine', 'pricing': 'Pricing',
     'customer': 'Account', 'news': 'News', 'discovery': 'Discovery question',
+    'proof': 'Result',
 }
 
 GUARDED = {
@@ -384,7 +397,9 @@ def stats() -> dict:
         'enabled': init(attempts=1),
         'configured': bool(store.database_url()),
         'claims': len(rows),
-        'competitors': len({row['competitor'].lower() for row in rows}),
+        'competitors': len({row['competitor'].lower() for row in rows
+                            if not is_ia(row['competitor'])}),
+        'ia_facts': sum(1 for row in rows if is_ia(row['competitor'])),
         'verified': sum(1 for row in rows if row['confidence'] == 'verified'),
         'stale': sum(1 for row in rows if row.get('stale')),
     }
@@ -470,3 +485,62 @@ def _tiers(lines: list, rows: list) -> None:
             if row['kind'] in GUARDED:
                 parts.append('  HOUSE RULE: %s' % GUARDED[row['kind']])
             lines.extend(parts)
+
+
+IA_RULES = {
+    'verified': 'Published by Impact Analytics or reported publicly. The card may '
+                'state it and must cite the source.',
+    'documented': 'From an internal Impact Analytics document. The card may state '
+                  'it and must cite the document. An internal result can go on an '
+                  'internal card, never a customer facing one, and a named customer '
+                  'from an internal document stays unnamed.',
+    'field': 'A colleague\'s first hand account of how the product performs. Use it '
+             'in the talk track and to shape the argument, not as a published claim.',
+    'hearsay': 'Unconfirmed. Do not claim it for the product anywhere on the card.',
+}
+
+
+def ia_block(product: str, entries: list = None) -> str:
+    """What the team has taught about our own product, as ground truth.
+
+    Returns '' when nothing is taught, so a product with no facts keeps the
+    catalog line alone. Claims about other Impact Analytics products follow under
+    a fence, because the suite story, one product feeding the next, is often the
+    strongest thing a single product card can say.
+    """
+    rows = (entries if entries is not None
+            else listing(IA_SUBJECT, product, product_only=False))
+    rows = [row for row in rows if is_ia(row.get('competitor', IA_SUBJECT))]
+    if not rows:
+        return ''
+
+    here = [row for row in rows if row.get('ia_product') == product]
+    company = [row for row in rows if not row.get('ia_product')]
+    suite = [row for row in rows if row.get('ia_product')
+             and row['ia_product'] != product]
+
+    lines = ['',
+             'WHAT THE TEAM HAS TAUGHT ABOUT %s' % (product or 'IMPACT ANALYTICS').upper(),
+             'This is ground truth about our own product. The honesty rules forbid '
+             'claiming a capability that is not here, so build our side of the card '
+             'from these lines: the mechanism, the advantages, the proof points and '
+             'the talk track. Each tier says what the card may do with a line. A '
+             'result with no year cannot be a proof point, because statistics must '
+             'be from 2025 or later; use it in the talk track instead.']
+    for title, group in ((product or 'this product', here),
+                         ('Impact Analytics as a company', company),
+                         ('other Impact Analytics products, for the suite story', suite)):
+        if not group:
+            continue
+        lines.append('')
+        lines.append('About %s:' % title)
+        for tier in TIER_ORDER:
+            for row in (r for r in group if r['confidence'] == tier):
+                label = ('%s, ' % row['ia_product']) if group is suite else ''
+                lines.append('- [%s%s, %s] %s' % (label, row['kind'], tier, row['claim']))
+                if row.get('detail'):
+                    lines.append('  Detail: %s' % row['detail'])
+                if row.get('source'):
+                    lines.append('  Source: %s' % row['source'])
+                lines.append('  Rule: %s' % IA_RULES[tier])
+    return '\n'.join(lines)

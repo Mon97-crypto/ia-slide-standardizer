@@ -160,6 +160,13 @@ def _product_facts(product: str) -> str:
                      'text. Most retail planning suites only CONSUME attributes. '
                      'Where that is true of this competitor, the card should say so '
                      'and position alongside them rather than against them.')
+    try:
+        taught = intel.ia_block(product)
+    except Exception:
+        log.exception('Could not read the taught Impact Analytics facts.')
+        taught = ''
+    if taught:
+        lines.append(taught)
     return '\n'.join(lines) or 'No curated facts for this product yet.'
 
 
@@ -687,7 +694,13 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         except Exception:
             log.exception('could not count the taught claims')
             taught = []
-        yield {'type': 'taught', 'count': len(taught),
+        try:
+            ours = [row for row in intel.listing(intel.IA_SUBJECT, product)
+                    if row.get('ia_product') == product]
+        except Exception:
+            ours = []
+        yield {'type': 'taught', 'count': len(taught), 'ours': len(ours),
+               'product': product,
                'curated': bool(curated_for(competitor, product))}
         yield {'type': 'status', 'step': 'research',
                'message': 'Searching the public record for %s' % competitor}
@@ -865,6 +878,39 @@ carries the rest, including how they came to know it. Follow the brand writing
 rules: no em dashes, no en dashes, active voice, no superlatives."""
 
 
+def _settle_row(row: dict, subject: str, product: str, author: str) -> dict:
+    """Decide who a proposed row is about, and what it may claim to be.
+
+    Only our own material may route a row to a rival. In a rival's document, a
+    line such as "we beat Impact Analytics on assortment" is their claim about
+    us, and letting the model file it under our name would put a competitor's
+    sales line into our product's ground truth. So in rival mode every row stays
+    with that rival, whatever the model said.
+
+    In our own material a row may name a rival, and then it is our assertion
+    about them. That is never "verified": a claim from our deck is documented at
+    most, and a gap has to read as our assessment.
+    """
+    row = dict(row)
+    if intel.is_ia(subject):
+        named = str(row.get('competitor') or '').strip()
+        row['competitor'] = intel.IA_SUBJECT if (not named or intel.is_ia(named)) else named
+        if not intel.is_ia(row['competitor']) and row.get('confidence') == 'verified' \
+                and not str(row.get('source') or '').lower().startswith('http'):
+            row['confidence'] = 'documented'
+    else:
+        row['competitor'] = subject
+
+    known = {entry['name'] for entry in library.PRODUCT_CATALOG}
+    named_product = str(row.get('ia_product') if row.get('ia_product') is not None
+                        else product).strip()
+    # A product the catalog does not know is a model slip, not a new product.
+    row['ia_product'] = named_product if (named_product in known or not named_product) \
+        else product
+    row.setdefault('author', author)
+    return row
+
+
 def _parse_intel_json(text: str) -> list:
     """Pull a JSON array of claims out of a model response."""
     if not text or not text.strip():
@@ -905,7 +951,9 @@ def extract_intel(text: str, competitor: str, product: str = '',
            '{"kind": one of %(kinds)s, "claim": "one sentence", '
            '"detail": "the rest, including how they know", '
            '"confidence": one of %(tiers)s, "source": "a URL or a named public '
-           'page, empty when there is none"}'
+           'page, empty when there is none", "competitor": "who the row is '
+           'about", "ia_product": "the Impact Analytics product it concerns, or '
+           'an empty string"}'
            % {'comp': competitor or 'a competitor',
               'prod': (' as it relates to %s' % product) if product else '',
               'text': text[:12000],
@@ -915,6 +963,8 @@ def extract_intel(text: str, competitor: str, product: str = '',
     system = [{'type': 'text', 'text': SYSTEM_RULES,
                'cache_control': {'type': 'ephemeral'}},
               {'type': 'text', 'text': TEACH_SYSTEM}]
+    if intel.is_ia(competitor):
+        system.append({'type': 'text', 'text': IA_TEACH_SYSTEM})
     cost = {}
     with client.messages.stream(
         model=MODEL,
@@ -936,9 +986,7 @@ def extract_intel(text: str, competitor: str, product: str = '',
     body = ''.join(block.text for block in message.content if block.type == 'text')
     proposals, rejected = [], []
     for row in _parse_intel_json(body):
-        row.setdefault('competitor', competitor)
-        row.setdefault('ia_product', product)
-        row.setdefault('author', author)
+        row = _settle_row(row, competitor, product, author)
         try:
             proposals.append(intel.normalize(row, author))
         except ValueError as exc:
@@ -947,6 +995,33 @@ def extract_intel(text: str, competitor: str, product: str = '',
             rejected.append({'claim': str(row.get('claim', ''))[:200],
                              'problem': str(exc)})
     return {'proposals': proposals, 'rejected': rejected, 'cost': cost}
+
+
+IA_TEACH_SYSTEM = """You are recording what a colleague knows about Impact
+Analytics' own products, so battlecards can argue our side from facts rather
+than from a one line description.
+
+Use these kinds for our product: "mechanism" for how it works, the models, the
+inputs, the workflow and the integrations; "strength" for a capability or
+differentiator; "proof" for a measured result, always with where and when it
+was measured; "customer" for a named account; "news" for launches, releases and
+recognition; "objection" for a pushback buyers raise about us, with the answer
+in the detail.
+
+Be exact with numbers and keep the unit and the baseline: "sell through up 12
+points in the first season at a 400 store apparel retailer" is a proof point,
+"improved sell through" is not. A result with no year or no customer shape goes
+in, but say in the detail what is missing, because a card cannot use an undated
+statistic as a proof point.
+
+Where the material makes a claim about a named rival, record that row with
+"competitor" set to the rival's name. It is our assertion about them, so it is
+never "verified": phrase a gap as our assessment, for example "Our assessment is
+that o9 does not recommend depth and choice counts." Everything about our own
+product has "competitor" set to "Impact Analytics".
+
+Set "ia_product" to the product a row is about, or to an empty string for a fact
+about the company as a whole."""
 
 
 DOC_SYSTEM = """You are reading a document a colleague uploaded, to learn what it
@@ -983,7 +1058,10 @@ def _doc_ask(chunk: dict, competitor: str, product: str) -> str:
             '{"kind": one of %(kinds)s, "claim": "one sentence", '
             '"detail": "the rest, including what the document says around it", '
             '"confidence": "documented" or "hearsay", '
-            '"source": "%(cite)s, page or slide label from the extract"}'
+            '"source": "%(cite)s, page or slide label from the extract", '
+            '"competitor": "who the row is about", '
+            '"ia_product": "the Impact Analytics product it concerns, or an '
+            'empty string"}'
             % {'comp': competitor or 'the competitor',
                'prod': (' as it relates to %s' % product) if product else '',
                'file': chunk.get('citation', 'the document'),
@@ -1020,6 +1098,8 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
                'cache_control': {'type': 'ephemeral'}},
               {'type': 'text', 'text': TEACH_SYSTEM},
               {'type': 'text', 'text': DOC_SYSTEM}]
+    if intel.is_ia(competitor):
+        system.append({'type': 'text', 'text': IA_TEACH_SYSTEM})
     cost = {}
     seen = set()
 
@@ -1060,9 +1140,7 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
             continue
 
         for row in rows:
-            row.setdefault('competitor', competitor)
-            row.setdefault('ia_product', product)
-            row.setdefault('author', author)
+            row = _settle_row(row, competitor, product, author)
             if not str(row.get('source') or '').strip():
                 row['source'] = chunk['citation']
             try:

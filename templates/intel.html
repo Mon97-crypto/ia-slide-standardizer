@@ -162,19 +162,25 @@
             Nothing reaches a card until you approve it.</p>
 
         <div class="who">
-            <label><span class="cap">Which rival</span>
+            <label><span class="cap">Who is this about</span>
                 <input class="field" id="competitor" list="rivals" placeholder="o9 Solutions" autocomplete="off">
                 <datalist id="rivals">
+                    <option value="Impact Analytics">Our own products</option>
                     {% for name in competitors %}<option value="{{ name }}"></option>{% endfor %}
                 </datalist>
             </label>
-            <label><span class="cap">Against which product</span>
+            <label><span class="cap">Which of our products</span>
                 <select class="field" id="product">
                     <option value="">Any product</option>
                     {% for name in products %}<option value="{{ name }}"{% if name == 'AttributeSmart' %} selected{% endif %}>{{ name }}</option>{% endfor %}
                 </select>
             </label>
         </div>
+
+        <p class="privacy" style="margin-top:10px">Teaching about one of our own
+            products? Choose <b>Impact Analytics</b> and the product. That becomes the
+            ground truth for our side of every card: the mechanism, the advantages and
+            the proof points. A card may only claim what is taught here.</p>
 
         <div class="modes" id="modes">
             <button data-mode="doc" class="on">Upload documents</button>
@@ -250,7 +256,7 @@ $('go').onclick = async () => {
     const text = $('note').value.trim();
     const competitor = $('competitor').value.trim();
     if (!text) { flash('Write what you know first.', 'bad'); return; }
-    if (!competitor) { flash('Name the rival this is about.', 'bad'); return; }
+    if (!competitor) { flash('Say who this is about: a rival, or Impact Analytics for our own products.', 'bad'); return; }
 
     $('go').disabled = true; $('goLabel').textContent = 'Reading it';
     flash('', '');
@@ -529,7 +535,7 @@ async function queue(files) {
     if (!files.length) return;
     if (!AI_ENABLED) { flash('Claude is not connected, so a document cannot be read.', 'bad'); return; }
     const competitor = $('competitor').value.trim();
-    if (!competitor) { flash('Name the rival these documents are about first.', 'bad'); return; }
+    if (!competitor) { flash('Say who these documents are about first: a rival, or Impact Analytics for our own products.', 'bad'); return; }
     if (reading) { flash('One document at a time. Wait for this one to finish.', 'bad'); return; }
     flash('', '');
     reading = true;

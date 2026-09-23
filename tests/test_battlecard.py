@@ -2493,3 +2493,166 @@ def test_a_generated_card_carries_both_the_curated_and_the_taught(monkeypatch):
     system = '\n'.join(block['text'] for block in stream.seen['system'])
     assert 'FIELD INTELLIGENCE' in system
     assert 'CURATED CARD ALREADY WRITTEN' in system
+
+
+# ── teaching the builder about our own products ─────────────────────────────
+# The honesty rules forbid claiming an Impact Analytics capability that is not in
+# the ground truth, and outside AttributeSmart the ground truth was one catalog
+# line per product. So our side of every other card had almost nothing to say.
+
+def _ours(**over):
+    base = {'competitor': 'Impact Analytics', 'ia_product': 'AssortSmart',
+            'kind': 'mechanism', 'claim': 'Clusters stores by demand shape.',
+            'detail': 'From the product deck.', 'confidence': 'documented',
+            'source': 'AssortSmart deck.pptx, slide 6'}
+    base.update(over)
+    return base
+
+
+def test_what_is_taught_about_our_product_joins_its_ground_truth(monkeypatch):
+    from battlecards import ai, intel
+    monkeypatch.setattr(intel, 'listing', lambda *a, **k: [
+        dict(intel.normalize(_ours()), stale=False)])
+    facts = ai._product_facts('AssortSmart')
+    assert 'WHAT THE TEAM HAS TAUGHT ABOUT ASSORTSMART' in facts
+    assert 'Clusters stores by demand shape.' in facts
+    assert 'AssortSmart deck.pptx, slide 6' in facts
+
+
+def test_our_facts_sit_in_the_ground_truth_the_rules_point_at():
+    """Rule 3 says IA facts come from the ground truth. That is where they go."""
+    from battlecards import ai
+    blocks = ai._system_prompt('AssortSmart', 'o9 Solutions')
+    ground = blocks[0]['text']
+    assert 'IMPACT ANALYTICS GROUND TRUTH' in ground
+    assert 'ASSORTSMART' in ground.upper()
+    assert 'customer centric, localised assortments' in ground
+
+
+def test_an_undated_result_cannot_become_a_proof_point():
+    from battlecards import intel
+    block = intel.ia_block('AssortSmart', entries=[
+        dict(intel.normalize(_ours(kind='proof', claim='Sell through up 12 points.')),
+             stale=False)])
+    assert '2025 or later' in block
+    assert 'talk track instead' in block
+
+
+def test_an_internal_result_stays_off_a_customer_facing_card():
+    from battlecards import intel
+    block = intel.ia_block('AssortSmart', entries=[
+        dict(intel.normalize(_ours(kind='proof')), stale=False)])
+    assert 'never a customer facing one' in block
+    assert 'stays unnamed' in block
+
+
+def test_the_suite_story_comes_from_the_other_products():
+    from battlecards import intel
+    block = intel.ia_block('AssortSmart', entries=[
+        dict(intel.normalize(_ours()), stale=False),
+        dict(intel.normalize(_ours(ia_product='InventorySmart',
+                                   claim='Allocates from the assortment plan.')),
+             stale=False),
+    ])
+    head, suite = block.split('other Impact Analytics products', 1)
+    assert 'Clusters stores' in head
+    assert 'InventorySmart, mechanism' in suite
+
+
+def test_a_rival_document_cannot_write_our_ground_truth():
+    """A rival's deck saying they beat us is their claim, not our fact."""
+    from battlecards import ai
+    row = ai._settle_row({'competitor': 'Impact Analytics', 'kind': 'strength',
+                          'claim': 'o9 beats Impact Analytics on assortment.'},
+                         'o9 Solutions', 'AssortSmart', 'me')
+    assert row['competitor'] == 'o9 Solutions'
+
+
+def test_our_document_can_teach_about_a_rival_but_never_as_verified():
+    from battlecards import ai
+    row = ai._settle_row({'competitor': 'o9 Solutions', 'kind': 'gap',
+                          'claim': 'Our assessment is that o9 has no depth and '
+                                   'choice count recommendations.',
+                          'confidence': 'verified',
+                          'source': 'AssortSmart deck.pptx, slide 9'},
+                         'Impact Analytics', 'AssortSmart', 'me')
+    assert row['competitor'] == 'o9 Solutions'
+    assert row['confidence'] == 'documented'
+
+
+def test_a_blank_subject_or_a_misspelt_product_is_settled():
+    from battlecards import ai
+    row = ai._settle_row({'competitor': '', 'ia_product': 'AsortSmartt',
+                          'kind': 'proof', 'claim': 'x'},
+                         'Impact Analytics', 'AssortSmart', 'me')
+    assert row['competitor'] == 'Impact Analytics'
+    assert row['ia_product'] == 'AssortSmart'
+    company = ai._settle_row({'ia_product': '', 'kind': 'news', 'claim': 'x'},
+                             'Impact Analytics', 'AssortSmart', 'me')
+    assert company['ia_product'] == ''
+
+
+def test_our_facts_never_leak_into_a_rival_block():
+    from battlecards import intel
+    block = intel.prompt_block('o9 Solutions', 'AssortSmart')
+    assert 'Briscoe' not in block
+    assert 'Prashant Agrawal' not in block
+
+
+def test_we_are_not_counted_as_a_rival():
+    from battlecards import intel
+    stats = intel.stats()
+    assert stats['ia_facts'] >= 19
+    names = {row['competitor'] for row in intel.listing()
+             if not intel.is_ia(row['competitor'])}
+    assert stats['competitors'] == len({name.lower() for name in names})
+
+
+def test_the_committed_ia_facts_all_carry_a_public_source():
+    from battlecards import intel
+    ours = [row for row in intel.seeds() if intel.is_ia(row['competitor'])]
+    assert len(ours) >= 19
+    for row in ours:
+        assert row['confidence'] == 'verified'
+        assert row['source'].startswith('http'), row['claim']
+
+
+def test_the_catalog_no_longer_misdescribes_our_products():
+    """CortexEye was described as computer vision, StoreSmart as clustering."""
+    from battlecards import library
+    blurbs = {entry['name']: entry['blurb'] for entry in library.PRODUCT_CATALOG}
+    assert 'decision intelligence' in blurbs['CortexEye'].lower()
+    assert 'computer vision' not in blurbs['CortexEye'].lower()
+    assert 'store execution' in blurbs['StoreSmart'].lower()
+
+
+def test_teaching_our_own_product_uses_the_ia_instructions(monkeypatch):
+    from battlecards import ai
+    client, stream = _echo_client([])
+    monkeypatch.setattr(ai, '_client', lambda: client)
+    ai.extract_intel('AssortSmart clusters stores.', 'Impact Analytics', 'AssortSmart')
+    system = '\n'.join(block['text'] for block in stream.seen['system'])
+    assert 'Impact\nAnalytics\' own products' in system or "own products" in system
+    assert '"proof" for a measured result' in system
+
+    ai.extract_intel('They cluster stores.', 'o9 Solutions', 'AssortSmart')
+    system = '\n'.join(block['text'] for block in stream.seen['system'])
+    assert '"proof" for a measured result' not in system
+
+
+def test_a_generation_reports_what_it_knows_about_our_product(monkeypatch):
+    from battlecards import ai
+    client, _ = _echo_client({'competitor_category': 'x', 'headline': 'h',
+                              'win_theme': 'w'})
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: client)
+    events = list(ai.generate_events('o9 Solutions', 'AssortSmart'))
+    taught = [event for event in events if event['type'] == 'taught'][0]
+    assert taught['ours'] >= 3 and taught['product'] == 'AssortSmart'
+    assert taught['count'] >= 25
+
+
+def test_the_teach_page_offers_our_own_products(client):
+    body = client.get('/intel').data.decode()
+    assert '<option value="Impact Analytics">' in body
+    assert 'Who is this about' in body

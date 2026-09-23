@@ -352,9 +352,10 @@ function onEvent(ev) {
         // Say what the card is being built from, so it is obvious whether the
         // teaching landed rather than something to take on trust.
         taught = ev;
-        if (ev.count) $('feed').textContent =
-            `Building from ${ev.count} claim${ev.count === 1 ? '' : 's'} the team `
-            + `taught about this rival${ev.curated ? ', plus the curated card' : ''}.\n\n`;
+        if (ev.count || ev.ours) $('feed').textContent =
+            `Building from ${ev.count || 0} claim${ev.count === 1 ? '' : 's'} taught `
+            + `about this rival and ${ev.ours || 0} about ${ev.product || 'our product'}`
+            + `${ev.curated ? ', plus the curated card' : ''}.\n\n`;
     } else if (ev.type === 'searches') {
         // A card of "not found" reads the same whether the record is silent or
         // nothing was ever searched. The count is how the seller tells them apart.
@@ -399,10 +400,15 @@ async function build(curated) {
         <b>$${spend.usd.toFixed(3)}</b> in tokens across ${spend.calls} calls${
         card.meta && card.meta.depth ? ', at ' + esc(card.meta.depth) + ' depth' : ''}.
         The web search fee is billed separately and is not counted here.</div>`;
-    if (taught && taught.count) html += `<div class="note ok">Written with
-        <b>${taught.count}</b> claim${taught.count === 1 ? '' : 's'} the team taught
-        about ${esc(card.meta.competitor)}${taught.curated ? ', on top of the curated card' : ''}.
+    if (taught && (taught.count || taught.ours)) html += `<div class="note ok">Written with
+        <b>${taught.count || 0}</b> claim${taught.count === 1 ? '' : 's'} taught about
+        ${esc(card.meta.competitor)} and <b>${taught.ours || 0}</b> about
+        ${esc(taught.product || 'our product')}${taught.curated ? ', on top of the curated card' : ''}.
         <a href="/intel">Teach it more</a> and rebuild to sharpen this.</div>`;
+    else if (taught) html += `<div class="note warn">Nothing has been taught about
+        ${esc(card.meta.competitor)} or ${esc(taught.product || 'this product')} yet,
+        so this card rests on public research alone. <a href="/intel">Teach it</a>
+        and rebuild.</div>`;
     if (data.library_entry) html += `<div class="note ok">Saved to the
         <a href="/library">shared library</a> for the rest of the team.</div>`;
     const warnings = data.warnings || [];

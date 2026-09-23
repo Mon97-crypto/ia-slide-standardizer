@@ -23,8 +23,13 @@ PRODUCT_CATALOG = [
      'blurb': 'Assortment planning by store cluster and channel.'},
     {'name': 'SizeSmart', 'solution': 'merchandising',
      'blurb': 'Size and pack optimisation down to the store.'},
+    # Corrected from "store clustering and localised plans". Impact Analytics
+    # describes StoreSmart as store execution:
+    # https://www.impactanalytics.ai/solutions/store-optimization
     {'name': 'StoreSmart', 'solution': 'merchandising',
-     'blurb': 'Store clustering and localised plans.'},
+     'blurb': 'Store execution that turns central pricing, inventory, merchandising '
+              'and promotion decisions into prioritised store level actions, tracks '
+              'them and measures the impact.'},
     {'name': 'InventorySmart', 'solution': 'inventory_replenishment',
      'blurb': 'Allocation and replenishment driven by demand forecasts.'},
     {'name': 'ForecastSmart', 'solution': 'inventory_replenishment',
@@ -39,8 +44,13 @@ PRODUCT_CATALOG = [
      'blurb': 'Markdown optimisation that protects margin and sell through.'},
     {'name': 'AttributeSmart', 'solution': 'data_intelligence',
      'blurb': 'Attribute enrichment that feeds every downstream model.'},
+    # Corrected from "computer vision and market intelligence on product data".
+    # CortexEye launched on 11 March 2026 as agentic decision intelligence:
+    # https://www.impactanalytics.ai/news/impact-analytics-launches-cortexeye
     {'name': 'CortexEye', 'solution': 'data_intelligence',
-     'blurb': 'Computer vision and market intelligence on product data.'},
+     'blurb': 'Agentic AI decision intelligence. A reasoning layer over retail '
+              'knowledge graphs that answers why performance moved, across '
+              'merchandising, marketing, pricing, supply chain and stores.'},
     {'name': 'MondaySmart', 'solution': 'data_intelligence',
      'blurb': 'Weekly business review reporting for merchant teams.'},
 ]

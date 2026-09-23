@@ -225,6 +225,32 @@ refuses to record a file citation as `verified`: that tier means a link a buyer
 could open. Where the document is itself reporting a rumour, "we believe they
 will launch X", the claim comes back as `hearsay`.
 
+### Teaching the builder about our own products
+
+The honesty rules forbid a card from claiming any Impact Analytics capability
+that is not in its ground truth, and outside AttributeSmart that ground truth
+used to be one catalog line per product. So our side of most cards had almost
+nothing to say, however much was known about the rival.
+
+Choose **Impact Analytics** on the Teach page, pick the product, and upload the
+product deck, the technical documentation or a case study. What is approved is
+filed against `Impact Analytics` and that product, and `intel.ia_block()` adds it
+to the product's ground truth, so it becomes the mechanism, the advantages, the
+proof points and the talk track of every card for that product. Facts about the
+other products follow under a fence, for the suite story.
+
+Our own material may also teach about a rival: a row that names one is filed
+against that rival, as our assessment, and never as `verified`. The reverse is
+blocked. In a rival's document, "we beat Impact Analytics on assortment" is
+their claim about us, so every row from a rival's material stays with that rival
+whatever the model proposes.
+
+`content/intel/impact-analytics.json` seeds the public facts: each product's
+published mechanism, the Briscoe deployment, the published case study results,
+the funding, the 2025 Gartner Competitive Landscape inclusion and the named
+references. Undated results are recorded with the missing year stated, because
+statistics must be from 2025 or later to be a proof point.
+
 ### How a taught claim reaches the card
 
 Everything taught about a rival goes into the prompt, not just the claims keyed
