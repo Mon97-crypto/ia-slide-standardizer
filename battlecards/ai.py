@@ -441,6 +441,7 @@ def _structure(client, competitor: str, product: str, preset: dict,
     ask = (
         'Turn the brief below into a %(label)s battlecard for %(comp)s.\n\n'
         'Length target for this depth:\n%(caps)s\n\n'
+        '%(focus)s'
         'Rules for the fields:\n'
         '- their_weaknesses: state what the public record does NOT claim, phrased '
         'so the seller asks rather than asserts. Example: "No published image '
@@ -462,7 +463,8 @@ def _structure(client, competitor: str, product: str, preset: dict,
         'question to ask.\n\n'
         'BRIEF\n%(research)s'
         % {'label': preset['label'].lower(), 'comp': competitor,
-           'caps': cap_text, 'research': research})
+           'caps': cap_text, 'research': research,
+           'focus': (preset['focus'] + '\n\n') if preset.get('focus') else ''})
     if notes:
         ask += '\n\nSELLER NOTES\n%s' % notes
     ask += ('\n\nReturn one JSON object and nothing else. No prose before or after, '

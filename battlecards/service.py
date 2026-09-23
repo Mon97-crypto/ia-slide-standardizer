@@ -79,7 +79,8 @@ def export_json(payload: dict) -> str:
 def _filename(card: dict) -> str:
     competitor = _SAFE_NAME.sub('_', card['meta']['competitor']).strip('_') or 'Competitor'
     product = _SAFE_NAME.sub('_', card['meta'].get('ia_product', '')).strip('_')
-    parts = ['IA_Battlecard', competitor]
+    head_to_head = card['meta'].get('depth') == 'matrix'
+    parts = ['IA_Head_to_Head' if head_to_head else 'IA_Battlecard', competitor]
     if product:
         parts.append(product)
     parts.append(uuid.uuid4().hex[:8])

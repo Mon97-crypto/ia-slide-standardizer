@@ -22,13 +22,16 @@ RATING_LABELS = {
 }
 
 SECTION_ORDER = [
+    'matrix_cover',
     'cover',
     'how_to_use',
     'snapshot',
     'positioning',
     'strengths_weaknesses',
     'why_we_win',
+    'matrix_map',
     'comparison',
+    'matrix_plays',
     'objections',
     'landmines',
     'discovery',
@@ -47,7 +50,10 @@ SECTION_LABELS = {
     'positioning': 'Positioning face off',
     'strengths_weaknesses': 'Where they win, where they fall short',
     'why_we_win': 'Why we win',
+    'matrix_cover': 'Head to head scoreboard',
+    'matrix_map': 'The field at a glance',
     'comparison': 'Head to head matrix',
+    'matrix_plays': 'How to play the matrix',
     'objections': 'Objection handling',
     'landmines': 'Landmines to set',
     'discovery': 'Discovery questions',
@@ -59,7 +65,11 @@ SECTION_LABELS = {
     'one_pager': 'One page summary',
 }
 
-DEFAULT_SECTIONS = list(SECTION_ORDER)
+# Sections that exist only for the head to head deck. The full card has its own
+# cover and carries the matrix alone, so these stay out of every other length.
+MATRIX_ONLY = ('matrix_cover', 'matrix_map', 'matrix_plays')
+
+DEFAULT_SECTIONS = [name for name in SECTION_ORDER if name not in MATRIX_ONLY]
 
 # ─── Depth presets ──────────────────────────────────────────────────────────────
 # The user picks how long the deck is. Each depth names the sections it keeps and
@@ -91,8 +101,25 @@ DEPTHS = {
         'label': 'Full technical',
         'blurb': 'Every section, including the deep capability matrix and pricing.',
         'slides': '17 to 20 slides',
-        'sections': list(SECTION_ORDER),
+        'sections': list(DEFAULT_SECTIONS),
         'caps': {},
+    },
+    'matrix': {
+        'label': 'Head to head only',
+        'blurb': 'The comparison on its own: a scoreboard, the whole field on one '
+                 'slide, every capability rated, and how to play it.',
+        'slides': '4 to 10 slides',
+        'sections': ['matrix_cover', 'matrix_map', 'comparison', 'matrix_plays'],
+        # The rest of the card is still written, briefly, because the matrix
+        # notes lean on it. The effort goes into the comparison.
+        'caps': {'our_advantages': 3, 'objections': 2, 'landmines': 2,
+                 'discovery': 2, 'proof_points': 2, 'their_strengths': 3,
+                 'their_weaknesses': 3},
+        'focus': 'This card ships as a head to head matrix deck, so put the effort '
+                 'into comparison: 12 to 20 capabilities a buyer would score, each '
+                 'rated on both sides from the ground truth and the brief, and each '
+                 'note ending with one sentence that starts with Ask, Show, '
+                 'Confirm or Compete, telling the seller what to do in the room.',
     },
 }
 
@@ -368,7 +395,7 @@ def _valid_sections(value) -> list:
     if isinstance(value, str):
         value = [part.strip() for part in value.split(',')]
     chosen = [name for name in SECTION_ORDER if name in set(value)]
-    if 'cover' not in chosen:
+    if 'cover' not in chosen and 'matrix_cover' not in chosen:
         chosen.insert(0, 'cover')
     return chosen
 

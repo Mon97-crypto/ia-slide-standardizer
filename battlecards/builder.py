@@ -29,7 +29,7 @@ from .brand import (ACCENT_ORANGE, BLACK, GRAY_1, GRAY_2, GRAY_3, IMPACT_BLUE,
                     prepare_text_frame, set_run_font, text_height,
                     write_paragraph, write_two_tone)
 from .patterns import grid_overlay
-from .schema import RATING_LABELS, SECTION_LABELS
+from .schema import DEFAULT_SECTIONS, RATING_LABELS, SECTION_LABELS
 
 # The house canvas, measured from the IA template: 10 x 5.625in.
 SLIDE_W = Emu(9144000)    # exactly 10.000in
@@ -69,7 +69,7 @@ class BattlecardDeck:
         self.solution = solution if solution in SOLUTION_LABELS else brand.DEFAULT_SOLUTION
         self.theme = Theme.for_solution(self.solution, options.get('serif_headings', False))
         self.include_notes = options.get('include_notes', True)
-        self.sections = options.get('sections') or list(SECTION_LABELS)
+        self.sections = options.get('sections') or list(DEFAULT_SECTIONS)
         # The house stat card tints its inner panel with the Data & Intelligence
         # blue. Solution themed cards tint with their own accent instead, which
         # keeps one solution colour per composition.
@@ -131,13 +131,16 @@ class BattlecardDeck:
 
     def build(self) -> Presentation:
         builders = {
+            'matrix_cover': self.slide_matrix_cover,
             'cover': self.slide_cover,
             'how_to_use': self.slide_how_to_use,
             'snapshot': self.slide_snapshot,
             'positioning': self.slide_positioning,
             'strengths_weaknesses': self.slide_strengths_weaknesses,
             'why_we_win': self.slide_why_we_win,
+            'matrix_map': self.slide_matrix_map,
             'comparison': self.slide_comparison,
+            'matrix_plays': self.slide_matrix_plays,
             'objections': self.slide_objections,
             'landmines': self.slide_landmines,
             'discovery': self.slide_discovery,
@@ -1086,11 +1089,11 @@ class BattlecardDeck:
                             space_after=0, line_spacing=1.0, first=True)
         return ball
 
-    def _matrix_key(self, slide, top, product, competitor, tally):
-        """The ball key on the left, the running score on the right."""
-        size = Inches(0.15)
-        text_pt = 7
-        x = MARGIN
+    KEY_BALL = Inches(0.15)
+
+    def _ball_key(self, slide, x, top, text_pt=7):
+        """What each Harvey ball means, left to right. Returns where it ended."""
+        size = self.KEY_BALL
         for key, gloss in (('strong', 'Ships today'), ('partial', 'Partial coverage'),
                            ('none', 'Not available'), ('unknown', 'Unverified')):
             self._harvey(slide, x, top, size, key)
@@ -1101,6 +1104,13 @@ class BattlecardDeck:
                             font=self.theme.body_font, space_after=0, line_spacing=1.0,
                             first=True)
             x += size + Inches(0.06) + width + Inches(0.2)
+        return x
+
+    def _matrix_key(self, slide, top, product, competitor, tally):
+        """The ball key on the left, the running score on the right."""
+        size = self.KEY_BALL
+        text_pt = 7
+        self._ball_key(slide, MARGIN, top, text_pt)
 
         labels = {'ours': '%s leads' % product, 'level': 'Level',
                   'theirs': '%s leads' % competitor, 'verify': 'To verify'}
@@ -1154,6 +1164,413 @@ class BattlecardDeck:
         if current:
             pages.append(current)
         return pages
+
+    # ── the head to head deck ──────────────────────────────────────────────────
+    # A deck of its own for the buyer who wants the comparison and nothing else:
+    # a scoreboard, the whole field on one slide, the detailed matrix, and how to
+    # play it. Everything here is derived from the ratings, so it can never say
+    # more than the matrix does.
+
+    LANE_INK = {'ours': IMPACT_BLUE, 'level': BLACK, 'theirs': ACCENT_ORANGE,
+                'verify': GRAY_3}
+
+    def _rated(self):
+        rows = [row for row in (self.card.get('comparison') or [])
+                if (row.get('capability') or '').strip()]
+        out = [{'row': row, 'edge': self.edge(row),
+                'capability': row['capability'].strip()} for row in rows]
+        return sorted(out, key=lambda item: self.EDGES.index(item['edge']))
+
+    def _tally(self, rated):
+        return {edge: sum(1 for item in rated if item['edge'] == edge)
+                for edge in self.EDGES}
+
+    def _lane_labels(self):
+        product = self.meta.get('ia_product') or 'Impact Analytics'
+        return {'ours': '%s leads' % product, 'level': 'Level ground',
+                'theirs': '%s leads' % self.meta['competitor'], 'verify': 'To verify'}
+
+    def _verdict(self, tally, total):
+        """One plain sentence that says what the matrix adds up to."""
+        product = self.meta.get('ia_product') or 'Impact Analytics'
+        name = self.meta['competitor']
+
+        def count(n, one, many):
+            return '%d %s' % (n, one if n == 1 else many)
+
+        if tally['ours']:
+            lead = '%s leads on %d of %d capabilities' % (product, tally['ours'], total)
+        else:
+            lead = '%s leads on none of the %d capabilities rated' % (product, total)
+        lead += (', and %s leads on none.' % name if not tally['theirs']
+                 else ', and %s leads on %d.' % (name, tally['theirs']))
+        rest = []
+        if tally['level']:
+            rest.append('%s level ground' % count(tally['level'], 'is', 'are'))
+        if tally['verify']:
+            rest.append('%s proof before either side claims them'
+                        % count(tally['verify'], 'needs', 'need'))
+        if rest:
+            lead += ' ' + ', and '.join(rest) + '.'
+        return lead
+
+    _ACTION = re.compile(
+        r"^(Ask|Show|Confirm|Compete|Check|Do not|Don't|Lead|Treat|Test|Judge|Correct|"
+        r"Name|Probe|Push|Request|Offer|Position|Anchor|Frame|Demo|Demonstrate|Run|"
+        r"Use|Move|Say|Bring|Keep|Focus|Press|Open|Point|Invite|Agree)\b")
+
+    def _play_lines(self, note):
+        """The sentences of a matrix note that tell the seller what to do, best first.
+
+        Notes describe first and instruct last, so the last imperative sentence
+        is the move, then the ones before it. The first sentence, which usually
+        says what the matrix row means, is the fallback.
+        """
+        clean, found = typeset.split_sources(note or '')
+        self._sources.extend(found)
+        parts = typeset.sentences(clean)
+        moves = [part for part in parts if self._ACTION.match(part)]
+        return list(reversed(moves)) + [part for part in parts[:1] if part not in moves]
+
+    def slide_matrix_cover(self):
+        rated = self._rated()
+        slide = self._slide(dark=True, patterned=True)
+        self._held, self._sources = [], []
+        self._logo(slide, dark=True, height=Inches(0.3))
+        soft = mix(WHITE, IMPACT_BLUE, 0.4)
+        pale = mix(WHITE, IMPACT_BLUE, 0.12)
+        product = self.meta.get('ia_product') or 'Impact Analytics'
+        name = self.meta['competitor']
+        tally = self._tally(rated)
+        total = len(rated)
+
+        kicker = 'Head to head  ·  %s  ·  %s' % (
+            SOLUTION_LABELS.get(self.solution, ''),
+            '%d capabilities' % total if total else 'Matrix')
+        box = add_textbox(slide, MARGIN, Inches(0.78), CONTENT_W, Inches(0.22))
+        write_paragraph(box.text_frame, kicker.upper(), Pt(8), bold=True, color=WHITE,
+                        font=self.theme.body_font, space_after=0, line_spacing=1.0,
+                        first=True)
+
+        # The pairing as the title: our product in white, theirs a step back.
+        size = min(fit_size(product, int(CONTENT_W), int(Inches(0.62)), 40, 22),
+                   fit_size('vs ' + name, int(CONTENT_W), int(Inches(0.62)), 40, 22))
+        title = add_textbox(slide, MARGIN, Inches(1.04), CONTENT_W, Inches(1.2))
+        write_paragraph(title.text_frame, product, size, bold=True, color=WHITE,
+                        font=self.theme.heading_font, space_after=0, line_spacing=0.95,
+                        first=True)
+        write_paragraph(title.text_frame, 'vs ' + name, size, bold=True, color=soft,
+                        font=self.theme.heading_font, space_after=0, line_spacing=0.95)
+
+        if total:
+            self._prose(slide, MARGIN, Inches(2.32), Inches(6.6), Inches(0.62),
+                        self._verdict(tally, total), max_pt=12.5, min_pt=10.5,
+                        color=pale, label='Verdict', clean=False)
+            self._waffle(slide, rated, Inches(3.12), Inches(0.4))
+            self._scoreboard(slide, tally, Inches(3.72))
+
+        strip = add_textbox(slide, MARGIN, Inches(4.98), CONTENT_W, Inches(0.2))
+        write_paragraph(strip.text_frame, self.meta['confidentiality'].upper(), Pt(7),
+                        bold=True, color=soft, font=self.theme.body_font, space_after=0,
+                        line_spacing=1.0, first=True)
+        self.page += 1
+        self._notes(slide, 'Head to head for %s against %s. Every mark on this slide is one '
+                           'capability from the matrix, coloured by who leads it. Confirm '
+                           'each rival rating against a dated source before a buyer sees it.'
+                    % (product, name))
+
+    # The marks on the dark cover. Level is a tint and verify is hollow, so the
+    # four read apart without a fifth colour.
+    def _mark_style(self, edge):
+        return {'ours': (WHITE, None), 'level': (mix(WHITE, IMPACT_BLUE, 0.45), None),
+                'theirs': (ACCENT_ORANGE, None), 'verify': (None, WHITE)}[edge]
+
+    def _waffle(self, slide, rated, top, height):
+        """One upright mark per capability, in lead order: the matrix in a line."""
+        count = len(rated)
+        gap = Inches(0.06)
+        width = min(int(Inches(0.2)), int((CONTENT_W - gap * (count - 1)) / count))
+        gap = min(gap, int(width * 0.4))
+        x = MARGIN
+        for item in rated:
+            fill, line = self._mark_style(item['edge'])
+            mark = add_rect(slide, x, top, width, height, fill=fill, line=line,
+                            line_width=Pt(0.75), rounded=True, radius=50000)
+            mark.name = 'Capability: %s (%s)' % (item['capability'][:40], item['edge'])
+            x += width + gap
+
+    def _scoreboard(self, slide, tally, top):
+        labels = self._lane_labels()
+        soft = mix(WHITE, IMPACT_BLUE, 0.4)
+        col_w = (CONTENT_W - GUTTER * 3) / 4
+        for index, edge in enumerate(self.EDGES):
+            left = MARGIN + index * (col_w + GUTTER)
+            fill, line = self._mark_style(edge)
+            add_rect(slide, left, top + Inches(0.08), Inches(0.07), Inches(0.5),
+                     fill=fill, line=line, line_width=Pt(0.75), rounded=True,
+                     radius=50000)
+            number = add_textbox(slide, left + Inches(0.2), top, col_w - Inches(0.2),
+                                 Inches(0.46))
+            write_paragraph(number.text_frame, str(tally[edge]), Pt(30), bold=True,
+                            color=WHITE, font=self.theme.heading_font, space_after=0,
+                            line_spacing=1.0, first=True)
+            label = add_textbox(slide, left + Inches(0.2), top + Inches(0.5),
+                                col_w - Inches(0.2), Inches(0.3))
+            write_paragraph(label.text_frame, labels[edge].upper(),
+                            Pt(fit_size(labels[edge].upper(), int(col_w - Inches(0.2)),
+                                        int(Inches(0.16)), 7.5, 6.5, caps=True).pt),
+                            bold=True, color=soft, font=self.theme.body_font,
+                            space_after=0, line_spacing=1.0, first=True)
+
+    def slide_matrix_map(self):
+        rated = self._rated()
+        if not rated:
+            return
+        slide = self._page(('The field ', 'at a glance'))
+        product = self.meta.get('ia_product') or 'Impact Analytics'
+        labels = self._lane_labels()
+        head_h = Inches(0.6)
+        key_h = Inches(0.3)
+        top = BODY_TOP + head_h
+        room = BODY_H - head_h - key_h
+        # Lanes take width by how much they hold, so a long lane gets wide tiles
+        # that keep every name whole, and an empty lane stays a slim note.
+        lanes = {edge: [item for item in rated if item['edge'] == edge]
+                 for edge in self.EDGES}
+        empty_w = Inches(1.45)
+        spare = CONTENT_W - GUTTER * 3 - empty_w * sum(1 for e in lanes if not lanes[e])
+        weight = {e: len(items) + 5 for e, items in lanes.items() if items}
+        widths = {e: (int(spare * weight[e] / float(sum(weight.values()))) if lanes[e]
+                      else empty_w) for e in self.EDGES}
+        plans = {e: self._lane_plan(widths[e], room - Inches(0.06), len(lanes[e]))
+                 for e in self.EDGES if lanes[e]}
+        tile_pt = self._tile_pt(lanes, plans)
+        left = MARGIN
+        for edge in self.EDGES:
+            lane_w = widths[edge]
+            items = lanes[edge]
+            ink = self.LANE_INK[edge]
+            add_rect(slide, left, BODY_TOP, lane_w, Inches(0.05),
+                     fill=self.EDGE_COLORS[edge] or GRAY_2, rounded=True, radius=50000)
+            digits = str(len(items))
+            number_w = self._key_width(digits, 24, bold=True)
+            number = add_textbox(slide, left, BODY_TOP + Inches(0.12), number_w,
+                                 Inches(0.4), anchor=MSO_ANCHOR.MIDDLE)
+            write_paragraph(number.text_frame, digits, Pt(24), bold=True, color=ink,
+                            font=self.theme.heading_font, space_after=0, line_spacing=1.0,
+                            first=True)
+            label = add_textbox(slide, left + number_w + Inches(0.06), BODY_TOP + Inches(0.12),
+                                lane_w - number_w - Inches(0.06), Inches(0.4),
+                                anchor=MSO_ANCHOR.MIDDLE)
+            write_paragraph(label.text_frame, labels[edge].upper(), Pt(7.5), bold=True,
+                            color=ink, font=self.theme.body_font, space_after=0,
+                            line_spacing=1.05, first=True)
+            if items:
+                self._lane_tiles(slide, left, top, plans[edge], items, tile_pt)
+            else:
+                empty = {'ours': 'No capability where %s leads yet.' % product,
+                         'level': 'No level ground on this card.',
+                         'theirs': 'No capability where %s leads.' % self.meta['competitor'],
+                         'verify': 'Every rating on this card is confirmed.'}[edge]
+                panel = add_rect(slide, left, top, lane_w, Inches(0.62), fill=None,
+                                 line=GRAY_2, line_width=Pt(0.75), rounded=True,
+                                 radius=int(Inches(0.07) * 100000 / Inches(0.62)))
+                tf = prepare_text_frame(panel, margin=Inches(0.1), anchor=MSO_ANCHOR.MIDDLE)
+                write_paragraph(tf, empty, Pt(8), color=GRAY_3, font=self.theme.body_font,
+                                align=PP_ALIGN.CENTER, space_after=0, line_spacing=1.15,
+                                first=True)
+            left += lane_w + GUTTER
+
+        key_top = BODY_TOP + BODY_H - Inches(0.2)
+        x = self._ball_key(slide, MARGIN, key_top)
+        pair = 'In each tile, left ball %s, right ball %s' % (product, self.meta['competitor'])
+        width = self._key_width(pair, 7)
+        box = add_textbox(slide, MARGIN + CONTENT_W - width, key_top, width, self.KEY_BALL,
+                          anchor=MSO_ANCHOR.MIDDLE)
+        write_paragraph(box.text_frame, pair, Pt(7), color=GRAY_3,
+                        font=self.theme.body_font, align=PP_ALIGN.RIGHT, space_after=0,
+                        line_spacing=1.0, first=True)
+        self._notes(slide, 'Every capability on the card, grouped by who leads it. Open on '
+                           'the first column, hold the second, reframe the third, and turn '
+                           'the fourth into questions.')
+
+    TILE_MIN = Inches(0.26)
+    TILE_MAX = Inches(0.58)
+    TILE_GAP = Inches(0.05)
+
+    def _lane_plan(self, width, room, count):
+        """Where a lane's tiles go: one column, or two when the lane is long."""
+        gap = self.TILE_GAP
+        fits = max(1, int((room + gap) // (self.TILE_MIN + gap)))
+        cols = 1 if count <= fits else 2
+        per_col = math.ceil(count / cols)
+        shown = count
+        if per_col > fits:
+            per_col = fits
+            shown = cols * fits - 1
+        return {'cols': cols, 'per_col': per_col, 'shown': shown,
+                'tile_h': int(min(self.TILE_MAX, (room - gap * (per_col - 1)) / per_col)),
+                'tile_w': int((width - gap * (cols - 1)) / cols)}
+
+    def _tile_text_w(self, plan):
+        ball = Inches(0.13) if plan['tile_h'] >= Inches(0.3) else Inches(0.11)
+        return int(plan['tile_w'] - 2 * Inches(0.08) - 2 * ball - Inches(0.11))
+
+    def _tile_pt(self, lanes, plans, max_pt=8.0, min_pt=6.5):
+        """One size for every tile on the map, the largest at which all fit."""
+        for pt in typeset._sizes(max_pt, min_pt):
+            if all(typeset.measure(item['capability'], self._tile_text_w(plans[e]), pt,
+                                   1.05) <= plans[e]['tile_h'] - Inches(0.06)
+                   for e, items in lanes.items() if items
+                   for item in items[:plans[e]['shown']]):
+                return pt
+        return min_pt
+
+    def _lane_tiles(self, slide, left, top, plan, items, pt):
+        gap = self.TILE_GAP
+        shown = items[:plan['shown']]
+        cells = [dict(item, kind='tile') for item in shown]
+        if len(items) > len(shown):
+            cells.append({'kind': 'more', 'count': len(items) - len(shown)})
+        tile_w, tile_h = plan['tile_w'], plan['tile_h']
+        for index, cell in enumerate(cells):
+            col, row = divmod(index, plan['per_col'])
+            x = left + col * (tile_w + gap)
+            y = top + row * (tile_h + gap)
+            if cell['kind'] == 'more':
+                box = add_textbox(slide, x, y, tile_w, tile_h, anchor=MSO_ANCHOR.MIDDLE)
+                write_paragraph(box.text_frame, '+%d more in the matrix' % cell['count'],
+                                Pt(7.5), color=GRAY_3, font=self.theme.body_font,
+                                align=PP_ALIGN.CENTER, space_after=0, line_spacing=1.0,
+                                first=True)
+                continue
+            self._tile(slide, x, y, tile_w, tile_h, cell, pt)
+
+    def _tile(self, slide, left, top, width, height, item, pt):
+        card = add_rect(slide, left, top, width, height, fill=WHITE, rounded=True,
+                        radius=int(min(50000, Inches(0.06) * 100000 / height)))
+        add_soft_shadow(card, blur_pt=4.0, distance_pt=0.75, alpha_pct=6)
+        card.name = 'Tile: %s' % item['capability'][:40]
+        ball = Inches(0.13) if height >= Inches(0.3) else Inches(0.11)
+        pad = Inches(0.08)
+        balls_w = 2 * ball + Inches(0.05)
+        text_w = int(width - 2 * pad - balls_w - Inches(0.06))
+        cy = top + (height - ball) / 2
+        self._harvey(slide, left + width - pad - balls_w, cy, ball, item['row'].get('ia'))
+        self._harvey(slide, left + width - pad - ball, cy, ball, item['row'].get('competitor'))
+        pt, shown, trimmed = typeset.fit_prose(item['capability'], text_w,
+                                               int(height - Inches(0.06)), pt, pt,
+                                               spacing=1.05)
+        if trimmed:
+            self._hold('Capability', item['capability'])
+        box = add_textbox(slide, left + pad, top, text_w, height, anchor=MSO_ANCHOR.MIDDLE)
+        write_paragraph(box.text_frame, shown, Pt(pt), bold=True, color=BLACK,
+                        font=self.theme.body_font, space_after=0, line_spacing=1.05,
+                        first=True)
+
+    PLAYS = {
+        'ours': ('Lead with these', 'Open here. The buyer should see these first.'),
+        'level': ('Compete on how, not whether', 'Both sides ship it. Win on setup and depth.'),
+        'theirs': ('Reframe, do not contest', 'Move the buyer to the outcome, not the feature.'),
+        'verify': ('Prove before you claim', 'Ask these as questions until a source settles them.'),
+    }
+    PLAY_CAP_PT = 8.5
+    PLAY_PT = 8.0
+
+    def slide_matrix_plays(self):
+        rated = self._rated()
+        if not rated:
+            return
+        groups = [edge for edge in self.EDGES if any(i['edge'] == edge for i in rated)]
+        cols = len(groups)
+        col_w = (CONTENT_W - GUTTER * (cols - 1)) / cols
+        inner = int(col_w - 2 * PAD)
+        list_h = int(BODY_H - Inches(0.78) - Inches(0.12))
+        # The estimate errs long by about a fifth on short flowing paragraphs, so
+        # pages are packed to a budget above the box. The rendered check in
+        # tools/deckcheck.py is what proves the column still ends inside its card.
+        budget = int(list_h * 1.2)
+        gap = int(Pt(9))
+        cap_lines = int(typeset.line_pitch(self.PLAY_PT, 1.15) * 3)
+
+        prepared = {}
+        for edge in groups:
+            entries = []
+            for item in (i for i in rated if i['edge'] == edge):
+                # The best move that fits in three lines, kept whole. A move is
+                # never cut mid sentence; the full note is on the matrix page.
+                line = next((candidate for candidate in
+                             self._play_lines(item['row'].get('note'))
+                             if typeset.measure(candidate, inner, self.PLAY_PT,
+                                                1.15) <= cap_lines), '')
+                height = (typeset.measure(item['capability'], inner, self.PLAY_CAP_PT, 1.1,
+                                          bold=True)
+                          + (int(Pt(2)) + typeset.measure(line, inner, self.PLAY_PT, 1.15)
+                             if line else 0) + gap)
+                entries.append({'capability': item['capability'], 'line': line,
+                                'height': height})
+            prepared[edge] = entries
+
+        def pack(entries, pages=0):
+            greedy, used = [[]], 0
+            for entry in entries:
+                if used + entry['height'] > budget and greedy[-1]:
+                    greedy.append([])
+                    used = 0
+                greedy[-1].append(entry)
+                used += entry['height']
+            target = max(len(greedy), pages)
+            if target == 1 or len(entries) < target:
+                return greedy
+            even, start = [], 0
+            for size in typeset.balance(len(entries), -(-len(entries) // target)):
+                even.append(entries[start:start + size])
+                start += size
+            if all(sum(e['height'] for e in page) <= budget for page in even):
+                return even
+            return greedy
+
+        total = max(len(pack(prepared[edge])) for edge in groups)
+        pages = {edge: pack(prepared[edge], total) for edge in groups}
+        total = max(len(split) for split in pages.values())
+        for page in range(total):
+            slide = self._page(('How to ', 'play the matrix'), counter=(page + 1, total))
+            for index, edge in enumerate(groups):
+                left = MARGIN + index * (col_w + GUTTER)
+                lead = edge == 'ours'
+                self._panel(slide, left, BODY_TOP, col_w, BODY_H,
+                            fill=IMPACT_BLUE if lead else WHITE)
+                title, cue = self.PLAYS[edge]
+                accent = mix(WHITE, IMPACT_BLUE, 0.4) if lead else self.LANE_INK[edge]
+                self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.16), inner,
+                                  title, color=accent, size=Pt(7.5))
+                self._prose(slide, left + PAD, BODY_TOP + Inches(0.38), inner, Inches(0.36),
+                            cue, max_pt=8, min_pt=7.5, italic=True,
+                            color=mix(WHITE, IMPACT_BLUE, 0.12) if lead else GRAY_3,
+                            clean=False)
+                group = pages[edge][page] if page < len(pages[edge]) else []
+                if not group:
+                    continue
+                # One flowing box per column, so the spacing between moves is the
+                # renderer's own and stays even, whatever the estimate says.
+                box = add_textbox(slide, left + PAD, BODY_TOP + Inches(0.78), inner, list_h)
+                first = True
+                for entry in group:
+                    write_paragraph(box.text_frame, entry['capability'],
+                                    Pt(self.PLAY_CAP_PT), bold=True,
+                                    color=WHITE if lead else BLACK,
+                                    font=self.theme.body_font,
+                                    space_after=2 if entry['line'] else 9,
+                                    line_spacing=1.1, first=first)
+                    first = False
+                    if entry['line']:
+                        write_paragraph(box.text_frame, entry['line'], Pt(self.PLAY_PT),
+                                        color=mix(WHITE, IMPACT_BLUE, 0.12) if lead
+                                        else BLACK, font=self.theme.body_font,
+                                        space_after=9, line_spacing=1.15)
+            self._notes(slide, 'One move per capability, taken from the matrix note. Lead '
+                               'from the first column and keep the last as questions.')
+
 
     def slide_objections(self):
         rows = [row for row in (self.card.get('objections') or []) if row.get('objection')]

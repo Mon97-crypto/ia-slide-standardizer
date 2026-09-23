@@ -51,6 +51,44 @@
         .depth .dc { display: block; margin-top: 3px; font-size: 12.5px; font-weight: 600; color: var(--impact-blue); }
         .depth .dd { display: block; margin-top: 8px; font-size: 12.5px; color: #6c6c6c; line-height: 1.42; }
 
+        /* The head to head option: its own kind of deck, so its own card. Impact
+           Blue with the grid, and a live miniature of the matrix it builds. */
+        .depth.h2h { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto;
+            gap: 22px; align-items: center; padding-left: 40px !important; background: var(--impact-blue); border-color: var(--impact-blue);
+            color: var(--white); padding: 18px 20px;
+            background-image: linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px);
+            background-size: 22px 22px; }
+        .depth.h2h:hover { border-color: var(--impact-blue); box-shadow: 0 10px 26px rgba(38,76,215,.28); }
+        .depth.h2h.on { box-shadow: 0 0 0 3px rgba(38,76,215,.3); }
+        .depth.h2h.on::before { display: none; }
+        .depth.h2h .dn { color: var(--white); }
+        .depth.h2h .dc { color: rgba(255,255,255,.72); }
+        .depth.h2h .dd { color: rgba(255,255,255,.86); max-width: 440px; }
+        .depth.h2h .tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 99px;
+            font-family: var(--sans); font-size: 10.5px; font-weight: 700; letter-spacing: .6px;
+            text-transform: uppercase; vertical-align: 3px; background: var(--white); color: var(--impact-blue); }
+        .depth.h2h .on-mark { position: absolute; top: 14px; left: 14px; width: 16px; height: 16px;
+            border-radius: 50%; border: 2px solid rgba(255,255,255,.5); }
+        .depth.h2h.on .on-mark { background: var(--white) center/10px no-repeat
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 8'%3E%3Cpath d='M1 4l3 3 5-6' fill='none' stroke='%23264CD7' stroke-width='2'/%3E%3C/svg%3E");
+            border-color: var(--white); }
+        .mini { background: var(--white); border-radius: 10px; padding: 10px 12px; width: 236px;
+            box-shadow: 0 6px 18px rgba(12,24,80,.25); }
+        .mini .mh { display: grid; grid-template-columns: 1fr 22px 22px; gap: 6px; margin-bottom: 6px;
+            font-size: 8.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--gray3); }
+        .mini .mh i { font-style: normal; text-align: center; }
+        .mini .mr { display: grid; grid-template-columns: 4px 1fr 22px 22px; gap: 6px; align-items: center;
+            padding: 5px 0; border-top: 1px solid var(--gray1); }
+        .mini .bar { width: 4px; height: 14px; border-radius: 3px; }
+        .mini .cap { height: 6px; border-radius: 3px; background: var(--gray1); }
+        .mini .ball { width: 12px; height: 12px; border-radius: 50%; justify-self: center;
+            border: 1.5px solid var(--impact-blue); box-sizing: border-box; }
+        .mini .full { background: var(--impact-blue); }
+        .mini .half { background: linear-gradient(90deg, #fff 50%, var(--impact-blue) 50%); }
+        .mini .gap { border-color: var(--orange, #FF6F1C); }
+        .mini .unk { border-color: var(--gray3); }
+
         .accent-line { display: flex; gap: 12px; align-items: flex-start; margin-top: 6px; font-size: 13.5px; color: #5c5c5c; line-height: 1.5; }
         .accent-line .chip { flex: none; width: 15px; height: 15px; border-radius: 4px; margin-top: 2px; background: var(--accent); transition: background .3s; }
 
@@ -137,6 +175,8 @@
             .step { grid-template-columns: 42px minmax(0,1fr); gap: 4px 12px; }
             .step .numeral { font-size: 32px; }
             .depths, .tiles { grid-template-columns: 1fr; }
+            .depth.h2h { grid-template-columns: 1fr; }
+            .mini { width: auto; }
         }
     </style>
 </head>
@@ -215,6 +255,8 @@
             <div class="launch">
                 <button class="btn btn-primary" id="goBtn"><span id="goLabel">Research and build</span></button>
                 <button class="btn btn-ghost" id="pptxBtn" disabled>Download PPTX</button>
+                <button class="btn btn-ghost btn-sm" id="h2hBtn" disabled
+                        title="Just the head to head matrix, from the card you built">Head to head only</button>
                 <button class="btn btn-ghost btn-sm" id="jsonBtn" disabled>JSON</button>
             </div>
         </div>
@@ -259,6 +301,19 @@ const ACCENT = {
 
 let presets = { competitors: [], products: [], product_solutions: {} };
 let depths = [], depth = 'standard';
+
+// A miniature of the head to head matrix, drawn the way the deck draws it: an
+// edge bar per row and a Harvey ball per vendor.
+const MINI = `<span class="mini" aria-hidden="true">
+    <span class="mh"><span>Capability</span><i>Us</i><i>Them</i></span>
+    ${[['var(--impact-blue)', 'full', 'half', 78], ['var(--impact-blue)', 'full', 'gap', 62],
+       ['var(--gray3)', 'full', 'full', 86], ['var(--gray3)', 'half', 'half', 54],
+       ['transparent', 'full', 'unk', 70]].map(([bar, us, them, w]) => `
+    <span class="mr"><span class="bar" style="background:${bar};${bar === 'transparent'
+        ? 'border:1px solid var(--gray3);box-sizing:border-box' : ''}"></span>
+    <span class="cap" style="width:${w}%"></span>
+    <span class="ball ${us}"></span><span class="ball ${them}"></span></span>`).join('')}
+</span>`;
 let card = null, research = '', chat = [], spend = null, searches = null,
     taught = null;
 
@@ -277,7 +332,13 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
         .map(c => `<option value="${esc(c.name)}">${esc(c.category)}</option>`).join('');
     $('product').innerHTML = presets.products.map(x =>
         `<option value="${esc(x.name)}"${x.name === 'AttributeSmart' ? ' selected' : ''}>${esc(x.name)} · ${esc(x.solution_label)}</option>`).join('');
-    $('depths').innerHTML = depths.map(d => `
+    $('depths').innerHTML = depths.map(d => d.key === 'matrix' ? `
+        <button class="depth h2h${d.key === depth ? ' on' : ''}" data-depth="matrix">
+            <span class="on-mark" aria-hidden="true"></span>
+            <span><span class="dn">${esc(d.label)}<span class="tag">New</span></span>
+            <span class="dc">${esc(d.slides)}</span>
+            <span class="dd">${esc(d.blurb)}</span></span>
+            ${MINI}</button>` : `
         <button class="depth${d.key === depth ? ' on' : ''}" data-depth="${esc(d.key)}">
             <span class="dn">${esc(d.label)}</span>
             <span class="dc">${esc(d.slides)}</span>
@@ -319,7 +380,7 @@ async function generate() {
     if (!competitor) { $('competitor').focus(); return; }
     busy(true);
     card = null; research = ''; spend = null; searches = null; taught = null;
-    $('pptxBtn').disabled = true; $('jsonBtn').disabled = true;
+    $('pptxBtn').disabled = true; $('jsonBtn').disabled = true; $('h2hBtn').disabled = true;
     $('resultPanel').hidden = true;
     $('progressPanel').hidden = false;
     $('feed').hidden = false; $('feed').textContent = '';
@@ -367,6 +428,25 @@ function onEvent(ev) {
     } else if (ev.type === 'error') { fail(ev.message); }
 }
 
+// The head to head deck from the card already built: no new research, and not
+// saved again, because the library already holds the card it comes from.
+async function headToHead() {
+    const btn = $('h2hBtn'), label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Building…';
+    try {
+        const payload = Object.assign({}, card, {
+            meta: Object.assign({}, card.meta, { depth: 'matrix' }), save_to_library: false });
+        const res = await fetch('/api/battlecard/build', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) { fail(data.error || 'The head to head deck could not be built.'); return; }
+        window.location = data.download_url;
+    } catch (err) { fail(String(err)); }
+    finally { btn.disabled = false; btn.textContent = label; }
+}
+
 async function build(curated) {
     const res = await fetch('/api/battlecard/build', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -377,6 +457,8 @@ async function build(curated) {
 
     $('pptxBtn').disabled = false; $('jsonBtn').disabled = false;
     $('pptxBtn').onclick = () => window.location = data.download_url;
+    $('h2hBtn').disabled = !(card.comparison || []).length;
+    $('h2hBtn').onclick = headToHead;
     $('jsonBtn').onclick = exportJson;
 
     const unclear = (card.comparison || []).filter(r => r.competitor === 'unknown').length;

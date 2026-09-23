@@ -66,9 +66,27 @@ the honest tradeoff of searching less.
 | Summary | 6 to 8 | The one page card plus the essentials |
 | Standard | 11 to 13 | The working card for most meetings |
 | Full technical | 17 to 20 | Every section, including the capability matrix and pricing |
+| Head to head only | 4 to 10 | The comparison on its own, as a deck of its own |
 
 Depth caps rows per section, so a summary stays a summary. A card that names its own
 sections, such as the curated files in `content/`, is never trimmed.
+
+### Head to head only
+
+The comparison matrix as its own deck, for the buyer who asks for a straight comparison. It is
+built from the ratings alone, so it never says more than the matrix does:
+
+1. **Scoreboard.** Impact Blue cover with a one sentence verdict, one mark per capability in
+   lead order, and the count of rows where we lead, where it is level, where they lead, and
+   what is still unverified.
+2. **The field at a glance.** Every capability as a tile with a Harvey ball per vendor, in four
+   lanes by who leads. Lanes take width by how much they hold.
+3. **The matrix.** The detailed rows with what to say.
+4. **How to play the matrix.** One move per capability, taken from the last instruction in its
+   note: lead with these, compete on how, reframe, prove before you claim.
+
+Pick it before generating, or use **Head to head only** on the result panel or in the library to
+build it from a card that already exists, with no new research.
 
 ## Running it
 

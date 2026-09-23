@@ -146,6 +146,7 @@
             <option value="summary">Rebuild as Summary</option>
             <option value="standard">Rebuild as Standard</option>
             <option value="technical">Rebuild as Full technical</option>
+            <option value="matrix">Head to head only</option>
         </select>
         <button class="btn btn-primary btn-sm" id="sBuild">Download PPTX</button>
         <button class="btn btn-ghost btn-sm push" id="sDel">Remove</button>
@@ -163,7 +164,8 @@ const SOL = {
     pricing_promotions: 'Pricing & Promotions', data_intelligence: 'Data & Intelligence'
 };
 const RATE = { strong: 'Strong', partial: 'Partial', none: 'Gap', unknown: 'Unclear' };
-const LEN = { summary: 'Summary', standard: 'Standard', technical: 'Full technical' };
+const LEN = { summary: 'Summary', standard: 'Standard', technical: 'Full technical',
+              matrix: 'Head to head' };
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>

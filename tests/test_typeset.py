@@ -259,3 +259,80 @@ def test_the_matrix_leads_with_our_advantages(tmp_path):
     edges = [shape.name[len('Edge: '):] for shape in slide.shapes
              if shape.name.startswith('Edge: ')]
     assert edges == ['ours', 'theirs', 'verify']
+
+
+# ── the head to head deck ───────────────────────────────────────────────────
+
+def _h2h_card(rows):
+    card = library.scaffold('Acme Planning', 'AssortSmart')
+    card['comparison'] = rows
+    card['meta']['depth'] = 'matrix'
+    return card
+
+
+H2H_ROWS = [
+    {'capability': 'Cluster plans', 'ia': 'strong', 'competitor': 'partial',
+     'note': 'They cluster by region. Ask to see a store level plan.'},
+    {'capability': 'Pack sizing', 'ia': 'partial', 'competitor': 'partial',
+     'note': 'Both ship it. Compete on setup time.'},
+    {'capability': 'Open to buy', 'ia': 'none', 'competitor': 'strong',
+     'note': 'They lead here. Move the buyer to the assortment outcome.'},
+    {'capability': 'Image generation', 'ia': 'strong', 'competitor': 'unknown',
+     'note': 'Nothing found either way. Confirm before the demo.'},
+]
+
+
+def test_head_to_head_is_its_own_short_deck(tmp_path):
+    result = service.build(_h2h_card(H2H_ROWS), str(tmp_path))
+    assert result['filename'].startswith('IA_Head_to_Head_Acme_Planning')
+    assert result['card']['options']['sections'] == [
+        'matrix_cover', 'matrix_map', 'comparison', 'matrix_plays']
+    assert 4 <= result['slide_count'] <= 10
+    assert result['compatibility']['ok']
+    deck = Presentation(result['path'])
+    text = ' '.join(shape.text_frame.text for slide in deck.slides
+                    for shape in slide.shapes if shape.has_text_frame)
+    assert 'Competitive battlecard'.upper() not in text, 'no second cover'
+    assert 'AssortSmart leads on 1 of 4 capabilities' in text
+    assert 'at a glance' in text and 'play the matrix' in text
+
+
+def test_the_scoreboard_marks_every_capability(tmp_path):
+    result = service.build(_h2h_card(H2H_ROWS), str(tmp_path))
+    cover = Presentation(result['path']).slides[0]
+    marks = [shape.name for shape in cover.shapes if shape.name.startswith('Capability: ')]
+    assert len(marks) == len(H2H_ROWS)
+    edges = [mark.rsplit('(', 1)[1].rstrip(')') for mark in marks]
+    assert edges == ['ours', 'level', 'theirs', 'verify']
+
+
+def test_the_play_is_the_last_instruction_in_the_note():
+    from battlecards.builder import BattlecardDeck
+    deck = BattlecardDeck(_h2h_card(H2H_ROWS))
+    lines = deck._play_lines('Overlap is real. Do not claim absence. Compete on how it '
+                             'is produced.')
+    assert lines[0] == 'Compete on how it is produced.'
+    assert deck._play_lines('A plain description.') == ['A plain description.']
+
+
+def test_other_lengths_never_carry_the_head_to_head_slides():
+    from battlecards import schema
+    for key, preset in schema.DEPTHS.items():
+        if key != 'matrix':
+            assert not set(preset['sections']) & set(schema.MATRIX_ONLY)
+    assert not set(schema.DEFAULT_SECTIONS) & set(schema.MATRIX_ONLY)
+
+
+@pytest.mark.skipif(not (shutil.which('soffice') and shutil.which('pdftotext')),
+                    reason='needs LibreOffice and poppler to render')
+def test_a_long_head_to_head_renders_clean(tmp_path):
+    import deckcheck
+    card = _long_card()
+    ratings = ['strong', 'partial', 'none', 'unknown']
+    for index, row in enumerate(card['comparison']):
+        row['ia'] = ratings[index % 4]
+        row['competitor'] = ratings[(index // 4) % 4]
+    card['meta']['depth'] = 'matrix'
+    path = service.build(card, str(tmp_path))['path']
+    _, faults = deckcheck.check(path)
+    assert not faults, faults[:5]
