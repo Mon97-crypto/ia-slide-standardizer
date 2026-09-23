@@ -210,3 +210,52 @@ def test_rendered_long_deck_has_no_collisions_or_overflow(long_deck):
     import deckcheck
     _, faults = deckcheck.check(long_deck)
     assert not faults, faults[:5]
+
+
+# ── the comparison matrix ───────────────────────────────────────────────────
+
+def test_the_edge_says_who_leads_a_row():
+    from battlecards.builder import BattlecardDeck
+    edge = BattlecardDeck.edge
+    assert edge({'ia': 'strong', 'competitor': 'partial'}) == 'ours'
+    assert edge({'ia': 'partial', 'competitor': 'partial'}) == 'level'
+    assert edge({'ia': 'none', 'competitor': 'strong'}) == 'theirs'
+    assert edge({'ia': 'strong', 'competitor': 'unknown'}) == 'verify'
+
+
+def _matrix_slides(path):
+    deck = Presentation(path)
+    return [slide for slide in deck.slides
+            if any(shape.has_text_frame and 'Head to head' in shape.text_frame.text
+                   for shape in slide.shapes)]
+
+
+def test_the_matrix_rates_with_harvey_balls_not_words(tmp_path):
+    card = library.scaffold('Acme Planning', 'AssortSmart')
+    card['comparison'] = [
+        {'capability': 'Cluster plans', 'ia': 'strong', 'competitor': 'partial', 'note': 'x'},
+        {'capability': 'Pack sizing', 'ia': 'partial', 'competitor': 'none', 'note': 'y'},
+        {'capability': 'Open to buy', 'ia': 'strong', 'competitor': 'unknown', 'note': 'z'},
+    ]
+    slides = _matrix_slides(service.build(card, str(tmp_path))['path'])
+    assert slides
+    names = [shape.name for slide in slides for shape in slide.shapes]
+    for rating in ('Strong', 'Partial', 'Gap', 'Unclear'):
+        assert 'Rating: %s' % rating in names
+    assert any(name == 'Rating: Partial, fill' for name in names)
+    words = {shape.text_frame.text.strip() for slide in slides for shape in slide.shapes
+             if shape.has_text_frame}
+    assert not words & {'Strong', 'Partial', 'Gap', 'Unclear'}
+
+
+def test_the_matrix_leads_with_our_advantages(tmp_path):
+    card = library.scaffold('Acme Planning', 'AssortSmart')
+    card['comparison'] = [
+        {'capability': 'Unknown row', 'ia': 'unknown', 'competitor': 'strong', 'note': ''},
+        {'capability': 'Their row', 'ia': 'partial', 'competitor': 'strong', 'note': ''},
+        {'capability': 'Our row', 'ia': 'strong', 'competitor': 'none', 'note': ''},
+    ]
+    slide = _matrix_slides(service.build(card, str(tmp_path))['path'])[0]
+    edges = [shape.name[len('Edge: '):] for shape in slide.shapes
+             if shape.name.startswith('Edge: ')]
+    assert edges == ['ours', 'theirs', 'verify']

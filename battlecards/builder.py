@@ -16,6 +16,7 @@ from lxml import etree
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Pt
@@ -50,13 +51,6 @@ GUTTER = Inches(0.16)
 PAD = Inches(0.16)
 # Logo sits top right, clear of the title, so titles get the remaining width.
 TITLE_W = CONTENT_W - Inches(1.25)
-
-RATING_COLORS = {
-    'strong': IMPACT_BLUE,
-    'partial': BLACK,
-    'none': ACCENT_ORANGE,   # the only orange in the deck, which keeps it an accent
-    'unknown': GRAY_3,
-}
 
 
 def chunk(items, size):
@@ -548,88 +542,6 @@ class BattlecardDeck:
             run.text = url[:90]
         return box
 
-    def _table(self, slide, left, top, width, headers, rows, col_ratios,
-               row_heights, header_height=Inches(0.3), font_pt=7.5):
-        """A table with explicit fills, borders and fonts, and measured rows.
-
-        Every row height is measured beforehand, so the table ends where the
-        layout expects it to and nothing is drawn over its bottom rows.
-        """
-        total = len(rows) + 1
-        frame = slide.shapes.add_table(total, len(headers), int(left), int(top),
-                                       int(width), int(header_height + sum(row_heights)))
-        table = frame.table
-        tblPr = table._tbl.find(qn('a:tblPr'))
-        if tblPr is not None:
-            for node in tblPr.findall(qn('a:tableStyleId')):
-                tblPr.remove(node)
-            tblPr.set('firstRow', '0')
-            tblPr.set('bandRow', '0')
-
-        ratio_total = float(sum(col_ratios))
-        for index, ratio in enumerate(col_ratios):
-            table.columns[index].width = Emu(int(width * ratio / ratio_total))
-        table.rows[0].height = int(header_height)
-        for index, height in enumerate(row_heights, start=1):
-            table.rows[index].height = int(height)
-
-        for col, header in enumerate(headers):
-            self._cell(table.cell(0, col), header, size=Pt(8.5), bold=True,
-                       color=WHITE, fill=IMPACT_BLUE,
-                       align=PP_ALIGN.LEFT if col in (0, len(headers) - 1) else PP_ALIGN.CENTER)
-        for r, row in enumerate(rows, start=1):
-            band = WHITE if r % 2 else OFF_WHITE
-            for c, value in enumerate(row):
-                text, color, bold, align = self._unpack_cell(value, c)
-                self._cell(table.cell(r, c), text, size=Pt(font_pt), bold=bold,
-                           color=color, fill=band, align=align)
-        return table
-
-    @staticmethod
-    def _unpack_cell(value, column_index):
-        if isinstance(value, dict):
-            return (value.get('text', ''), value.get('color', BLACK),
-                    value.get('bold', False),
-                    value.get('align', PP_ALIGN.LEFT if column_index == 0 else PP_ALIGN.CENTER))
-        return (str(value), BLACK, False,
-                PP_ALIGN.LEFT if column_index == 0 else PP_ALIGN.CENTER)
-
-    CELL_PAD_X = Inches(0.08)
-    CELL_PAD_Y = Inches(0.05)
-
-    def _cell(self, cell, text, size, bold, color, fill, align):
-        cell.fill.solid()
-        cell.fill.fore_color.rgb = fill
-        cell.margin_left = self.CELL_PAD_X
-        cell.margin_right = self.CELL_PAD_X
-        cell.margin_top = self.CELL_PAD_Y
-        cell.margin_bottom = self.CELL_PAD_Y
-        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf = cell.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        p.alignment = align
-        p.line_spacing = 1.1
-        run = p.add_run()
-        run.text = text
-        set_run_font(run, size, bold, color, self.theme.body_font)
-        self._cell_borders(cell, GRAY_1)
-
-    @staticmethod
-    def _cell_borders(cell, color, width=Pt(0.75)):
-        tcPr = cell._tc.get_or_add_tcPr()
-        order = ['a:lnL', 'a:lnR', 'a:lnT', 'a:lnB']
-        for tag in reversed(order):
-            for node in tcPr.findall(qn(tag)):
-                tcPr.remove(node)
-            line = tcPr.makeelement(qn(tag), {'w': str(int(width)), 'cap': 'flat',
-                                              'cmpd': 'sng', 'algn': 'ctr'})
-            solid = line.makeelement(qn('a:solidFill'), {})
-            srgb = line.makeelement(qn('a:srgbClr'), {'val': str(color)})
-            solid.append(srgb)
-            line.append(solid)
-            tcPr.insert(0, line)
-
     # ── sections ───────────────────────────────────────────────────────────────
     # Every title is a (lead, emphasis) pair. The house template splits titles
     # into a Black phrase and an Impact Blue phrase, so the emphasis carries the
@@ -986,65 +898,233 @@ class BattlecardDeck:
                                 proof_h - self.LABEL_H, proof)
             self._notes(slide, 'Lead with the outcome. Name the product second.')
 
-    # The comparison matrix has its own pagination, by measured row height.
+    # The comparison matrix: one card per capability, a Harvey ball per vendor,
+    # and a bar that says at a glance who leads the row. Drawn from shapes rather
+    # than a table so every row keeps the height it was measured at.
     MATRIX_COLS = (0.25, 0.115, 0.115, 0.52)
     MATRIX_PT = 7.5
+    MATRIX_CAP_PT = 8.5
     MATRIX_NOTE_LINES = 6
+    MATRIX_GAP = Inches(0.05)
+    MATRIX_PAD_X = Inches(0.1)
+    MATRIX_PAD_Y = Inches(0.07)
+    MATRIX_EDGE_W = Inches(0.16)      # the edge bar and the space it takes
+    BALL = Inches(0.2)
+
+    # Who leads a row, in the order rows are shown: our advantages first, then
+    # level ground, then theirs, then anything nobody has confirmed.
+    EDGES = ('ours', 'level', 'theirs', 'verify')
+    EDGE_COLORS = {'ours': IMPACT_BLUE, 'level': GRAY_3, 'theirs': ACCENT_ORANGE,
+                   'verify': None}
+    _SCORE = {'strong': 2, 'partial': 1, 'none': 0}
+
+    @classmethod
+    def edge(cls, row):
+        ours, theirs = cls._SCORE.get(row.get('ia')), cls._SCORE.get(row.get('competitor'))
+        if ours is None or theirs is None:
+            return 'verify'
+        return 'ours' if ours > theirs else 'theirs' if theirs > ours else 'level'
+
+    def _matrix_columns(self):
+        """(left, width) for each column, inside a row card."""
+        ratio_total = float(sum(self.MATRIX_COLS))
+        out, x = [], MARGIN
+        for ratio in self.MATRIX_COLS:
+            width = int(CONTENT_W * ratio / ratio_total)
+            out.append((x, width))
+            x += width
+        return out
 
     def slide_comparison(self):
-        rows = self.card.get('comparison') or []
+        rows = [row for row in (self.card.get('comparison') or [])
+                if (row.get('capability') or '').strip()]
         if not rows:
             return
-        widths = [int(CONTENT_W * r / sum(self.MATRIX_COLS)) - 2 * self.CELL_PAD_X
-                  for r in self.MATRIX_COLS]
+        columns = self._matrix_columns()
+        cap_w = columns[0][1] - self.MATRIX_EDGE_W - self.MATRIX_PAD_X
+        note_w = columns[3][1] - 2 * self.MATRIX_PAD_X
         cap = int(typeset.line_pitch(self.MATRIX_PT, 1.1) * self.MATRIX_NOTE_LINES)
         entries = []
-        for row in rows:
+        for row in sorted(rows, key=lambda r: self.EDGES.index(self.edge(r))):
             note, found = typeset.split_sources(row.get('note', ''))
             full = ''
-            if typeset.measure(note, widths[3], self.MATRIX_PT, 1.1) > cap:
+            if typeset.measure(note, note_w, self.MATRIX_PT, 1.1) > cap:
                 full = note
-                note = typeset.trim_to(note, widths[3], cap, self.MATRIX_PT, 1.1)
-            capability = (row.get('capability') or '').strip()
-            height = max(typeset.measure(capability, widths[0], 8, 1.1),
-                         typeset.measure(note, widths[3], self.MATRIX_PT, 1.1),
-                         int(typeset.line_pitch(8, 1.1)))
-            height = max(int(Inches(0.3)), height + 2 * self.CELL_PAD_Y + int(Inches(0.04)))
+                note = typeset.trim_to(note, note_w, cap, self.MATRIX_PT, 1.1)
+            capability = row['capability'].strip()
+            body = max(typeset.measure(capability, cap_w, self.MATRIX_CAP_PT, 1.1, bold=True),
+                       typeset.measure(note, note_w, self.MATRIX_PT, 1.1),
+                       int(self.BALL))
+            height = max(int(Inches(0.36)), body + 2 * self.MATRIX_PAD_Y)
             entries.append({'row': row, 'capability': capability, 'note': note,
-                            'full': full, 'sources': found, 'height': height})
+                            'full': full, 'sources': found, 'card_h': height,
+                            'height': height + self.MATRIX_GAP, 'edge': self.edge(row)})
 
-        header_h = Inches(0.3)
-        legend_h = Inches(0.24)
-        room = int(BODY_H - header_h - legend_h)
+        header_h = Inches(0.32)
+        key_h = Inches(0.3)
+        room = int(BODY_H - header_h - key_h)
         pages = self._matrix_pages(entries, room)
         name = self.meta['competitor']
+        product = self.meta.get('ia_product') or 'Impact Analytics'
+        tally = {edge: sum(1 for e in entries if e['edge'] == edge) for edge in self.EDGES}
         for index, group in enumerate(pages, 1):
-            slide = self._page(('Head to head: ', 'AssortSmart vs %s' % name
-                                if self.meta.get('ia_product') == 'AssortSmart' else name),
+            slide = self._page(('Head to head: ', '%s vs %s' % (product, name)),
                                counter=(index, len(pages)))
-            table_rows = []
+            self._matrix_header(slide, columns, BODY_TOP, header_h, product, name)
+            y = BODY_TOP + header_h
             for entry in group:
                 self._sources.extend(entry['sources'])
                 if entry['full']:
                     self._hold(entry['capability'], entry['full'])
-                row = entry['row']
-                table_rows.append([
-                    {'text': entry['capability'], 'bold': True, 'align': PP_ALIGN.LEFT},
-                    self._rating_cell(row.get('ia')),
-                    self._rating_cell(row.get('competitor')),
-                    {'text': entry['note'], 'align': PP_ALIGN.LEFT, 'color': BLACK},
-                ])
-            product = self.meta.get('ia_product') or 'Impact Analytics'
-            self._table(slide, MARGIN, BODY_TOP, CONTENT_W,
-                        ['Capability', product, name, 'What to say'],
-                        table_rows, col_ratios=list(self.MATRIX_COLS),
-                        row_heights=[e['height'] for e in group],
-                        header_height=header_h, font_pt=self.MATRIX_PT)
-            # A fixed band under the body, never after the table, so the legend
+                self._matrix_row(slide, columns, y, entry)
+                y += entry['height']
+            # A fixed band under the body, never after the rows, so the key
             # cannot land on a row however tall the rows run.
-            self._legend(slide, MARGIN, BODY_TOP + BODY_H - Inches(0.2))
+            self._matrix_key(slide, BODY_TOP + BODY_H - Inches(0.22), product, name, tally)
             self._notes(slide, 'Show this only when the buyer asks for a direct comparison. '
-                               'Defend every row with evidence.')
+                               'Rows run from our edge to theirs, then what still needs '
+                               'checking. Defend every row with evidence. Across the matrix: '
+                               '%d rows where we lead, %d level, %d where they lead, %d to '
+                               'verify.' % tuple(tally[e] for e in self.EDGES))
+
+    def _matrix_header(self, slide, columns, top, height, product, competitor):
+        label_y = top + (height - Inches(0.22)) / 2 - Inches(0.03)
+        for col, text in ((0, 'Capability'), (3, 'What to say')):
+            left, width = columns[col]
+            pad = self.MATRIX_EDGE_W if col == 0 else self.MATRIX_PAD_X
+            box = add_textbox(slide, left + pad, label_y, width - pad, Inches(0.22),
+                              anchor=MSO_ANCHOR.MIDDLE)
+            write_paragraph(box.text_frame, text.upper(), Pt(7), bold=True, color=GRAY_3,
+                            font=self.theme.body_font, space_after=0, line_spacing=1.0,
+                            first=True)
+        # Each vendor gets a pill over its column: ours in Impact Blue, theirs in
+        # Black, so the two columns read as a pairing before a ball is seen.
+        for col, text, fill in ((1, product, IMPACT_BLUE), (2, competitor, BLACK)):
+            left, width = columns[col]
+            size = 7.5 if len(text) <= 14 else 6.5
+            pill = add_rect(slide, left + Inches(0.05), label_y, width - Inches(0.1),
+                            Inches(0.22), fill=fill, rounded=True, radius=50000)
+            tf = prepare_text_frame(pill, margin=Inches(0.03), anchor=MSO_ANCHOR.MIDDLE)
+            write_paragraph(tf, text, Pt(size), bold=True, color=WHITE,
+                            font=self.theme.body_font, align=PP_ALIGN.CENTER,
+                            space_after=0, line_spacing=1.0, first=True)
+
+    def _matrix_row(self, slide, columns, top, entry):
+        height = entry['card_h']
+        card = add_rect(slide, MARGIN, top, CONTENT_W, height, fill=WHITE, rounded=True,
+                        radius=int(min(50000, Inches(0.07) * 100000 / height)))
+        add_soft_shadow(card, blur_pt=4.0, distance_pt=0.75, alpha_pct=6)
+        card.name = 'Matrix row: %s' % entry['capability'][:40]
+
+        # Our column carries a light Impact Blue tint the whole way down.
+        left, width = columns[1]
+        add_rect(slide, left, top, width, height, fill=mix(WHITE, IMPACT_BLUE, 0.12))
+
+        color = self.EDGE_COLORS[entry['edge']]
+        bar = add_rect(slide, MARGIN + Inches(0.06), top + Inches(0.07), Inches(0.045),
+                       height - Inches(0.14), fill=color or WHITE,
+                       line=None if color else GRAY_3, line_width=Pt(0.75),
+                       rounded=True, radius=50000)
+        bar.name = 'Edge: %s' % entry['edge']
+
+        left, width = columns[0]
+        cap_w = width - self.MATRIX_EDGE_W - self.MATRIX_PAD_X
+        box = add_textbox(slide, left + self.MATRIX_EDGE_W, top, cap_w, height,
+                          anchor=MSO_ANCHOR.MIDDLE)
+        write_paragraph(box.text_frame, entry['capability'], Pt(self.MATRIX_CAP_PT),
+                        bold=True, color=BLACK, font=self.theme.body_font,
+                        space_after=0, line_spacing=1.1, first=True)
+
+        for col, rating in ((1, entry['row'].get('ia')), (2, entry['row'].get('competitor'))):
+            left, width = columns[col]
+            self._harvey(slide, left + (width - self.BALL) / 2, top + (height - self.BALL) / 2,
+                         self.BALL, rating)
+
+        left, width = columns[3]
+        box = add_textbox(slide, left + self.MATRIX_PAD_X, top,
+                          width - 2 * self.MATRIX_PAD_X, height, anchor=MSO_ANCHOR.MIDDLE)
+        write_paragraph(box.text_frame, entry['note'] or 'Add what to say.',
+                        Pt(self.MATRIX_PT), color=BLACK if entry['note'] else GRAY_3,
+                        font=self.theme.body_font, space_after=0, line_spacing=1.1,
+                        first=True)
+
+    def _harvey(self, slide, left, top, size, rating):
+        """A Harvey ball: full for strong, half for partial, an orange ring for a
+        gap, and a gray ring with a question mark for anything unconfirmed.
+
+        Built from preset ovals and a pie, which Google Slides imports and lets
+        a reader restyle, and each piece is named so the rating survives for a
+        screen reader or a search.
+        """
+        key = rating if rating in RATING_LABELS else 'unknown'
+        ring = {'strong': IMPACT_BLUE, 'partial': IMPACT_BLUE, 'none': ACCENT_ORANGE,
+                'unknown': GRAY_3}[key]
+        ball = slide.shapes.add_shape(MSO_SHAPE.OVAL, int(left), int(top), int(size),
+                                      int(size))
+        ball.fill.solid()
+        ball.fill.fore_color.rgb = IMPACT_BLUE if key == 'strong' else WHITE
+        ball.line.color.rgb = ring
+        ball.line.width = Pt(1.25)
+        brand.strip_shape_effects(ball)
+        tf = prepare_text_frame(ball, margin=0, anchor=MSO_ANCHOR.MIDDLE)
+        ball.name = 'Rating: %s' % RATING_LABELS[key]
+        if key == 'partial':
+            # The right half, filled: from 12 o'clock clockwise to 6 o'clock.
+            half = slide.shapes.add_shape(MSO_SHAPE.PIE, int(left), int(top), int(size),
+                                          int(size))
+            half.adjustments[0] = 270.0 * 60000 / 100000
+            half.adjustments[1] = 90.0 * 60000 / 100000
+            half.fill.solid()
+            half.fill.fore_color.rgb = IMPACT_BLUE
+            half.line.fill.background()
+            brand.strip_shape_effects(half)
+            prepare_text_frame(half)
+            half.name = 'Rating: Partial, fill'
+        elif key == 'unknown':
+            write_paragraph(tf, '?', Pt(max(6.5, size / 12700.0 * 0.5)), bold=True, color=GRAY_3,
+                            font=self.theme.body_font, align=PP_ALIGN.CENTER,
+                            space_after=0, line_spacing=1.0, first=True)
+        return ball
+
+    def _matrix_key(self, slide, top, product, competitor, tally):
+        """The ball key on the left, the running score on the right."""
+        size = Inches(0.15)
+        text_pt = 7
+        x = MARGIN
+        for key, gloss in (('strong', 'Ships today'), ('partial', 'Partial coverage'),
+                           ('none', 'Not available'), ('unknown', 'Unverified')):
+            self._harvey(slide, x, top, size, key)
+            width = self._key_width(gloss, text_pt)
+            box = add_textbox(slide, x + size + Inches(0.06), top, width, size,
+                              anchor=MSO_ANCHOR.MIDDLE)
+            write_paragraph(box.text_frame, gloss, Pt(text_pt), color=BLACK,
+                            font=self.theme.body_font, space_after=0, line_spacing=1.0,
+                            first=True)
+            x += size + Inches(0.06) + width + Inches(0.2)
+
+        labels = {'ours': '%s leads' % product, 'level': 'Level',
+                  'theirs': '%s leads' % competitor, 'verify': 'To verify'}
+        items = [(edge, '%s  %d' % (labels[edge], tally[edge])) for edge in self.EDGES]
+        widths = [Inches(0.1) + self._key_width(text, text_pt, bold=True)
+                  for _, text in items]
+        x = MARGIN + CONTENT_W - sum(widths) - Inches(0.2) * (len(items) - 1)
+        for (edge, text), width in zip(items, widths):
+            color = self.EDGE_COLORS[edge]
+            add_rect(slide, x, top, Inches(0.045), size,
+                     fill=color or WHITE, line=None if color else GRAY_3,
+                     line_width=Pt(0.75), rounded=True, radius=50000)
+            box = add_textbox(slide, x + Inches(0.1), top, width, size,
+                              anchor=MSO_ANCHOR.MIDDLE)
+            write_paragraph(box.text_frame, text, Pt(text_pt), bold=True,
+                            color=BLACK if edge != 'verify' else GRAY_3,
+                            font=self.theme.body_font, space_after=0, line_spacing=1.0,
+                            first=True)
+            x += width + Inches(0.2)
+
+    @staticmethod
+    def _key_width(text, pt, bold=False):
+        # A short label on one line: the glyph average plus a margin, erring wide.
+        return int(len(text) * pt * (0.58 if bold else 0.54) * 12700) + int(Inches(0.04))
 
     @staticmethod
     def _matrix_pages(entries, room):
@@ -1074,24 +1154,6 @@ class BattlecardDeck:
         if current:
             pages.append(current)
         return pages
-
-    def _rating_cell(self, rating):
-        key = rating if rating in RATING_LABELS else 'unknown'
-        return {'text': RATING_LABELS[key], 'color': RATING_COLORS[key],
-                'bold': key == 'strong', 'align': PP_ALIGN.CENTER}
-
-    def _legend(self, slide, left, top):
-        box = add_textbox(slide, left, top, CONTENT_W, Inches(0.16))
-        p = box.text_frame.paragraphs[0]
-        p.line_spacing = 1.0
-        for index, key in enumerate(('strong', 'partial', 'none', 'unknown')):
-            run = p.add_run()
-            run.text = ('      ' if index else '') + RATING_LABELS[key]
-            set_run_font(run, Pt(7), True, RATING_COLORS[key], self.theme.body_font)
-            gloss = p.add_run()
-            gloss.text = {'strong': ' ships today', 'partial': ' partial coverage',
-                          'none': ' not available', 'unknown': ' needs research'}[key]
-            set_run_font(gloss, Pt(7), False, GRAY_3, self.theme.body_font)
 
     def slide_objections(self):
         rows = [row for row in (self.card.get('objections') or []) if row.get('objection')]

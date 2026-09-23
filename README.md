@@ -142,7 +142,7 @@ same check when LibreOffice is installed.
 | `positioning` | Their claim, our claim, and the wedge between them |
 | `strengths_weaknesses` | An honest read of both sides |
 | `why_we_win` | Numbered advantage cards, each with a proof line |
-| `comparison` | Head to head capability matrix with a rating legend |
+| `comparison` | Head to head matrix: a Harvey ball per vendor, an edge bar per row, rows ordered from our lead to theirs, and a running score |
 | `objections` | They say, we say, proof |
 | `landmines` | Trap questions with why each one lands |
 | `discovery` | Questions grouped by theme |
