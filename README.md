@@ -107,6 +107,33 @@ Docker and Render configuration already exist in `Dockerfile` and `render.yaml`.
 A battlecard deck of up to 16 sections. Long sections paginate on their own, so seven
 objections become four slides without any manual work.
 
+### How text is set
+
+A generated card writes long: matrix notes of 400 characters, talk track blocks of 800, a
+citation on every claim. `battlecards/typeset.py` makes that fit without shrinking it into
+unreadable type or letting it run off a card.
+
+- Citations leave the slide face. "Source: ..." sentences, ", per Guide.pdf pages 6 and 20"
+  clauses and bare URLs go to the speaker notes. Proof slots show a short linked label such
+  as `example.com` or `Planning Guide, pp. 6 to 20`.
+- Every block is measured before it is drawn, counting the line spacing, and set at the
+  largest legible size that fits. Sibling cards on a slide share one size.
+- A block that still does not fit is cut at a sentence boundary. The full text goes to the
+  speaker notes under IN FULL, so a detail moves, it is never lost.
+- Lists, matrix rows and card sets paginate, spread evenly across pages (ten advantages at
+  three a page become 3, 3, 2, 2), numbered continuously, with "2 of 4" in the kicker.
+
+`tools/deckcheck.py` is the arbiter. It renders a deck through LibreOffice, reads every
+word's position from the PDF and reports collisions, text past the body area and text that
+escapes its card:
+
+```bash
+python3 tools/deckcheck.py path/to/deck.pptx
+```
+
+`tests/test_typeset.py` builds a deck from deliberately long synthetic content and runs the
+same check when LibreOffice is installed.
+
 | Section | Slide |
 |---|---|
 | `cover` | Title card on Impact Blue with the grid pattern and the white logo |
@@ -476,8 +503,10 @@ Google Slides imports a subset of OOXML. The builder stays inside it:
   from a master or a theme.
 - Every run names its typeface on the latin, east asian and complex script slots.
 - No shrink on overflow. Google Slides ignores PowerPoint's `fontScale`, so
-  `battlecards/brand.py` measures wrapped text and picks a size that fits before the file is
-  written.
+  `battlecards/typeset.py` measures wrapped text and picks a size that fits before the file
+  is written.
+- The theme names Impact Blue as the hyperlink colour, so linked sources match the text
+  around them instead of the office default blue.
 - Tables carry explicit cell fills, borders and fonts, and the theme table style is removed so
   Slides cannot substitute its own banding.
 - Preset shapes only. No custom geometry, no 3-D, no glow, no reflections. An outer shadow
@@ -498,6 +527,7 @@ battlecards/
   patterns.py    cached grid and dot overlays
   schema.py      data model, normalisation, validation, brand copy rules
   library.py     IA portfolio, capability and question banks, competitor presets, scaffold
+  typeset.py     measuring, fitting, trimming, citations out of body copy
   builder.py     slide builders, pagination, the deck assembler
   compat.py      Google Slides compatibility audit
   ai.py          Claude Opus 5 research, structured card generation, chat assistant
@@ -514,6 +544,9 @@ templates/
   battlecard.html   the builder UI, the landing page
   library.html      the shared gallery
   index.html        the original standardizer, at /standardizer
+tools/
+  deckcheck.py      render a deck and report collisions and overflow
 tests/
   test_battlecard.py
+  test_typeset.py
 ```

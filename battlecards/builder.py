@@ -20,7 +20,7 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Pt
 
-from . import brand
+from . import brand, typeset
 from .brand import (ACCENT_ORANGE, BLACK, GRAY_1, GRAY_2, GRAY_3, IMPACT_BLUE,
                     OFF_WHITE, SECONDARY_FONT, SOLUTION_LABELS, WHITE, Theme,
                     add_picture, add_rect, add_soft_shadow, add_textbox,
@@ -85,11 +85,16 @@ class BattlecardDeck:
         self.prs.slide_height = SLIDE_H
         self._apply_theme_fonts()
         self.page = 0
+        # What a slide could not show: text held back by the fitter, and the
+        # citations lifted out of body copy. It goes to that slide's speaker
+        # notes, so a detail moves off the face of the slide, never out of the deck.
+        self._held = []
+        self._sources = []
 
     # ── presentation level ─────────────────────────────────────────────────────
 
     def _apply_theme_fonts(self):
-        """Name the brand fonts in the theme as well as on every run.
+        """Name the brand fonts and link colour in the theme as well as on every run.
 
         Runs already carry their own typeface, so rendering never depends on this.
         Setting the theme too means a user who edits the deck in Google Slides or
@@ -102,9 +107,25 @@ class BattlecardDeck:
             root = etree.fromstring(part.blob)
         except Exception:
             return
+        # Links take the theme's hyperlink colour whatever the run says, so the
+        # theme has to name Impact Blue, or a proof label renders in the office
+        # default blue, and a visited one in gray, beside brand blue text.
+        for tag in ('a:hlink', 'a:folHlink'):
+            node = root.find('.//' + qn('a:clrScheme') + '/' + qn(tag))
+            if node is not None:
+                for child in list(node):
+                    node.remove(child)
+                etree.SubElement(node, qn('a:srgbClr')).set('val', '264CD7')
         font_scheme = root.find('.//' + qn('a:fontScheme'))
-        if font_scheme is None:
+        if font_scheme is not None:
+            self._theme_fonts(font_scheme)
+        try:
+            part._blob = etree.tostring(root, xml_declaration=True,
+                                        encoding='UTF-8', standalone=True)
+        except Exception:
             return
+
+    def _theme_fonts(self, font_scheme):
         for tag, name in (('a:majorFont', self.theme.heading_font),
                           ('a:minorFont', self.theme.body_font)):
             node = font_scheme.find(qn(tag))
@@ -113,11 +134,6 @@ class BattlecardDeck:
             latin = node.find(qn('a:latin'))
             if latin is not None:
                 latin.set('typeface', name)
-        try:
-            part._blob = etree.tostring(root, xml_declaration=True,
-                                        encoding='UTF-8', standalone=True)
-        except Exception:
-            return
 
     def build(self) -> Presentation:
         builders = {
@@ -213,31 +229,51 @@ class BattlecardDeck:
         match = re.search(r'(20\d{2})', self.meta.get('date', '') or '')
         return match.group(1) if match else str(date.today().year)
 
-    def _default_kicker(self):
-        return '%s battlecard  ·  %s' % (
+    def _default_kicker(self, counter=None):
+        text = '%s battlecard  ·  %s' % (
             SOLUTION_LABELS.get(self.solution, ''), self.meta['competitor'])
+        if counter and counter[1] > 1:
+            text += '  ·  %d of %d' % counter
+        return text
 
     def _notes(self, slide, text):
-        if not self.include_notes or not text:
-            return
-        slide.notes_slide.notes_text_frame.text = text
+        """Write the coaching line, then everything the slide held back."""
+        parts = [text] if text else []
+        if self._held:
+            parts.append('IN FULL\n' + '\n\n'.join(
+                '%s: %s' % (label, body) if label else body
+                for label, body in self._held))
+        if self._sources:
+            seen, unique = set(), []
+            for source in self._sources:
+                if source.lower() not in seen:
+                    seen.add(source.lower())
+                    unique.append(source)
+            parts.append('SOURCES\n' + '\n'.join('- ' + source for source in unique))
+        self._held, self._sources = [], []
+        if self.include_notes and parts:
+            slide.notes_slide.notes_text_frame.text = '\n\n'.join(parts)
 
-    def _page(self, title, kicker=None, dark=False, patterned=False):
+    def _page(self, title, kicker=None, dark=False, patterned=False, counter=None):
+        self._held, self._sources = [], []
         slide = self._slide(dark=dark, patterned=patterned)
+        if kicker is None and counter:
+            kicker = self._default_kicker(counter)
         self._header(slide, title, kicker, dark=dark)
         self._footer(slide, dark=dark)
         return slide
 
     # ── reusable blocks ────────────────────────────────────────────────────────
+    # Nothing in here draws text that has not been measured first. A block that
+    # does not fit at its floor size is trimmed at a sentence boundary and the
+    # whole of it goes to the speaker notes, so the face of the slide stays clean
+    # and the detail stays in the deck.
+
+    LABEL_H = Inches(0.2)
 
     def _panel(self, slide, left, top, width, height, fill=None, border=None,
                shadow=True, accent=None, accent_height=None):
-        """Draw a house card: white, rounded, soft shadow, no border, no stripe.
-
-        The IA template sets a card apart with the shadow alone. `accent` is kept
-        for the few places that genuinely need a coloured block rather than a
-        card, and is drawn as a full fill, never as an edge stripe.
-        """
+        """Draw a house card: white, rounded, soft shadow, no border, no stripe."""
         panel = add_rect(slide, left, top, width, height,
                          fill=fill or WHITE, line=border,
                          line_width=Pt(0.75), rounded=True)
@@ -246,7 +282,7 @@ class BattlecardDeck:
         return panel
 
     def _panel_label(self, slide, left, top, width, text, color=None, size=Pt(7.5)):
-        box = add_textbox(slide, left, top, width, Inches(0.2))
+        box = add_textbox(slide, left, top, width, Inches(0.18))
         write_paragraph(box.text_frame, text.upper(), size, bold=True,
                         color=color or IMPACT_BLUE, font=self.theme.body_font,
                         space_after=0, line_spacing=1.0, first=True)
@@ -254,11 +290,7 @@ class BattlecardDeck:
 
     def _pill(self, slide, left, top, avail_w, text, width=None, fill=None,
               size=Pt(10)):
-        """Draw the house blue pill: solid Impact Blue, white bold text, centred.
-
-        The template floats these over the top edge of a card, which is why the
-        caller passes the available width and the pill centres itself inside it.
-        """
+        """The house blue pill, floated over the top edge of a card."""
         pill_w = width or avail_w
         pill_left = left + (avail_w - pill_w) / 2
         shape = add_rect(slide, pill_left, top, pill_w, Inches(0.26),
@@ -269,79 +301,239 @@ class BattlecardDeck:
                         space_after=0, line_spacing=1.0, first=True)
         return shape
 
-    def _bullets(self, slide, left, top, width, height, items, *, max_pt=12.0,
-                 min_pt=8.0, color=BLACK, bullet_color=None, bullet='•'):
-        if not items:
-            return
-        inner = int(width - 2 * Inches(0.16))
-        size = fit_block_size(items, inner, int(height), max_pt, min_pt, gap_pt=5.0)
-        box = add_textbox(slide, left, top, width, height)
-        tf = box.text_frame
-        tf.margin_left = Inches(0.0)
-        tf.margin_right = Inches(0.0)
-        for index, item in enumerate(items):
-            write_paragraph(tf, item, size, color=color, font=self.theme.body_font,
-                            bullet=bullet, space_after=4, line_spacing=1.2,
-                            first=index == 0)
-            if bullet_color is not None:
-                brand.apply_bullet(tf.paragraphs[index], bullet, bullet_color)
+    # ── text that always fits ──────────────────────────────────────────────────
+
+    def _hold(self, label, text):
+        if text:
+            self._held.append((label, text))
+
+    def _clean(self, text):
+        """Body copy without its inline citations, which go to the notes."""
+        clean, found = typeset.split_sources(text or '')
+        self._sources.extend(found)
+        return clean
+
+    def _prose(self, slide, left, top, width, height, text, *, max_pt=10.5,
+               min_pt=8.5, color=BLACK, bold=False, font=None,
+               align=PP_ALIGN.LEFT, spacing=1.2, italic=False, label='',
+               clean=True):
+        """Draw a block that fits its box, and return the height it used."""
+        text = self._clean(text) if clean else (text or '').strip()
+        if not text or height <= 0:
+            return 0
+        pt, shown, trimmed = typeset.fit_prose(text, int(width), int(height),
+                                               max_pt, min_pt, spacing, bold=bold)
+        if trimmed:
+            self._hold(label, text)
+        if not shown:
+            return 0
+        used = min(int(height), typeset.measure(shown, int(width), pt, spacing,
+                                                bold=bold))
+        box = add_textbox(slide, left, top, width, max(used, int(Inches(0.12))))
+        write_paragraph(box.text_frame, shown, Pt(pt), bold=bold, color=color,
+                        font=font or self.theme.body_font, align=align,
+                        space_after=0, line_spacing=spacing, first=True,
+                        italic=italic)
+        return used
 
     def _paragraph_block(self, slide, left, top, width, height, text, *,
                          max_pt=12.0, min_pt=8.0, color=BLACK, bold=False,
-                         align=PP_ALIGN.LEFT, font=None):
-        if not text:
-            return
-        size = fit_size(text, int(width), int(height), max_pt, min_pt)
-        box = add_textbox(slide, left, top, width, height)
-        write_paragraph(box.text_frame, text, size, bold=bold, color=color,
-                        font=font or self.theme.body_font, align=align,
-                        space_after=0, line_spacing=1.25, first=True)
+                         align=PP_ALIGN.LEFT, font=None, label=''):
+        return self._prose(slide, left, top, width, height, text, max_pt=max_pt,
+                           min_pt=min_pt, color=color, bold=bold, align=align,
+                           font=font, label=label)
 
-    def _stat(self, slide, left, top, width, value, label, detail='', source=''):
-        """Draw the house stat card.
+    def _prep(self, items, width, min_pt=8.5, max_lines=4, label=''):
+        """Clean list items, and cap any single item at a few lines.
 
-        Measured from the template: a white outer card, an inner light blue panel
-        holding the number in Impact Blue, then an italic label beneath it.
+        Each entry carries its own citations and full text, so whichever page it
+        lands on gets its notes, not the page that happened to be open.
         """
-        height = Inches(1.72)
-        self._panel(slide, left, top, width, height)
+        cap = int(typeset.line_pitch(min_pt, 1.2) * max_lines)
+        out = []
+        for item in items or []:
+            clean, found = typeset.split_sources(item or '')
+            if not clean:
+                continue
+            full = ''
+            if typeset.measure(clean, int(width), min_pt, 1.2, bullet=True) > cap:
+                full = clean
+                clean = typeset.trim_to(clean, int(width), cap, min_pt, 1.2, bullet=True)
+            out.append({'text': clean, 'full': full, 'sources': found, 'label': label})
+        return out
 
-        inner_w = width - 2 * PAD
-        inner_h = Inches(0.62)
-        inner = self._panel(slide, left + PAD, top + Inches(0.16), inner_w, inner_h,
-                            fill=self.stat_tint, shadow=False)
-        value_size = fit_size(value or '', int(inner_w), int(inner_h), 26, 12)
-        tf = prepare_text_frame(inner, margin=Inches(0.06), anchor=MSO_ANCHOR.MIDDLE)
-        write_paragraph(tf, value or 'Add stat', value_size, bold=True,
-                        color=IMPACT_BLUE, font=self.theme.heading_font,
-                        align=PP_ALIGN.CENTER, space_after=0, line_spacing=1.0,
-                        first=True)
+    def _register(self, entry):
+        self._sources.extend(entry.get('sources') or [])
+        if entry.get('full'):
+            self._hold(entry.get('label', ''), entry['full'])
 
-        label_top = top + Inches(0.86)
-        label_h = Inches(0.46)
-        label_size = fit_size(label or '', int(inner_w), int(label_h), 13, 8)
-        label_box = add_textbox(slide, left + PAD, label_top, inner_w, label_h)
-        write_paragraph(label_box.text_frame, label or '', label_size, color=BLACK,
-                        font=self.theme.body_font, align=PP_ALIGN.CENTER,
-                        space_after=0, line_spacing=1.1, first=True, italic=True)
+    def _split(self, entries, width, height, max_pt=10.5, min_pt=8.5, pages=0):
+        """Pages of entries, spread evenly rather than filled then spilled.
 
-        if detail:
-            self._paragraph_block(slide, left + PAD, top + Inches(1.3), inner_w,
-                                  Inches(0.26), detail, max_pt=8, min_pt=6.5,
-                                  color=GRAY_3, align=PP_ALIGN.CENTER)
-        if source:
-            self._citation(slide, left + PAD, top + height - Inches(0.26),
-                           inner_w, source)
+        Filling decides how many pages the list needs. The entries are then
+        shared out evenly across that many, or across `pages` when a paired
+        column needs more, so the last page is never one stray bullet. If an even
+        page would not fit, filling order stands.
+        """
+        greedy, rest = [], list(entries)
+        while rest:
+            _, count = typeset.fit_list([e['text'] for e in rest], int(width),
+                                        int(height), max_pt, min_pt)
+            greedy.append(rest[:count])
+            rest = rest[count:]
+        if not greedy:
+            return [[]]
+        target = max(len(greedy), pages)
+        if target == 1 or len(entries) < target:
+            return greedy
+        even, start = [], 0
+        for size in typeset.balance(len(entries), -(-len(entries) // target)):
+            even.append(entries[start:start + size])
+            start += size
+        for page in even:
+            _, count = typeset.fit_list([e['text'] for e in page], int(width),
+                                        int(height), max_pt, min_pt)
+            if count < len(page):
+                return greedy
+        return even
 
-    def _citation(self, slide, left, top, width, source):
-        """Render a proof point source, whether a link or an internal citation."""
-        if source.lower().startswith('http'):
-            self._link(slide, left, top, width, 'Source', source)
-            return
-        box = add_textbox(slide, left, top, width, Inches(0.22))
-        write_paragraph(box.text_frame, source, Pt(6), color=GRAY_3,
-                        font=self.theme.body_font, align=PP_ALIGN.CENTER,
-                        space_after=0, line_spacing=1.0, first=True)
+    def _bullets(self, slide, left, top, width, height, items, *, max_pt=10.5,
+                 min_pt=8.5, color=BLACK, bullet_color=None, bullet='•', label=''):
+        """Draw the items that fit and return the ones that did not."""
+        entries = items if items and isinstance(items[0], dict) else \
+            self._prep(items, width, min_pt, label=label)
+        if not entries:
+            return []
+        pt, count = typeset.fit_list([e['text'] for e in entries], int(width),
+                                     int(height), max_pt, min_pt)
+        shown = entries[:count]
+        box = add_textbox(slide, left, top, width, height)
+        tf = box.text_frame
+        for index, entry in enumerate(shown):
+            self._register(entry)
+            write_paragraph(tf, entry['text'], Pt(pt), color=color,
+                            font=self.theme.body_font, bullet=bullet, space_after=4,
+                            line_spacing=1.2, first=index == 0)
+            if bullet_color is not None:
+                brand.apply_bullet(tf.paragraphs[index], bullet, bullet_color)
+        return entries[count:]
+
+    def _group_pt(self, blocks, max_pt, min_pt, bold=False):
+        """One size for sibling blocks: the largest at which every one fits.
+
+        Cards side by side at different sizes read as a draft even when nothing
+        overflows. `blocks` is a list of (text, width, height).
+        """
+        best = max_pt
+        for text, width, height in blocks:
+            text = typeset.split_sources(text or '')[0]
+            if not text:
+                continue
+            size = min_pt
+            for pt in typeset._sizes(max_pt, min_pt):
+                if typeset.measure(text, int(width), pt, bold=bold) <= height:
+                    size = pt
+                    break
+            best = min(best, size)
+        return best
+
+    def _stack(self, slide, left, top, width, bottom, blocks, gap=Inches(0.09)):
+        """Place labelled blocks top to bottom at their measured heights.
+
+        When they all fit, each takes its natural height. When they do not, each
+        is guaranteed a couple of lines and the rest of the space is shared in
+        proportion to how much each wanted. Whatever a block does not use passes
+        to the next one, so there are no dead gaps and nothing overlaps.
+        """
+        prepared = []
+        for block in blocks:
+            text = self._clean(block.get('text')) if block.get('clean', True) \
+                else (block.get('text') or '').strip()
+            if text:
+                prepared.append(dict(block, text=text))
+        if not prepared:
+            return top
+        labels = sum(self.LABEL_H for block in prepared if block.get('label'))
+        avail = int(bottom - top - labels - gap * (len(prepared) - 1))
+        natural = [typeset.measure(b['text'], int(width), b.get('max_pt', 10.0),
+                                   bold=b.get('bold', False))
+                   for b in prepared]
+        if sum(natural) <= avail:
+            alloc = natural
+        else:
+            floors = [min(n, int(typeset.line_pitch(b.get('min_pt', 8.5), 1.2)
+                                 * b.get('floor_lines', 2)))
+                      for n, b in zip(natural, prepared)]
+            spare = max(0, avail - sum(floors))
+            extra = [n - f for n, f in zip(natural, floors)]
+            share = float(sum(extra) or 1)
+            alloc = [f + int(spare * e / share) for f, e in zip(floors, extra)]
+
+        y, carry = top, 0
+        for block, budget in zip(prepared, alloc):
+            if block.get('label'):
+                self._panel_label(slide, left, y, width, block['label'],
+                                  color=block.get('label_color', GRAY_3), size=Pt(6.5))
+                y += self.LABEL_H
+            room = budget + carry
+            used = self._prose(slide, left, y, width, room, block['text'],
+                               max_pt=block.get('max_pt', 10.0),
+                               min_pt=block.get('min_pt', 8.5),
+                               color=block.get('color', BLACK),
+                               bold=block.get('bold', False),
+                               font=block.get('font'),
+                               italic=block.get('italic', False),
+                               label=block.get('note', block.get('label', '').title()),
+                               clean=False)
+            carry = room - used
+            y += used + gap
+        return y
+
+    def _cites(self, slide, left, top, width, height, proof, *, size=7.5,
+               color=IMPACT_BLUE, stacked=False):
+        """Short, linked source labels for a proof slot.
+
+        "AssortSmart Eng, pp. 1 to 2" and "globenewswire.com" rather than the
+        raw path or a 180 character URL. The full string goes to the notes. A
+        narrow column takes one source a line, since a run of labels wrapped
+        mid name reads as one garbled citation.
+        """
+        entries = typeset.cites(proof)
+        if not entries:
+            return 0
+        self._sources.append(proof)
+        gap = int(Pt(3)) if stacked else 0
+
+        def need(labels):
+            if stacked:
+                return sum(typeset.measure(label, int(width), size, 1.15)
+                           for label in labels) + gap * (len(labels) - 1)
+            return typeset.measure('  ·  '.join(labels), int(width), size, 1.15)
+
+        shown = []
+        for entry in entries:
+            if need([label for label, _ in shown + [entry]]) > height and shown:
+                break
+            shown.append(entry)
+        box = add_textbox(slide, left, top, width, height)
+        tf = box.text_frame
+        p = tf.paragraphs[0]
+        p.line_spacing = 1.15
+        for index, (label, url) in enumerate(shown):
+            if index and stacked:
+                p = tf.add_paragraph()
+                p.line_spacing = 1.15
+                p.space_before = Pt(3)
+            elif index:
+                sep = p.add_run()
+                sep.text = '  ·  '
+                set_run_font(sep, Pt(size), False, GRAY_3, self.theme.body_font)
+            run = p.add_run()
+            run.text = label
+            set_run_font(run, Pt(size), False, color, self.theme.body_font)
+            if url:
+                run.hyperlink.address = url
+        return min(int(height), need([label for label, _ in shown]))
 
     def _link(self, slide, left, top, width, label, url):
         box = add_textbox(slide, left, top, width, Inches(0.24))
@@ -357,15 +549,15 @@ class BattlecardDeck:
         return box
 
     def _table(self, slide, left, top, width, headers, rows, col_ratios,
-               row_height=Inches(0.44), header_height=Inches(0.4), font_pt=10.0):
-        """Draw a table with explicit fills, borders and fonts.
+               row_heights, header_height=Inches(0.3), font_pt=7.5):
+        """A table with explicit fills, borders and fonts, and measured rows.
 
-        The theme table style is removed so Google Slides never substitutes its
-        own banding.
+        Every row height is measured beforehand, so the table ends where the
+        layout expects it to and nothing is drawn over its bottom rows.
         """
         total = len(rows) + 1
         frame = slide.shapes.add_table(total, len(headers), int(left), int(top),
-                                       int(width), int(header_height + row_height * len(rows)))
+                                       int(width), int(header_height + sum(row_heights)))
         table = frame.table
         tblPr = table._tbl.find(qn('a:tblPr'))
         if tblPr is not None:
@@ -378,21 +570,19 @@ class BattlecardDeck:
         for index, ratio in enumerate(col_ratios):
             table.columns[index].width = Emu(int(width * ratio / ratio_total))
         table.rows[0].height = int(header_height)
-        for index in range(1, total):
-            table.rows[index].height = int(row_height)
+        for index, height in enumerate(row_heights, start=1):
+            table.rows[index].height = int(height)
 
         for col, header in enumerate(headers):
-            cell = table.cell(0, col)
-            self._cell(cell, header, size=Pt(9.5), bold=True, color=WHITE,
-                       fill=IMPACT_BLUE, align=PP_ALIGN.LEFT if col == 0 else PP_ALIGN.CENTER)
-
+            self._cell(table.cell(0, col), header, size=Pt(8.5), bold=True,
+                       color=WHITE, fill=IMPACT_BLUE,
+                       align=PP_ALIGN.LEFT if col in (0, len(headers) - 1) else PP_ALIGN.CENTER)
         for r, row in enumerate(rows, start=1):
             band = WHITE if r % 2 else OFF_WHITE
             for c, value in enumerate(row):
                 text, color, bold, align = self._unpack_cell(value, c)
-                cell = table.cell(r, c)
-                self._cell(cell, text, size=Pt(font_pt), bold=bold, color=color,
-                           fill=band, align=align)
+                self._cell(table.cell(r, c), text, size=Pt(font_pt), bold=bold,
+                           color=color, fill=band, align=align)
         return table
 
     @staticmethod
@@ -404,19 +594,22 @@ class BattlecardDeck:
         return (str(value), BLACK, False,
                 PP_ALIGN.LEFT if column_index == 0 else PP_ALIGN.CENTER)
 
+    CELL_PAD_X = Inches(0.08)
+    CELL_PAD_Y = Inches(0.05)
+
     def _cell(self, cell, text, size, bold, color, fill, align):
         cell.fill.solid()
         cell.fill.fore_color.rgb = fill
-        cell.margin_left = Inches(0.1)
-        cell.margin_right = Inches(0.1)
-        cell.margin_top = Inches(0.05)
-        cell.margin_bottom = Inches(0.05)
+        cell.margin_left = self.CELL_PAD_X
+        cell.margin_right = self.CELL_PAD_X
+        cell.margin_top = self.CELL_PAD_Y
+        cell.margin_bottom = self.CELL_PAD_Y
         cell.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf = cell.text_frame
         tf.word_wrap = True
         p = tf.paragraphs[0]
         p.alignment = align
-        p.line_spacing = 1.12
+        p.line_spacing = 1.1
         run = p.add_run()
         run.text = text
         set_run_font(run, size, bold, color, self.theme.body_font)
@@ -440,50 +633,58 @@ class BattlecardDeck:
     # ── sections ───────────────────────────────────────────────────────────────
     # Every title is a (lead, emphasis) pair. The house template splits titles
     # into a Black phrase and an Impact Blue phrase, so the emphasis carries the
-    # point of the slide.
+    # point of the slide. A section that runs to several slides says "2 of 4" in
+    # the kicker rather than in the title, and numbering runs on across pages.
 
     def slide_cover(self):
         slide = self._slide(dark=True, patterned=True)
+        self._held, self._sources = [], []
         self._logo(slide, dark=True, height=Inches(0.3))
+        soft = mix(WHITE, IMPACT_BLUE, 0.4)
 
         kicker = 'Competitive battlecard  ·  %s' % SOLUTION_LABELS.get(self.solution, '')
         box = add_textbox(slide, MARGIN, Inches(1.22), CONTENT_W, Inches(0.22))
         write_paragraph(box.text_frame, kicker.upper(), Pt(8), bold=True, color=WHITE,
-                        font=self.theme.body_font, space_after=0, line_spacing=1.0, first=True)
+                        font=self.theme.body_font, space_after=0, line_spacing=1.0,
+                        first=True)
 
         title = self.meta['competitor']
-        title_size = fit_size(title, int(CONTENT_W), int(Inches(1.05)), 40, 20)
-        title_box = add_textbox(slide, MARGIN, Inches(1.52), CONTENT_W, Inches(1.05))
+        title_size = fit_size(title, int(CONTENT_W), int(Inches(0.9)), 40, 22)
+        title_box = add_textbox(slide, MARGIN, Inches(1.5), CONTENT_W, Inches(0.9))
         write_paragraph(title_box.text_frame, title, title_size, bold=True, color=WHITE,
-                        font=self.theme.heading_font, space_after=0, line_spacing=1.0, first=True)
+                        font=self.theme.heading_font, space_after=0, line_spacing=1.0,
+                        first=True)
 
         headline = self.meta.get('headline') or 'Know the rival. Lead with the outcome.'
-        self._paragraph_block(slide, MARGIN, Inches(2.66), Inches(5.6), Inches(0.62),
-                              headline, max_pt=12, min_pt=8.5,
-                              color=mix(WHITE, IMPACT_BLUE, 0.12))
+        self._prose(slide, MARGIN, Inches(2.5), Inches(6.2), Inches(0.9), headline,
+                    max_pt=12, min_pt=10, color=mix(WHITE, IMPACT_BLUE, 0.12),
+                    label='Headline')
 
-        facts = [
-            ('Impact Analytics product', self.meta.get('ia_product') or 'Portfolio'),
-            ('Their category', self.meta.get('competitor_category') or 'Add the category'),
+        # Only the facts that exist. A cover showing "Add an owner" is a draft.
+        facts = [(label, value) for label, value in (
+            ('Impact Analytics product', self.meta.get('ia_product')),
+            ('Their category', self.meta.get('competitor_category')),
             ('Prepared for', self.meta.get('audience')),
-            ('Owner', self.meta.get('owner') or 'Add an owner'),
+            ('Owner', self.meta.get('owner')),
             ('Updated', self.meta.get('date')),
-        ]
-        top = Inches(3.62)
-        col_w = (CONTENT_W - 4 * Inches(0.14)) / 5
-        for index, (label, value) in enumerate(facts):
-            left = MARGIN + index * (col_w + Inches(0.14))
-            label_box = add_textbox(slide, left, top, col_w, Inches(0.18))
-            write_paragraph(label_box.text_frame, label.upper(), Pt(6), bold=True,
-                            color=mix(WHITE, IMPACT_BLUE, 0.4), font=self.theme.body_font,
-                            space_after=0, line_spacing=1.0, first=True)
-            self._paragraph_block(slide, left, top + Inches(0.18), col_w, Inches(0.46),
-                                  value, max_pt=9, min_pt=6.5, color=WHITE)
+        ) if value]
+        widths = {'Their category': 2.2}
+        units = [widths.get(label, 1.0) for label, _ in facts]
+        gap = Inches(0.22)
+        span = CONTENT_W - gap * max(0, len(facts) - 1)
+        left = MARGIN
+        top = Inches(3.66)
+        for (label, value), unit in zip(facts, units):
+            col_w = int(span * unit / sum(units))
+            self._panel_label(slide, left, top, col_w, label, color=soft, size=Pt(6.5))
+            self._prose(slide, left, top + self.LABEL_H, col_w, Inches(0.72), value,
+                        max_pt=9.5, min_pt=8, color=WHITE, label=label)
+            left += col_w + gap
 
         strip = add_textbox(slide, MARGIN, Inches(4.86), CONTENT_W, Inches(0.22))
         write_paragraph(strip.text_frame, self.meta['confidentiality'].upper(), Pt(7),
-                        bold=True, color=mix(WHITE, IMPACT_BLUE, 0.4),
-                        font=self.theme.body_font, space_after=0, line_spacing=1.0, first=True)
+                        bold=True, color=soft, font=self.theme.body_font, space_after=0,
+                        line_spacing=1.0, first=True)
         self.page += 1
         self._notes(slide, 'Battlecard for %s. Owner: %s. Confirm every competitor claim '
                            'against a dated source before you use it in a deal.'
@@ -498,22 +699,31 @@ class BattlecardDeck:
         self._panel(slide, MARGIN, BODY_TOP, left_w, BODY_H)
         self._panel_label(slide, MARGIN + PAD, BODY_TOP + Inches(0.2), left_w - 2 * PAD,
                           'Working rules')
-        self._bullets(slide, MARGIN + PAD, BODY_TOP + Inches(0.46), left_w - 2 * PAD,
-                      BODY_H - Inches(0.66), items, max_pt=11, min_pt=8,
-                      bullet_color=IMPACT_BLUE)
+        rest = self._bullets(slide, MARGIN + PAD, BODY_TOP + Inches(0.48), left_w - 2 * PAD,
+                             BODY_H - Inches(0.66), items, max_pt=11, min_pt=9,
+                             bullet_color=IMPACT_BLUE, label='Working rule')
+        for entry in rest:
+            self._hold('Working rule', entry['full'] or entry['text'])
 
         right_left = MARGIN + left_w + GUTTER
         right_w = CONTENT_W - left_w - GUTTER
         self._panel(slide, right_left, BODY_TOP, right_w, BODY_H, fill=IMPACT_BLUE)
         self._panel_label(slide, right_left + PAD, BODY_TOP + Inches(0.2), right_w - 2 * PAD,
                           'Win theme', color=mix(WHITE, IMPACT_BLUE, 0.4))
-        self._paragraph_block(slide, right_left + PAD, BODY_TOP + Inches(0.5),
-                              right_w - 2 * PAD, BODY_H - Inches(0.72),
-                              self.meta.get('win_theme') or 'Name the one reason this buyer switches.',
-                              max_pt=12, min_pt=8, color=WHITE)
+        self._prose(slide, right_left + PAD, BODY_TOP + Inches(0.5), right_w - 2 * PAD,
+                    BODY_H - Inches(0.7),
+                    self.meta.get('win_theme') or 'Name the one reason this buyer switches.',
+                    max_pt=13, min_pt=10, color=WHITE, label='Win theme')
         self._notes(slide, 'Read this slide before the call, not during it.')
 
     def slide_snapshot(self):
+        """Company facts and recent moves, on one slide when they fit.
+
+        A researched snapshot runs to fifteen hundred characters of facts with
+        their caveats, which needs twice the height a half width panel has. Rather
+        than trim "Employees" to "Trackers disagree.", the facts take the full
+        width and the recent moves get a slide of their own.
+        """
         snapshot = self.card.get('snapshot', {})
         fields = [
             ('Headquarters', snapshot.get('headquarters')),
@@ -525,82 +735,119 @@ class BattlecardDeck:
             ('Go to market', snapshot.get('go_to_market')),
             ('Deployment', snapshot.get('deployment')),
         ]
-        filled = [(label, value) for label, value in fields if value]
+        facts = []
+        for label, value in fields:
+            clean, found = typeset.split_sources(value or '')
+            if clean:
+                facts.append((label, clean, found))
         moves = snapshot.get('recent_moves') or []
-        customers = snapshot.get('notable_customers')
-        if not filled and not moves and not customers:
+        customers, customer_sources = typeset.split_sources(
+            snapshot.get('notable_customers') or '')
+        if not facts and not moves and not customers:
+            return
+
+        narrow_w = Inches(5.95)
+        if self._facts_fit(facts, narrow_w - 2 * PAD, customers):
+            slide = self._page(('Competitor ', 'snapshot'))
+            self._facts_card(slide, MARGIN, narrow_w, facts, customers, customer_sources)
+            right_left = MARGIN + narrow_w + GUTTER
+            self._moves_card(slide, right_left, CONTENT_W - narrow_w - GUTTER, moves)
+            self._notes(slide, 'Every fact on this slide needs a dated source. '
+                               'Refresh it each quarter.')
             return
 
         slide = self._page(('Competitor ', 'snapshot'))
-        left_w = Inches(5.75)
-        self._panel(slide, MARGIN, BODY_TOP, left_w, BODY_H)
-        self._panel_label(slide, MARGIN + PAD, BODY_TOP + Inches(0.2), left_w - 2 * PAD,
-                          'Company facts')
+        self._facts_card(slide, MARGIN, CONTENT_W, facts, customers, customer_sources)
+        self._notes(slide, 'Every fact on this slide needs a dated source. Refresh it each quarter.')
+        if moves:
+            slide = self._page(('Recent ', 'moves'))
+            self._moves_card(slide, MARGIN, CONTENT_W, moves)
+            self._notes(slide, 'Check their newsroom and LinkedIn before every call. A move '
+                               'older than a quarter is background, not news.')
 
-        grid_top = BODY_TOP + Inches(0.5)
-        cell_w = (left_w - 2 * PAD - Inches(0.2)) / 2
-        display = (filled or [(label, 'Add detail') for label, _ in fields[:6]])[:8]
-        rows = [display[index:index + 2] for index in range(0, len(display), 2)]
+    SNAPSHOT_ROW_GAP = Inches(0.1)
 
-        # A row is as tall as the taller of its two facts. These values carry real
-        # sourced detail, "295 million dollars in January 2022 at a 2.7 billion
-        # dollar valuation" rather than a single word, and a fixed row height used
-        # to run that text straight over the next row's label. One size is chosen
-        # for the whole grid so the column still reads as a grid.
-        label_h = Inches(0.15)
-        row_gap = Inches(0.07)
-        reserved = Inches(0.56) if customers else Inches(0.1)
-        room = int(BODY_TOP + BODY_H - grid_top - reserved)
-        size, heights = 9.5, []
-        while True:
-            # Measured against a narrower column than the text actually gets,
-            # plus a line of slack. estimate_lines is an approximation and
-            # PowerPoint's own wrap is the authority, so the measurement has to
-            # err long: a fact that wraps past its box lands on the next row's
-            # label, which is worse than a little unused white space.
-            measure_w = int(cell_w * 0.9)
-            heights = [max(text_height(value, measure_w, size, extra_lines=1)
-                           for _, value in row)
-                       for row in rows]
-            total = sum(height + int(label_h) + int(row_gap) for height in heights)
-            if total <= room or size <= 7:
+    def _facts_fit(self, facts, inner_w, customers):
+        """True when every fact fits in full at a legible size in this width."""
+        cell_w = (inner_w - Inches(0.24)) / 2
+        rows = [facts[i:i + 2] for i in range(0, len(facts), 2)]
+        need = sum(self.LABEL_H + self.SNAPSHOT_ROW_GAP +
+                   max(typeset.measure(text, int(cell_w), 8.5) for _, text, _ in row)
+                   for row in rows)
+        if customers:
+            need += self.LABEL_H + typeset.measure(customers, int(inner_w), 8.5)
+        return need <= BODY_H - Inches(0.6)
+
+    def _facts_card(self, slide, left, width, facts, customers, customer_sources):
+        self._panel(slide, left, BODY_TOP, width, BODY_H)
+        inner_left = left + PAD
+        inner_w = width - 2 * PAD
+        self._panel_label(slide, inner_left, BODY_TOP + Inches(0.18), inner_w, 'Company facts')
+        col_gap = Inches(0.24)
+        cell_w = (inner_w - col_gap) / 2
+        bottom = BODY_TOP + BODY_H - Inches(0.14)
+        cust_h = 0
+        if customers:
+            self._sources.extend(customer_sources)
+            cust_h = self.LABEL_H + min(typeset.measure(customers, int(inner_w), 9),
+                                        int(Inches(0.5))) + Inches(0.08)
+
+        rows = [facts[i:i + 2] for i in range(0, len(facts), 2)]
+        y = BODY_TOP + Inches(0.46)
+        row_gap = self.SNAPSHOT_ROW_GAP
+        # Rows get the height they need, not an equal share: "Dallas, Texas." and
+        # a funding history are not the same size.
+        avail = int(bottom - cust_h - y - len(rows) * (self.LABEL_H + row_gap))
+        # One size for the whole grid: the largest at which every fact fits.
+        grid_pt = 8.5
+        for pt in typeset._sizes(10, 8.5):
+            if sum(max(typeset.measure(text, int(cell_w), pt) for _, text, _ in row)
+                   for row in rows) <= avail:
+                grid_pt = pt
                 break
-            size -= 0.5
-
-        top = grid_top
-        for row, height in zip(rows, heights):
-            for col, (label, value) in enumerate(row):
-                left = MARGIN + PAD + col * (cell_w + Inches(0.2))
-                label_box = add_textbox(slide, left, top, cell_w, Inches(0.16))
-                write_paragraph(label_box.text_frame, label.upper(), Pt(6), bold=True,
-                                color=GRAY_3, font=self.theme.body_font,
-                                space_after=0, line_spacing=1.0, first=True)
-                self._paragraph_block(slide, left, top + label_h, cell_w,
-                                      Emu(height), value, max_pt=size, min_pt=7)
-            top = Emu(int(top) + height + int(label_h) + int(row_gap))
+        natural = [max(typeset.measure(text, int(cell_w), grid_pt) for _, text, _ in row)
+                   for row in rows]
+        if sum(natural) <= avail:
+            alloc = natural
+        else:
+            floors = [min(n, int(typeset.line_pitch(8.5, 1.2) * 3)) for n in natural]
+            spare = max(0, avail - sum(floors))
+            extra = [n - f for n, f in zip(natural, floors)]
+            share = float(sum(extra) or 1)
+            alloc = [f + int(spare * e / share) for f, e in zip(floors, extra)]
+        carry = 0
+        for row, budget in zip(rows, alloc):
+            room = budget + carry
+            used = []
+            for col, (label, text, found) in enumerate(row):
+                self._sources.extend(found)
+                x = inner_left + col * (cell_w + col_gap)
+                self._panel_label(slide, x, y, cell_w, label, color=GRAY_3, size=Pt(6.5))
+                used.append(self._prose(slide, x, y + self.LABEL_H, cell_w, room, text,
+                                        max_pt=grid_pt, min_pt=grid_pt, label=label,
+                                        clean=False))
+            carry = room - max(used)
+            y += self.LABEL_H + max(used) + row_gap
 
         if customers:
-            top = Emu(int(top) + int(Inches(0.05)))
-            available = BODY_TOP + BODY_H - top - Inches(0.14)
-            if available > Inches(0.3):
-                label_box = add_textbox(slide, MARGIN + PAD, top, left_w - 2 * PAD, Inches(0.16))
-                write_paragraph(label_box.text_frame, 'NAMED CUSTOMERS', Pt(6), bold=True,
-                                color=GRAY_3, font=self.theme.body_font,
-                                space_after=0, line_spacing=1.0, first=True)
-                self._paragraph_block(slide, MARGIN + PAD, top + Inches(0.15),
-                                      left_w - 2 * PAD, available - Inches(0.15),
-                                      customers, max_pt=9, min_pt=7)
+            self._panel_label(slide, inner_left, y, inner_w, 'Named customers',
+                              color=GRAY_3, size=Pt(6.5))
+            self._prose(slide, inner_left, y + self.LABEL_H, inner_w,
+                        bottom - y - self.LABEL_H, customers, max_pt=10, min_pt=8.5,
+                        label='Named customers', clean=False)
 
-        right_left = MARGIN + left_w + GUTTER
-        right_w = CONTENT_W - left_w - GUTTER
-        self._panel(slide, right_left, BODY_TOP, right_w, BODY_H)
-        self._panel_label(slide, right_left + PAD, BODY_TOP + Inches(0.2),
-                          right_w - 2 * PAD, 'Recent moves')
-        self._bullets(slide, right_left + PAD, BODY_TOP + Inches(0.46), right_w - 2 * PAD,
-                      BODY_H - Inches(0.66),
-                      moves or ['Add funding, product or leadership news, with a source link.'],
-                      max_pt=9.5, min_pt=7, bullet_color=self.theme.accent)
-        self._notes(slide, 'Every fact on this slide needs a dated source. Refresh it each quarter.')
+    def _moves_card(self, slide, left, width, moves):
+        inner = width - 2 * PAD
+        self._panel(slide, left, BODY_TOP, width, BODY_H)
+        self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.18), inner, 'Recent moves')
+        rest = self._bullets(slide, left + PAD, BODY_TOP + Inches(0.46), inner,
+                             BODY_H - Inches(0.62),
+                             moves or ['Add funding, product or leadership news, with a source link.'],
+                             max_pt=11, min_pt=9, bullet_color=self.theme.accent,
+                             label='Recent move')
+        for entry in rest:
+            self._register(entry)
+            self._hold('Recent move', entry['full'] or entry['text'])
 
     def slide_positioning(self):
         positioning = self.card.get('positioning', {})
@@ -608,121 +855,225 @@ class BattlecardDeck:
             return
         slide = self._page(('Positioning ', 'face off'))
         col_w = (CONTENT_W - GUTTER) / 2
-        panel_h = BODY_H - Inches(1.02)
+        panel_h = BODY_H - Inches(1.1)
+        inner = col_w - 2 * PAD
 
         self._panel(slide, MARGIN, BODY_TOP, col_w, panel_h)
-        self._panel_label(slide, MARGIN + PAD, BODY_TOP + Inches(0.2), col_w - 2 * PAD,
-                          'They say', color=GRAY_3)
-        self._paragraph_block(slide, MARGIN + PAD, BODY_TOP + Inches(0.48), col_w - 2 * PAD,
-                              panel_h - Inches(0.68),
-                              positioning.get('their_claim') or 'Paste their positioning line.',
-                              max_pt=12, min_pt=8)
+        self._panel_label(slide, MARGIN + PAD, BODY_TOP + Inches(0.2), inner, 'They say',
+                          color=GRAY_3)
+        self._prose(slide, MARGIN + PAD, BODY_TOP + Inches(0.48), inner,
+                    panel_h - Inches(0.64),
+                    positioning.get('their_claim') or 'Paste their positioning line.',
+                    max_pt=12.5, min_pt=10, label='They say')
 
         right = MARGIN + col_w + GUTTER
         self._panel(slide, right, BODY_TOP, col_w, panel_h, fill=IMPACT_BLUE)
-        self._panel_label(slide, right + PAD, BODY_TOP + Inches(0.2), col_w - 2 * PAD,
-                          'We say', color=mix(WHITE, IMPACT_BLUE, 0.4))
-        self._paragraph_block(slide, right + PAD, BODY_TOP + Inches(0.48), col_w - 2 * PAD,
-                              panel_h - Inches(0.68),
-                              positioning.get('our_claim') or 'Write the Impact Analytics line.',
-                              max_pt=12, min_pt=8, color=WHITE)
+        self._panel_label(slide, right + PAD, BODY_TOP + Inches(0.2), inner, 'We say',
+                          color=mix(WHITE, IMPACT_BLUE, 0.4))
+        self._prose(slide, right + PAD, BODY_TOP + Inches(0.48), inner,
+                    panel_h - Inches(0.64),
+                    positioning.get('our_claim') or 'Write the Impact Analytics line.',
+                    max_pt=12.5, min_pt=10, color=WHITE, label='We say')
 
         wedge_top = BODY_TOP + panel_h + Inches(0.14)
         wedge_h = BODY_H - panel_h - Inches(0.14)
         self._panel(slide, MARGIN, wedge_top, CONTENT_W, wedge_h)
-        self._panel_label(slide, MARGIN + PAD, wedge_top + Inches(0.16), CONTENT_W - 2 * PAD,
+        self._panel_label(slide, MARGIN + PAD, wedge_top + Inches(0.14), CONTENT_W - 2 * PAD,
                           'The wedge')
-        self._paragraph_block(slide, MARGIN + PAD, wedge_top + Inches(0.42),
-                              CONTENT_W - 2 * PAD, wedge_h - Inches(0.56),
-                              positioning.get('wedge') or 'Name the gap this buyer feels weekly.',
-                              max_pt=11, min_pt=8)
+        self._prose(slide, MARGIN + PAD, wedge_top + Inches(0.38), CONTENT_W - 2 * PAD,
+                    wedge_h - Inches(0.5),
+                    positioning.get('wedge') or 'Name the gap this buyer feels weekly.',
+                    max_pt=11, min_pt=9, label='The wedge')
         self._notes(slide, 'Say the wedge in the buyer own words. Quote them back.')
+
+    def _two_lists(self, title, left_spec, right_spec, note):
+        """Two bulleted cards side by side, paginated so every item is shown.
+
+        Each spec is (label, items, label colour, bullet colour).
+        """
+        col_w = (CONTENT_W - GUTTER) / 2
+        inner = col_w - 2 * PAD
+        list_h = BODY_H - Inches(0.66)
+        prepared = [self._prep(items, inner, 9, max_lines=4, label=label)
+                    for label, items, _, _ in (left_spec, right_spec)]
+        split = [self._split(entries, inner, list_h, 11, 9) for entries in prepared]
+        total = max(len(split[0]), len(split[1]))
+        # Both columns share the page count, so each spreads across all of them.
+        split = [self._split(entries, inner, list_h, 11, 9, pages=total)
+                 for entries in prepared]
+        total = max(len(split[0]), len(split[1]))
+        for page in range(total):
+            slide = self._page(title, counter=(page + 1, total))
+            for index, (label, items, label_color, bullet_color) in enumerate((left_spec, right_spec)):
+                left = MARGIN + index * (col_w + GUTTER)
+                self._panel(slide, left, BODY_TOP, col_w, BODY_H)
+                self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.2), inner,
+                                  label, color=label_color)
+                group = split[index][page] if page < len(split[index]) else []
+                if group:
+                    self._bullets(slide, left + PAD, BODY_TOP + Inches(0.5), inner,
+                                  list_h, group, max_pt=11, min_pt=9,
+                                  bullet_color=bullet_color)
+                elif page == 0:
+                    self._prose(slide, left + PAD, BODY_TOP + Inches(0.5), inner,
+                                Inches(0.4), 'Nothing recorded yet.', max_pt=9.5,
+                                min_pt=9, color=GRAY_3)
+            self._notes(slide, note)
 
     def slide_strengths_weaknesses(self):
         strengths = self.card.get('their_strengths') or []
         weaknesses = self.card.get('their_weaknesses') or []
         if not strengths and not weaknesses:
             return
-        slide = self._page(('Where they win, ', 'where they fall short'))
-        col_w = (CONTENT_W - GUTTER) / 2
-        for index, (label, items) in enumerate((
-                ('Where %s wins' % self.meta['competitor'], strengths),
-                ('Where %s falls short' % self.meta['competitor'], weaknesses))):
-            left = MARGIN + index * (col_w + GUTTER)
-            self._panel(slide, left, BODY_TOP, col_w, BODY_H)
-            self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.2), col_w - 2 * PAD,
-                              label, color=GRAY_3 if index == 0 else IMPACT_BLUE)
-            self._bullets(slide, left + PAD, BODY_TOP + Inches(0.5), col_w - 2 * PAD,
-                          BODY_H - Inches(0.7),
-                          items or ['Add at least three points.'],
-                          max_pt=11, min_pt=8,
-                          bullet_color=GRAY_3 if index == 0 else IMPACT_BLUE)
-        self._notes(slide, 'An honest read of their strengths buys credibility for the rest.')
+        name = self.meta['competitor']
+        self._two_lists(('Where they win, ', 'where they fall short'),
+                        ('Where %s wins' % name, strengths, GRAY_3, GRAY_3),
+                        ('Where %s falls short' % name, weaknesses, IMPACT_BLUE, IMPACT_BLUE),
+                        'An honest read of their strengths buys credibility for the rest.')
 
     def slide_why_we_win(self):
-        advantages = self.card.get('our_advantages') or []
+        advantages = [row for row in (self.card.get('our_advantages') or [])
+                      if row.get('title') or row.get('detail')]
         if not advantages:
             return
-        for group in chunk(advantages, 3):
-            slide = self._page(('Why Impact Analytics ', 'wins'))
-            count = len(group)
-            col_w = (CONTENT_W - GUTTER * (count - 1)) / count
+        sizes = typeset.balance(len(advantages), 3)
+        number, start = 0, 0
+        for page, size in enumerate(sizes, 1):
+            group = advantages[start:start + size]
+            start += size
+            slide = self._page(('Why Impact Analytics ', 'wins'), counter=(page, len(sizes)))
+            col_w = (CONTENT_W - GUTTER * (size - 1)) / size
+            inner = col_w - 2 * PAD
+            # Titles are fitted as a set, at one size, and every detail starts at
+            # the same height. Cards whose text begins at different depths read
+            # as a draft even when nothing overflows.
+            title_top = BODY_TOP + Inches(0.32)
+            title_room = int(Inches(0.72))
+            title_pt = 13.0
+            while title_pt > 10.5 and any(
+                    typeset.measure(self._clean(row.get('title')), int(inner), title_pt,
+                                    bold=True) > title_room for row in group):
+                title_pt -= 0.5
+            title_h = max(typeset.measure(self._clean(row.get('title')), int(inner),
+                                          title_pt, bold=True) for row in group)
+            detail_top = title_top + min(title_h, title_room) + Inches(0.14)
+            proof_room = lambda row: Inches(0.56) if (row.get('proof') or '').strip() else 0
+            detail_pt = self._group_pt(
+                [(row.get('detail'), inner,
+                  BODY_TOP + BODY_H - Inches(0.14) - proof_room(row) - detail_top)
+                 for row in group], 10, 8.5)
             for index, row in enumerate(group):
+                number += 1
                 left = MARGIN + index * (col_w + GUTTER)
                 self._panel(slide, left, BODY_TOP, col_w, BODY_H)
-                self._pill(slide, left + PAD, BODY_TOP - Inches(0.1),
-                           col_w - 2 * PAD, '0%d' % (index + 1), width=Inches(0.52))
-                self._paragraph_block(slide, left + PAD, BODY_TOP + Inches(0.34),
-                                      col_w - 2 * PAD, Inches(0.6),
-                                      row.get('title', ''), max_pt=13, min_pt=9.5,
-                                      bold=True, font=self.theme.heading_font)
-                proof = row.get('proof')
-                detail_h = BODY_H - Inches(1.78) if proof else BODY_H - Inches(1.1)
-                self._paragraph_block(slide, left + PAD, BODY_TOP + Inches(0.98),
-                                      col_w - 2 * PAD, detail_h,
-                                      row.get('detail', ''), max_pt=10, min_pt=7)
+                self._pill(slide, left + PAD, BODY_TOP - Inches(0.1), inner,
+                           '%02d' % number, width=Inches(0.52))
+                self._prose(slide, left + PAD, title_top, inner, title_room,
+                            row.get('title'), max_pt=title_pt, min_pt=min(title_pt, 10.5),
+                            bold=True, font=self.theme.heading_font,
+                            label='Advantage %02d' % number)
+                proof = (row.get('proof') or '').strip()
+                proof_h = Inches(0.56) if proof else 0
+                bottom = BODY_TOP + BODY_H - Inches(0.14) - proof_h
+                self._prose(slide, left + PAD, detail_top, inner, bottom - detail_top,
+                            row.get('detail'), max_pt=detail_pt, min_pt=detail_pt,
+                            label='Advantage %02d, detail' % number)
                 if proof:
-                    proof_top = BODY_TOP + BODY_H - Inches(0.8)
-                    label = add_textbox(slide, left + PAD, proof_top,
-                                        col_w - 2 * PAD, Inches(0.16))
-                    write_paragraph(label.text_frame, 'PROOF', Pt(6), bold=True,
-                                    color=GRAY_3, font=self.theme.body_font,
-                                    space_after=0, line_spacing=1.0, first=True)
-                    self._paragraph_block(slide, left + PAD, proof_top + Inches(0.16),
-                                          col_w - 2 * PAD, Inches(0.56), proof,
-                                          max_pt=8.5, min_pt=6.5, color=IMPACT_BLUE)
+                    proof_top = BODY_TOP + BODY_H - Inches(0.14) - proof_h
+                    self._panel_label(slide, left + PAD, proof_top, inner, 'Proof',
+                                      color=GRAY_3, size=Pt(6.5))
+                    self._cites(slide, left + PAD, proof_top + self.LABEL_H, inner,
+                                proof_h - self.LABEL_H, proof)
             self._notes(slide, 'Lead with the outcome. Name the product second.')
+
+    # The comparison matrix has its own pagination, by measured row height.
+    MATRIX_COLS = (0.25, 0.115, 0.115, 0.52)
+    MATRIX_PT = 7.5
+    MATRIX_NOTE_LINES = 6
 
     def slide_comparison(self):
         rows = self.card.get('comparison') or []
         if not rows:
             return
-        pages = chunk(rows, 7)
-        for index, group in enumerate(pages):
-            emphasis = self.meta['competitor']
-            if len(pages) > 1:
-                emphasis = '%s (%d of %d)' % (emphasis, index + 1, len(pages))
-            slide = self._page(('Head to head: ', emphasis))
-            headers = ['Capability', 'Impact Analytics', self.meta['competitor'], 'What to say']
+        widths = [int(CONTENT_W * r / sum(self.MATRIX_COLS)) - 2 * self.CELL_PAD_X
+                  for r in self.MATRIX_COLS]
+        cap = int(typeset.line_pitch(self.MATRIX_PT, 1.1) * self.MATRIX_NOTE_LINES)
+        entries = []
+        for row in rows:
+            note, found = typeset.split_sources(row.get('note', ''))
+            full = ''
+            if typeset.measure(note, widths[3], self.MATRIX_PT, 1.1) > cap:
+                full = note
+                note = typeset.trim_to(note, widths[3], cap, self.MATRIX_PT, 1.1)
+            capability = (row.get('capability') or '').strip()
+            height = max(typeset.measure(capability, widths[0], 8, 1.1),
+                         typeset.measure(note, widths[3], self.MATRIX_PT, 1.1),
+                         int(typeset.line_pitch(8, 1.1)))
+            height = max(int(Inches(0.3)), height + 2 * self.CELL_PAD_Y + int(Inches(0.04)))
+            entries.append({'row': row, 'capability': capability, 'note': note,
+                            'full': full, 'sources': found, 'height': height})
+
+        header_h = Inches(0.3)
+        legend_h = Inches(0.24)
+        room = int(BODY_H - header_h - legend_h)
+        pages = self._matrix_pages(entries, room)
+        name = self.meta['competitor']
+        for index, group in enumerate(pages, 1):
+            slide = self._page(('Head to head: ', 'AssortSmart vs %s' % name
+                                if self.meta.get('ia_product') == 'AssortSmart' else name),
+                               counter=(index, len(pages)))
             table_rows = []
-            for row in group:
+            for entry in group:
+                self._sources.extend(entry['sources'])
+                if entry['full']:
+                    self._hold(entry['capability'], entry['full'])
+                row = entry['row']
                 table_rows.append([
-                    {'text': row.get('capability', ''), 'bold': True, 'align': PP_ALIGN.LEFT},
+                    {'text': entry['capability'], 'bold': True, 'align': PP_ALIGN.LEFT},
                     self._rating_cell(row.get('ia')),
                     self._rating_cell(row.get('competitor')),
-                    {'text': row.get('note', ''), 'align': PP_ALIGN.LEFT, 'color': BLACK},
+                    {'text': entry['note'], 'align': PP_ALIGN.LEFT, 'color': BLACK},
                 ])
-            header_h = Inches(0.3)
-            row_height = min(Inches(0.42), max(Inches(0.26),
-                                               (BODY_H - header_h - Inches(0.3)) / max(1, len(group))))
-            self._table(slide, MARGIN, BODY_TOP, CONTENT_W, headers, table_rows,
-                        col_ratios=[0.30, 0.14, 0.14, 0.42],
-                        row_height=row_height, header_height=header_h, font_pt=8)
-            legend_top = BODY_TOP + header_h + row_height * len(group) + Inches(0.1)
-            if legend_top < FOOTER_TEXT_Y - Inches(0.24):
-                self._legend(slide, MARGIN, legend_top)
+            product = self.meta.get('ia_product') or 'Impact Analytics'
+            self._table(slide, MARGIN, BODY_TOP, CONTENT_W,
+                        ['Capability', product, name, 'What to say'],
+                        table_rows, col_ratios=list(self.MATRIX_COLS),
+                        row_heights=[e['height'] for e in group],
+                        header_height=header_h, font_pt=self.MATRIX_PT)
+            # A fixed band under the body, never after the table, so the legend
+            # cannot land on a row however tall the rows run.
+            self._legend(slide, MARGIN, BODY_TOP + BODY_H - Inches(0.2))
             self._notes(slide, 'Show this only when the buyer asks for a direct comparison. '
                                'Defend every row with evidence.')
+
+    @staticmethod
+    def _matrix_pages(entries, room):
+        """Pages of rows by height, balanced so no page is left with a stub.
+
+        Greedy filling decides how many pages are needed; then each page aims for
+        an even share of the total height, which is how 22 rows became 4 pages of
+        5 or 6 instead of 7, 7, 7 and a lone row.
+        """
+        greedy, used = 1, 0
+        for entry in entries:
+            if used + entry['height'] > room and used:
+                greedy += 1
+                used = 0
+            used += entry['height']
+        total = sum(e['height'] for e in entries)
+        target = total / float(greedy)
+        pages, current, used = [], [], 0
+        for index, entry in enumerate(entries):
+            left_pages = greedy - len(pages)
+            if current and (used + entry['height'] > room or
+                            (used + entry['height'] / 2.0 > target and left_pages > 1)):
+                pages.append(current)
+                current, used = [], 0
+            current.append(entry)
+            used += entry['height']
+        if current:
+            pages.append(current)
+        return pages
 
     def _rating_cell(self, rating):
         key = rating if rating in RATING_LABELS else 'unknown'
@@ -730,12 +1081,12 @@ class BattlecardDeck:
                 'bold': key == 'strong', 'align': PP_ALIGN.CENTER}
 
     def _legend(self, slide, left, top):
-        box = add_textbox(slide, left, top, CONTENT_W, Inches(0.2))
+        box = add_textbox(slide, left, top, CONTENT_W, Inches(0.16))
         p = box.text_frame.paragraphs[0]
         p.line_spacing = 1.0
         for index, key in enumerate(('strong', 'partial', 'none', 'unknown')):
             run = p.add_run()
-            run.text = ('   ' if index else '') + RATING_LABELS[key]
+            run.text = ('      ' if index else '') + RATING_LABELS[key]
             set_run_font(run, Pt(7), True, RATING_COLORS[key], self.theme.body_font)
             gloss = p.add_run()
             gloss.text = {'strong': ' ships today', 'partial': ' partial coverage',
@@ -743,112 +1094,194 @@ class BattlecardDeck:
             set_run_font(gloss, Pt(7), False, GRAY_3, self.theme.body_font)
 
     def slide_objections(self):
-        rows = self.card.get('objections') or []
+        rows = [row for row in (self.card.get('objections') or []) if row.get('objection')]
         if not rows:
             return
-        for group in chunk(rows, 2):
-            slide = self._page(('Objection ', 'handling'))
-            count = len(group)
-            row_h = (BODY_H - GUTTER * (count - 1)) / count
+        sizes = typeset.balance(len(rows), 2)
+        start = 0
+        for page, size in enumerate(sizes, 1):
+            group = rows[start:start + size]
+            start += size
+            slide = self._page(('Objection ', 'handling'), counter=(page, len(sizes)))
+            row_h = (BODY_H - GUTTER * (size - 1)) / size
+            inner = CONTENT_W - 2 * PAD
+            col_gap = Inches(0.22)
+            ratios = (0.27, 0.51, 0.22)
+            widths = [int((inner - 2 * col_gap) * r) for r in ratios]
+            text_h = row_h - Inches(0.28) - self.LABEL_H
+            they_pt = self._group_pt([(r.get('objection'), widths[0], text_h) for r in group],
+                                     11, 9.5, bold=True)
+            we_pt = self._group_pt([(r.get('response'), widths[1], text_h) for r in group],
+                                   10, 8.5)
             for index, row in enumerate(group):
                 top = BODY_TOP + index * (row_h + GUTTER)
                 self._panel(slide, MARGIN, top, CONTENT_W, row_h)
-                col_w = (CONTENT_W - 2 * PAD) / 3
-                blocks = (
-                    ('They say', row.get('objection', ''), GRAY_3, BLACK),
-                    ('We say', row.get('response', ''), IMPACT_BLUE, BLACK),
-                    ('Proof', row.get('proof', ''), GRAY_3, IMPACT_BLUE),
-                )
-                for col, (label, text, label_color, text_color) in enumerate(blocks):
-                    left = MARGIN + PAD + col * col_w
-                    inner_w = col_w - Inches(0.16)
-                    self._panel_label(slide, left, top + Inches(0.12), inner_w, label,
-                                      color=label_color, size=Pt(6.5))
-                    self._paragraph_block(slide, left, top + Inches(0.32), inner_w,
-                                          row_h - Inches(0.46), text,
-                                          max_pt=9.5, min_pt=7, color=text_color)
+                bottom = top + row_h - Inches(0.14)
+                x = MARGIN + PAD
+                self._stack(slide, x, top + Inches(0.14), widths[0], bottom, [
+                    dict(label='They say', text=row.get('objection'), max_pt=they_pt,
+                         min_pt=they_pt, bold=True, font=self.theme.heading_font,
+                         label_color=GRAY_3, note='They say')])
+                x += widths[0] + col_gap
+                self._stack(slide, x, top + Inches(0.14), widths[1], bottom, [
+                    dict(label='We say', text=row.get('response'), max_pt=we_pt,
+                         min_pt=we_pt, label_color=IMPACT_BLUE,
+                         note='We say, to "%s"' % (row.get('objection') or '')[:60])])
+                x += widths[1] + col_gap
+                if row.get('proof'):
+                    self._panel_label(slide, x, top + Inches(0.14), widths[2], 'Proof',
+                                      color=GRAY_3, size=Pt(6.5))
+                    self._cites(slide, x, top + Inches(0.14) + self.LABEL_H, widths[2],
+                                bottom - top - Inches(0.14) - self.LABEL_H, row['proof'],
+                                size=8, stacked=True)
             self._notes(slide, 'Answer the objection once, then return to the outcome.')
 
     def slide_landmines(self):
-        rows = self.card.get('landmines') or []
+        rows = [row for row in (self.card.get('landmines') or []) if row.get('question')]
         if not rows:
             return
-        for group in chunk(rows, 3):
-            slide = self._page(('Landmines ', 'to set'))
-            count = len(group)
-            col_w = (CONTENT_W - GUTTER * (count - 1)) / count
-            question_h = Inches(1.0)
-            why_top = BODY_TOP + question_h + Inches(0.16)
-            why_h = Inches(0.82)
-            listen_top = why_top + why_h + Inches(0.12)
+        sizes = typeset.balance(len(rows), 3)
+        start = 0
+        for page, size in enumerate(sizes, 1):
+            group = rows[start:start + size]
+            start += size
+            slide = self._page(('Landmines ', 'to set'), counter=(page, len(sizes)))
+            col_w = (CONTENT_W - GUTTER * (size - 1)) / size
+            inner = col_w - 2 * PAD
+            gap = Inches(0.14)
+            room = BODY_H - Inches(0.3) - 3 * self.LABEL_H - 2 * gap
+            ask_pt = self._group_pt([(r.get('question'), inner,
+                                      typeset.line_pitch(12, 1.2) * 4) for r in group],
+                                    12, 10, bold=True)
+            body_pt = self._group_body_pt(group, inner, room, ask_pt)
             for index, row in enumerate(group):
                 left = MARGIN + index * (col_w + GUTTER)
                 self._panel(slide, left, BODY_TOP, col_w, BODY_H)
-                self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.16), col_w - 2 * PAD,
-                                  'Ask this', size=Pt(6.5))
-                self._paragraph_block(slide, left + PAD, BODY_TOP + Inches(0.36),
-                                      col_w - 2 * PAD, question_h - Inches(0.2),
-                                      row.get('question', ''), max_pt=11, min_pt=8,
-                                      bold=True, font=self.theme.heading_font)
-                self._panel_label(slide, left + PAD, why_top, col_w - 2 * PAD,
-                                  'Why it lands', color=GRAY_3, size=Pt(6.5))
-                self._paragraph_block(slide, left + PAD, why_top + Inches(0.18),
-                                      col_w - 2 * PAD, why_h - Inches(0.18),
-                                      row.get('why', ''), max_pt=9.5, min_pt=7)
-                self._panel_label(slide, left + PAD, listen_top, col_w - 2 * PAD,
-                                  'Listen for', color=GRAY_3, size=Pt(6.5))
-                self._paragraph_block(slide, left + PAD, listen_top + Inches(0.18),
-                                      col_w - 2 * PAD,
-                                      BODY_TOP + BODY_H - listen_top - Inches(0.3),
-                                      row.get('listen_for', ''), max_pt=9.5, min_pt=7,
-                                      color=IMPACT_BLUE)
+                self._stack(slide, left + PAD, BODY_TOP + Inches(0.16), inner,
+                            BODY_TOP + BODY_H - Inches(0.14), [
+                                dict(label='Ask this', label_color=IMPACT_BLUE,
+                                     text=row.get('question'), max_pt=ask_pt,
+                                     min_pt=ask_pt, bold=True,
+                                     font=self.theme.heading_font,
+                                     floor_lines=4, note='Question'),
+                                dict(label='Why it lands', text=row.get('why'),
+                                     max_pt=body_pt, min_pt=body_pt,
+                                     note='Why it lands, "%s"' % row['question'][:50]),
+                                dict(label='Listen for', text=row.get('listen_for'),
+                                     max_pt=body_pt, min_pt=body_pt, color=IMPACT_BLUE,
+                                     note='Listen for, "%s"' % row['question'][:50]),
+                            ], gap=gap)
             self._notes(slide, 'Set one landmine per call. More than one sounds rehearsed.')
 
+    def _group_body_pt(self, group, width, room, ask_pt, max_pt=9.5, min_pt=8.5):
+        """The largest size at which every landmine's two body blocks fit
+        beneath its question, so the cards on a page share one size."""
+        for pt in typeset._sizes(max_pt, min_pt):
+            if all(typeset.measure(self._peek(r.get('question')), int(width), ask_pt,
+                                   bold=True)
+                   + typeset.measure(self._peek(r.get('why')), int(width), pt)
+                   + typeset.measure(self._peek(r.get('listen_for')), int(width), pt)
+                   <= room for r in group):
+                return pt
+        return min_pt
+
+    @staticmethod
+    def _peek(text):
+        """Body text as it will be drawn, without collecting its sources."""
+        return typeset.split_sources(text or '')[0]
+
     def slide_discovery(self):
-        rows = self.card.get('discovery') or []
+        rows = [row for row in (self.card.get('discovery') or []) if row.get('questions')]
         if not rows:
             return
-        for group in chunk(rows, 3):
-            slide = self._page(('Discovery ', 'questions'))
-            count = len(group)
-            col_w = (CONTENT_W - GUTTER * (count - 1)) / count
+        sizes = typeset.balance(len(rows), 3)
+        start = 0
+        for page, size in enumerate(sizes, 1):
+            group = rows[start:start + size]
+            start += size
+            slide = self._page(('Discovery ', 'questions'), counter=(page, len(sizes)))
+            col_w = (CONTENT_W - GUTTER * (size - 1)) / size
+            inner = col_w - 2 * PAD
             for index, row in enumerate(group):
                 left = MARGIN + index * (col_w + GUTTER)
                 self._panel(slide, left, BODY_TOP, col_w, BODY_H)
-                self._paragraph_block(slide, left + PAD, BODY_TOP + Inches(0.18),
-                                      col_w - 2 * PAD, Inches(0.5),
-                                      row.get('theme', ''), max_pt=12, min_pt=9,
-                                      bold=True, font=self.theme.heading_font)
-                self._bullets(slide, left + PAD, BODY_TOP + Inches(0.78), col_w - 2 * PAD,
-                              BODY_H - Inches(0.98), row.get('questions') or [],
-                              max_pt=10, min_pt=7, bullet_color=IMPACT_BLUE)
+                used = self._prose(slide, left + PAD, BODY_TOP + Inches(0.18), inner,
+                                   Inches(0.5), row.get('theme', ''), max_pt=12.5,
+                                   min_pt=10.5, bold=True, font=self.theme.heading_font,
+                                   label='Discovery theme')
+                top = BODY_TOP + Inches(0.18) + used + Inches(0.14)
+                rest = self._bullets(slide, left + PAD, top, inner,
+                                     BODY_TOP + BODY_H - Inches(0.14) - top,
+                                     row.get('questions') or [], max_pt=10.5, min_pt=9,
+                                     bullet_color=IMPACT_BLUE, label=row.get('theme', ''))
+                for entry in rest:
+                    self._register(entry)
+                    self._hold(row.get('theme', 'Question'), entry['full'] or entry['text'])
             self._notes(slide, 'Run discovery before any slide goes on the screen.')
 
+    @staticmethod
+    def _stat_pt(value, inner_w):
+        # A stat is short, bold display type, mostly digits and capitals, which
+        # run near 0.66 em a character, well past the prose average the general
+        # measure uses. Sized directly so "11 March 2026" stays on one line.
+        room_pt = (inner_w - Inches(0.14)) / 12700.0
+        return max(14.0, min(30.0, room_pt / (max(len(value), 1) * 0.66)))
+
+    def _stat(self, slide, left, top, width, height, row, value_pt=None):
+        """The house stat card: a tinted number panel, then the label and detail.
+
+        The number is fitted to a single line, so "11 March 2026" sits as
+        comfortably as "35%", and everything below it flows to the card's foot.
+        """
+        self._panel(slide, left, top, width, height)
+        inner_w = width - 2 * PAD
+        panel_h = Inches(0.66)
+        tint = self._panel(slide, left + PAD, top + PAD, inner_w, panel_h,
+                           fill=self.stat_tint, shadow=False)
+        value = self._clean(row.get('stat', '')) or 'Add stat'
+        pt = value_pt or self._stat_pt(value, inner_w)
+        tf = prepare_text_frame(tint, margin=Inches(0.07), anchor=MSO_ANCHOR.MIDDLE)
+        write_paragraph(tf, value, Pt(pt), bold=True, color=IMPACT_BLUE,
+                        font=self.theme.heading_font, align=PP_ALIGN.CENTER,
+                        space_after=0, line_spacing=1.0, first=True)
+
+        source = (row.get('source') or '').strip()
+        source_h = Inches(0.42) if source else 0
+        bottom = top + height - PAD - source_h
+        self._stack(slide, left + PAD, top + PAD + panel_h + Inches(0.14), inner_w, bottom, [
+            dict(text=row.get('label'), max_pt=11.5, min_pt=10, italic=True,
+                 floor_lines=2, note='Proof point'),
+            dict(text=row.get('detail'), max_pt=9, min_pt=8.5, color=BLACK,
+                 note='Proof point, "%s"' % (row.get('label') or '')[:50]),
+        ], gap=Inches(0.1))
+        if source:
+            self._panel_label(slide, left + PAD, bottom, inner_w, 'Source',
+                              color=GRAY_3, size=Pt(6.5))
+            self._cites(slide, left + PAD, bottom + self.LABEL_H, inner_w,
+                        source_h - self.LABEL_H, source)
+
     def slide_proof_points(self):
-        rows = self.card.get('proof_points') or []
+        rows = [row for row in (self.card.get('proof_points') or [])
+                if row.get('stat') or row.get('label')]
         if not rows:
             return
-        for group in chunk(rows, 4):
-            slide = self._page(('Proof ', 'points'))
-            count = len(group)
-            col_w = (CONTENT_W - GUTTER * (count - 1)) / count
+        sizes = typeset.balance(len(rows), 4)
+        start = 0
+        for page, size in enumerate(sizes, 1):
+            group = rows[start:start + size]
+            start += size
+            slide = self._page(('Proof ', 'points'), counter=(page, len(sizes)))
+            col_w = (CONTENT_W - GUTTER * (size - 1)) / size
+            # One number size across the row, set by the longest value, so a
+            # date beside a percentage does not read as a different kind of fact.
+            value_pt = min(self._stat_pt(self._peek(row.get('stat')) or 'Add stat',
+                                         col_w - 2 * PAD) for row in group)
             for index, row in enumerate(group):
                 left = MARGIN + index * (col_w + GUTTER)
-                self._stat(slide, left, BODY_TOP, col_w, row.get('stat', ''),
-                           row.get('label', ''), row.get('detail', ''), row.get('source', ''))
-            note_top = BODY_TOP + Inches(1.86)
-            note_h = BODY_H - Inches(1.86)
-            if note_h > Inches(0.6):
-                self._panel(slide, MARGIN, note_top, CONTENT_W, note_h)
-                self._panel_label(slide, MARGIN + PAD, note_top + Inches(0.14),
-                                  CONTENT_W - 2 * PAD, 'How to use these numbers')
-                self._bullets(slide, MARGIN + PAD, note_top + Inches(0.38), CONTENT_W - 2 * PAD,
-                              note_h - Inches(0.52), [
-                                  'Quote the number, then name the customer situation behind it.',
-                                  'Carry the source. A stat you cannot attribute loses the room.',
-                                  'Use results from 2025 or later. Retire anything older.',
-                              ], max_pt=10, min_pt=7.5, bullet_color=IMPACT_BLUE)
-            self._notes(slide, 'Never quote a result you cannot source on request.')
+                self._stat(slide, left, BODY_TOP, col_w, BODY_H, row, value_pt)
+            self._notes(slide, 'Quote the number, then name the customer situation behind '
+                               'it. Carry the source: a stat you cannot attribute loses the '
+                               'room. Use results from 2025 or later and retire anything older.')
 
     def slide_talk_track(self):
         track = self.card.get('talk_track', {})
@@ -862,10 +1295,12 @@ class BattlecardDeck:
         if not blocks:
             return
         slide = self._page(('Talk ', 'track'))
-        cols = 2
+        cols = 2 if len(blocks) > 1 else 1
         rows = math.ceil(len(blocks) / cols)
-        col_w = (CONTENT_W - GUTTER) / cols
+        col_w = (CONTENT_W - GUTTER * (cols - 1)) / cols
         row_h = (BODY_H - GUTTER * (rows - 1)) / rows
+        track_pt = self._group_pt([(text, col_w - 2 * PAD, row_h - Inches(0.52))
+                                   for _, text in blocks], 11, 9)
         for index, (label, text) in enumerate(blocks):
             col, row = index % cols, index // cols
             left = MARGIN + col * (col_w + GUTTER)
@@ -876,29 +1311,21 @@ class BattlecardDeck:
             self._panel_label(slide, left + PAD, top + Inches(0.14), col_w - 2 * PAD, label,
                               color=mix(WHITE, IMPACT_BLUE, 0.4) if highlight else IMPACT_BLUE,
                               size=Pt(7))
-            self._paragraph_block(slide, left + PAD, top + Inches(0.36), col_w - 2 * PAD,
-                                  row_h - Inches(0.5), text, max_pt=10.5, min_pt=7.5,
-                                  color=WHITE if highlight else BLACK)
-        self._notes(slide, 'Say it out loud twice before the call. Cut any sentence that does not land.')
+            self._prose(slide, left + PAD, top + Inches(0.38), col_w - 2 * PAD,
+                        row_h - Inches(0.52), text, max_pt=track_pt, min_pt=track_pt,
+                        color=WHITE if highlight else BLACK, label=label)
+        self._notes(slide, 'Say it out loud twice before the call. Cut any sentence that '
+                           'does not land.')
 
     def slide_dos_donts(self):
         dos = self.card.get('dos') or []
         donts = self.card.get('donts') or []
         if not dos and not donts:
             return
-        slide = self._page(('Do ', 'and do not'))
-        col_w = (CONTENT_W - GUTTER) / 2
-        for index, (label, items, color) in enumerate((
-                ('Do', dos, IMPACT_BLUE),
-                ('Do not', donts, GRAY_3))):
-            left = MARGIN + index * (col_w + GUTTER)
-            self._panel(slide, left, BODY_TOP, col_w, BODY_H)
-            self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.2), col_w - 2 * PAD,
-                              label, color=color)
-            self._bullets(slide, left + PAD, BODY_TOP + Inches(0.5), col_w - 2 * PAD,
-                          BODY_H - Inches(0.7), items or ['Add guidance.'],
-                          max_pt=11, min_pt=8, bullet_color=color)
-        self._notes(slide, 'These rules keep the conversation about value, not about the rival.')
+        self._two_lists(('Do ', 'and do not'),
+                        ('Do', dos, IMPACT_BLUE, IMPACT_BLUE),
+                        ('Do not', donts, GRAY_3, GRAY_3),
+                        'These rules keep the conversation about value, not about the rival.')
 
     def slide_pricing(self):
         pricing = self.card.get('pricing', {})
@@ -907,7 +1334,13 @@ class BattlecardDeck:
             return
         slide = self._page(('Pricing and ', 'packaging'))
         col_w = (CONTENT_W - GUTTER) / 2
-        panel_h = BODY_H - Inches(1.32)
+        rules = notes or ['Record only what the buyer states or the vendor publishes.']
+        # The ground rules panel takes the height its rules need at full size,
+        # within limits, and the two model panels take the rest.
+        need = typeset.measure_list([self._peek(rule) for rule in rules],
+                                    int(CONTENT_W - 2 * PAD), 9.5) + Inches(0.5)
+        note_h = max(Inches(1.0), min(int(need), int(BODY_H * 0.55)))
+        panel_h = BODY_H - note_h - Inches(0.14)
         pairs = (
             ('Impact Analytics', pricing.get('ia_model', ''), IMPACT_BLUE, WHITE),
             (self.meta['competitor'], pricing.get('competitor_model', ''), WHITE, BLACK),
@@ -918,112 +1351,131 @@ class BattlecardDeck:
             self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.16), col_w - 2 * PAD,
                               label,
                               color=mix(WHITE, IMPACT_BLUE, 0.4) if index == 0 else IMPACT_BLUE)
-            self._paragraph_block(slide, left + PAD, BODY_TOP + Inches(0.42), col_w - 2 * PAD,
-                                  panel_h - Inches(0.58), text or 'Add detail.',
-                                  max_pt=10.5, min_pt=7.5, color=ink)
+            self._prose(slide, left + PAD, BODY_TOP + Inches(0.42), col_w - 2 * PAD,
+                        panel_h - Inches(0.56), text or 'Add detail.',
+                        max_pt=11, min_pt=9, color=ink, label=label)
         note_top = BODY_TOP + panel_h + Inches(0.14)
-        note_h = BODY_H - panel_h - Inches(0.14)
         self._panel(slide, MARGIN, note_top, CONTENT_W, note_h)
         self._panel_label(slide, MARGIN + PAD, note_top + Inches(0.13), CONTENT_W - 2 * PAD,
                           'Ground rules', color=GRAY_3, size=Pt(7))
-        self._bullets(slide, MARGIN + PAD, note_top + Inches(0.33), CONTENT_W - 2 * PAD,
-                      note_h - Inches(0.46),
-                      notes or ['Record only what the buyer states or the vendor publishes.'],
-                      max_pt=9, min_pt=7, bullet_color=GRAY_3)
+        rest = self._bullets(slide, MARGIN + PAD, note_top + Inches(0.36), CONTENT_W - 2 * PAD,
+                             note_h - Inches(0.46), rules,
+                             max_pt=9.5, min_pt=8.5, bullet_color=GRAY_3, label='Ground rule')
+        for entry in rest:
+            self._register(entry)
+            self._hold('Ground rule', entry['full'] or entry['text'])
         self._notes(slide, 'Never quote a rival price you cannot source.')
 
     def slide_next_steps(self):
-        steps = self.card.get('next_steps') or []
+        steps = [step for step in (self.card.get('next_steps') or []) if step]
         resources = self.card.get('resources') or []
         if not steps and not resources:
             return
         slide = self._page(('Next steps ', 'and resources'))
-        left_w = Inches(5.75)
+        left_w = Inches(5.95)
         self._panel(slide, MARGIN, BODY_TOP, left_w, BODY_H)
         self._panel_label(slide, MARGIN + PAD, BODY_TOP + Inches(0.2), left_w - 2 * PAD,
                           'Move the deal forward')
-        step_top = BODY_TOP + Inches(0.52)
-        visible = steps[:5]
-        step_h = (BODY_H - Inches(0.72)) / max(1, len(visible))
-        for index, step in enumerate(visible):
-            top = step_top + index * step_h
-            marker = add_textbox(slide, MARGIN + PAD, top, Inches(0.28), Inches(0.28))
-            write_paragraph(marker.text_frame, str(index + 1), Pt(12), bold=True,
-                            color=self.theme.accent, font=self.theme.heading_font,
+        text_left = MARGIN + PAD + Inches(0.34)
+        text_w = left_w - 2 * PAD - Inches(0.34)
+        bottom = BODY_TOP + BODY_H - Inches(0.14)
+        y = BODY_TOP + Inches(0.52)
+        for index, step in enumerate(steps):
+            remaining = len(steps) - index
+            budget = (bottom - y) / remaining - Inches(0.1)
+            if budget < typeset.line_pitch(9, 1.2):
+                self._hold('Next step %d' % (index + 1), step)
+                continue
+            marker = add_textbox(slide, MARGIN + PAD, y - Inches(0.02), Inches(0.3), Inches(0.28))
+            write_paragraph(marker.text_frame, str(index + 1), Pt(13), bold=True,
+                            color=IMPACT_BLUE, font=self.theme.heading_font,
                             space_after=0, line_spacing=1.0, first=True)
-            self._paragraph_block(slide, MARGIN + PAD + Inches(0.32), top,
-                                  left_w - 2 * PAD - Inches(0.32), step_h - Inches(0.08),
-                                  step, max_pt=10.5, min_pt=7.5)
+            used = self._prose(slide, text_left, y, text_w, budget, step,
+                               max_pt=10.5, min_pt=9, label='Next step %d' % (index + 1))
+            y += max(used, Inches(0.24)) + Inches(0.12)
 
         right_left = MARGIN + left_w + GUTTER
         right_w = CONTENT_W - left_w - GUTTER
+        inner = right_w - 2 * PAD
         self._panel(slide, right_left, BODY_TOP, right_w, BODY_H)
-        self._panel_label(slide, right_left + PAD, BODY_TOP + Inches(0.2), right_w - 2 * PAD,
-                          'Resources')
-        top = BODY_TOP + Inches(0.5)
-        for row in resources[:7]:
-            label = row.get('label') or row.get('url')
+        self._panel_label(slide, right_left + PAD, BODY_TOP + Inches(0.2), inner, 'Resources')
+        # One text box with a paragraph a link, so each wraps as far as it needs
+        # and the spacing between them stays even.
+        top = BODY_TOP + Inches(0.52)
+        box, used = None, 0
+        for row in resources:
             url = row.get('url')
-            box = add_textbox(slide, right_left + PAD, top, right_w - 2 * PAD, Inches(0.24))
-            p = box.text_frame.paragraphs[0]
-            p.line_spacing = 1.1
+            label = (row.get('label') or '').strip()
+            if not label and url:
+                label = typeset.cite(url)[0]
+            if not label:
+                continue
+            height = typeset.measure(label, int(inner), 9, 1.15) + int(Pt(7))
+            if top + used + height > bottom:
+                self._hold('Resource', '%s %s' % (label, url or ''))
+                continue
+            if box is None:
+                box = add_textbox(slide, right_left + PAD, top, inner, bottom - top)
+                p = box.text_frame.paragraphs[0]
+            else:
+                p = box.text_frame.add_paragraph()
+            p.line_spacing = 1.15
+            p.space_after = Pt(7)
             run = p.add_run()
             run.text = label
-            set_run_font(run, Pt(9.5), False, IMPACT_BLUE if url else BLACK,
+            set_run_font(run, Pt(9), False, IMPACT_BLUE if url else BLACK,
                          self.theme.body_font)
             if url:
                 run.hyperlink.address = url
-            top += Inches(0.26)
-        owner = self.meta.get('owner')
-        if owner:
-            self._paragraph_block(slide, right_left + PAD, BODY_TOP + BODY_H - Inches(0.42),
-                                  right_w - 2 * PAD, Inches(0.3),
-                                  'Card owner: %s' % owner, max_pt=8, min_pt=6.5, color=GRAY_3)
+            used += height
         self._notes(slide, 'Agree the success metric and the readout date in writing.')
 
     def slide_one_pager(self):
         slide = self._page(('One page ', 'summary'),
                            kicker='Print this  ·  %s' % self.meta['competitor'])
         col_w = (CONTENT_W - GUTTER * 3) / 4
+        inner = col_w - 2 * PAD
+
+        def lead(text):
+            clean, found = typeset.split_sources(text or '')
+            self._sources.extend(found)
+            first = typeset.sentences(clean)
+            return first[0] if first else clean
+
         quadrants = (
-            ('Why we win', [row.get('title', '') for row in self.card.get('our_advantages', [])][:4]),
-            ('Where they win', (self.card.get('their_strengths') or [])[:4]),
-            ('Their gaps', (self.card.get('their_weaknesses') or [])[:4]),
-            ('Top objections', self._objection_pairs()),
+            ('Why we win', [row.get('title', '') for row in self.card.get('our_advantages', [])]),
+            ('Where they win', [lead(t) for t in self.card.get('their_strengths') or []]),
+            ('Their gaps', [lead(t) for t in self.card.get('their_weaknesses') or []]),
+            ('Top objections', [row.get('objection', '')
+                                for row in self.card.get('objections') or []]),
         )
-        panel_h = BODY_H - Inches(1.06)
+        strip_h = Inches(0.98)
+        panel_h = BODY_H - strip_h - Inches(0.14)
         for index, (label, items) in enumerate(quadrants):
             left = MARGIN + index * (col_w + GUTTER)
             self._panel(slide, left, BODY_TOP, col_w, panel_h)
-            self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.14), col_w - 2 * PAD,
-                              label, size=Pt(7))
-            self._bullets(slide, left + PAD, BODY_TOP + Inches(0.36), col_w - 2 * PAD,
-                          panel_h - Inches(0.5),
-                          [item for item in items if item] or ['Add content.'],
-                          max_pt=8.5, min_pt=6.5, bullet_color=IMPACT_BLUE)
+            self._panel_label(slide, left + PAD, BODY_TOP + Inches(0.14), inner, label,
+                              size=Pt(7))
+            entries = self._prep([item for item in items if item][:6], inner, 8,
+                                 max_lines=3, label=label)
+            rest = self._bullets(slide, left + PAD, BODY_TOP + Inches(0.38), inner,
+                                 panel_h - Inches(0.5), entries or
+                                 self._prep(['Add content.'], inner, 8),
+                                 max_pt=9, min_pt=8, bullet_color=IMPACT_BLUE)
+            for entry in rest:
+                self._register(entry)
 
         strip_top = BODY_TOP + panel_h + Inches(0.14)
-        strip_h = BODY_H - panel_h - Inches(0.14)
         self._panel(slide, MARGIN, strip_top, CONTENT_W, strip_h, fill=IMPACT_BLUE)
         self._panel_label(slide, MARGIN + PAD, strip_top + Inches(0.12), CONTENT_W - 2 * PAD,
                           'Say this first', color=mix(WHITE, IMPACT_BLUE, 0.4), size=Pt(7))
         line = (self.card.get('talk_track', {}).get('positioning')
                 or self.meta.get('headline')
                 or 'Lead with the outcome the buyer needs this season.')
-        self._paragraph_block(slide, MARGIN + PAD, strip_top + Inches(0.32),
-                              CONTENT_W - 2 * PAD, strip_h - Inches(0.44), line,
-                              max_pt=11, min_pt=7.5, color=WHITE)
+        self._prose(slide, MARGIN + PAD, strip_top + Inches(0.34), CONTENT_W - 2 * PAD,
+                    strip_h - Inches(0.44), line, max_pt=10.5, min_pt=9, color=WHITE,
+                    label='Say this first')
         self._notes(slide, 'Print this slide. It is the card a seller carries into the room.')
-
-    def _objection_pairs(self):
-        """Compact objection and answer pairs for the printable summary."""
-        pairs = []
-        for row in (self.card.get('objections') or [])[:2]:
-            if row.get('objection'):
-                pairs.append('They say: %s' % row['objection'])
-            if row.get('response'):
-                pairs.append('We say: %s' % row['response'])
-        return pairs
 
 
 def build_presentation(card: dict) -> Presentation:
