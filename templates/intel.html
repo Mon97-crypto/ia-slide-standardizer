@@ -467,6 +467,10 @@ function draw(claims) {
     rebuildFilter(claims);
 }
 
+// The date a claim was taught is stored with it but not shown for now. Set this
+// to true to show it under each claim again.
+const SHOW_DATES = false;
+
 function card(row) {
     const source = row.source && /^https?:\/\//i.test(row.source)
         ? `<a href="${esc(row.source)}" target="_blank" rel="noopener">${esc(row.source)}</a>`
@@ -481,7 +485,7 @@ function card(row) {
                 ${row.seed ? '<span class="pill pill-blue">In the repository</span>' : ''}
                 ${row.ia_product ? `<span>${esc(row.ia_product)}</span>` : ''}
                 ${row.author ? `<span>${esc(row.author)}</span>` : ''}
-                <span>${esc(row.as_of || '')}</span>
+                ${SHOW_DATES && row.as_of ? `<span>${esc(row.as_of)}</span>` : ''}
                 ${source}
             </div>
         </div>
